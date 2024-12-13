@@ -1,0 +1,34 @@
+# Rust
+/rust/target/
+**/*.rs.bk
+Cargo.lock
+
+# Node/TypeScript (Frontend)
+/typescript/frontend/node_modules/
+/typescript/frontend/dist/
+/typescript/frontend/dist-ssr/
+/typescript/frontend/*.local
+
+# Node/TypeScript (Backend)
+/typescript/backend/node_modules/
+/typescript/backend/dist/
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
