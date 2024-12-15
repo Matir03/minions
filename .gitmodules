@@ -1,4 +1,4 @@
 [submodule "minions-scala"]
-	path = minions-scala
+	path = minions
 	url = https://github.com/Matir03/minions-scala.git
 	branch = keyboard
