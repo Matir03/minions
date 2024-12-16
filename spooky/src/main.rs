@@ -1,33 +1,20 @@
 use spooky::Game;
-use std::io::{self, BufRead, Write};
+use std::io::{self, BufRead};
+
+mod uci;
+use uci::protocol::handle_command;
+use uci::command::parse_command;
 
 fn main() {
-    println!("Minions Engine");
+    println!("Spooky - Minions Engine");
     
     let stdin = io::stdin();
-    let mut stdout = io::stdout();
-    let game = Game::new();
+    let _game = Game::new();
     
     for line in stdin.lock().lines() {
         let input = line.unwrap();
-        let cmd = input.trim();
-        
-        match cmd {
-            "quit" => break,
-            "uci" => {
-                println!("id name Spooky");
-                println!("id author Ritam Nag");
-                println!("uciok");
-                stdout.flush().unwrap();
-            }
-            "isready" => {
-                println!("readyok");
-                stdout.flush().unwrap();
-            }
-            _ => {
-                println!("Unknown command: {}", cmd);
-                stdout.flush().unwrap();
-            }
+        if let Some(cmd) = parse_command(&input) {
+            handle_command(&cmd);
         }
     }
 }
