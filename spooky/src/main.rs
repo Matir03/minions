@@ -1,4 +1,4 @@
-use minions::Game;
+use spooky::Game;
 use std::io::{self, BufRead, Write};
 
 fn main() {

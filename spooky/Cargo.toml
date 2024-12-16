@@ -1,11 +1,16 @@
-[workspace]
-resolver = "2"
-members = [
-    "minions"
-]
-
-[workspace.package]
+[package]
+name = "spooky"
 version = "0.1.0"
 edition = "2021"
-authors = []
-description = "A board game engine for Minions"
+authors = ["Ritam Nag"]
+description = "Engine for the Minions board game"
+
+[lib]
+name = "spooky"
+path = "src/lib.rs"
+
+[[bin]]
+name = "spooky"
+path = "src/main.rs"
+
+[dependencies]
