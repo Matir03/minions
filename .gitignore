@@ -1,5 +1,5 @@
 # Rust
-/rust/target/
+/spooky/target/
 **/*.rs.bk
 Cargo.lock
 

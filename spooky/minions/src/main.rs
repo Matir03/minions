@@ -1,4 +1,4 @@
-use minions_engine::Game;
+use minions::Game;
 use std::io::{self, BufRead, Write};
 
 fn main() {
@@ -15,8 +15,8 @@ fn main() {
         match cmd {
             "quit" => break,
             "uci" => {
-                println!("id name Minions Engine");
-                println!("id author");
+                println!("id name Spooky");
+                println!("id author Ritam Nag");
                 println!("uciok");
                 stdout.flush().unwrap();
             }

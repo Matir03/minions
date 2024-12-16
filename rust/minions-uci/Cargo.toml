@@ -1,9 +1,0 @@
-[package]
-name = "minions-uci"
-version.workspace = true
-edition.workspace = true
-authors.workspace = true
-description.workspace = true
-
-[dependencies]
-minions-engine = { path = "../minions-engine" }

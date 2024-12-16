@@ -1,0 +1,16 @@
+[package]
+name = "minions"
+version = "0.1.0"
+edition = "2021"
+authors = []
+description = "A board game engine for Minions"
+
+[lib]
+name = "minions"
+path = "src/lib.rs"
+
+[[bin]]
+name = "minions"
+path = "src/main.rs"
+
+[dependencies]
