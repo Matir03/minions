@@ -1,22 +1,30 @@
 //! Game state and rules
 
+use anyhow::{Result, anyhow, bail};
+use crate::core::convert::{FromIndex, ToIndex};
 use super::{
-    board::{Board, Modifiers, Piece}, 
-    map::{MapLabel, Loc}, 
-    tech::{Tech, TechStatus, Techline},
-    units::UnitLabel,
+    board::Board,
+    map::MapLabel,
     side::{Side, SideArray},
-    convert::{FromIndex, ToIndex},
+    tech::{Tech, TechStatus, Techline},
 };
 
-use anyhow::{anyhow, Result};
-
-/// Static game configuration
+/// Static configuration for a Minions game
 #[derive(Debug, Clone)]
 pub struct GameConfig {
     pub num_boards: usize,
     pub maps: Vec<MapLabel>,
     pub techline: Techline,
+}
+
+impl Default for GameConfig {
+    fn default() -> Self {
+        Self {
+            num_boards: 1,
+            maps: vec![MapLabel::BlackenedShores],
+            techline: Techline::default(),
+        }
+    }
 }
 
 /// State of a Minions game (excluding the static configuration)
@@ -28,6 +36,20 @@ pub struct GameState {
     pub money: SideArray<i32>,
 }
 
+impl Default for GameState {
+    fn default() -> Self {
+        Self {
+            side_to_move: Side::S0,
+            boards: vec![Board::default()],
+            tech_status: SideArray::new(
+                vec![TechStatus::Locked; Techline::NUM_TECHS],
+                vec![TechStatus::Locked; Techline::NUM_TECHS]
+            ),
+            money: SideArray::new(0, 6),
+        }
+    }
+}
+
 /// Represents the state of a Minions game
 #[derive(Debug, Clone)]
 pub struct Game<'g> {
@@ -36,11 +58,11 @@ pub struct Game<'g> {
 }
 
 impl<'g> Game<'g> {
-    /// Create a new game with the given configuration
     pub fn new(config: &'g GameConfig, state: GameState) -> Self {
         Self { config, state }
     }
 
+    /// Convert game state to FEN notation
     pub fn to_fen(&self) -> Result<String> {
         let mut fen = String::new();
         
@@ -58,7 +80,7 @@ impl<'g> Game<'g> {
             .join(","));
         fen.push(' ');
         
-        fen.push_str(&self.config.techline.num_techs.to_string());
+        fen.push_str(&self.config.techline.techs.len().to_string());
         fen.push(' ');
         
         fen.push_str(&self.config.techline.techs
@@ -76,44 +98,7 @@ impl<'g> Game<'g> {
             if i > 0 {
                 fen.push('|');
             }
-            
-            let mut empty_count = 0;
-            
-            for row in 0..10 {
-                if row > 0 {
-                    fen.push('/');
-                }
-                
-                for col in 0..10 {
-                    let loc = Loc { row, col };
-                    if let Some(Piece { side, unit, .. }) = board.get_piece(loc) {
-                        if empty_count > 0 {
-                            if empty_count == 10 {
-                                fen.push('0');
-                            } else {
-                                fen.push(char::from_digit(empty_count as u32, 10).unwrap());
-                            }
-                            empty_count = 0;
-                        }
-                        let unit_char = unit.to_fen_char();
-                        match side {
-                            Side::S0 => fen.push(unit_char.to_ascii_uppercase()),
-                            Side::S1 => fen.push(unit_char.to_ascii_lowercase()),
-                        }
-                    } else {
-                        empty_count += 1;
-                    }
-                }
-                
-                if empty_count > 0 {
-                    if empty_count == 10 {
-                        fen.push('0');
-                    } else {
-                        fen.push(char::from_digit(empty_count as u32, 10).unwrap());
-                    }
-                    empty_count = 0;
-                }
-            }
+            fen.push_str(&board.to_fen());
         }
         
         // Side to move
@@ -145,6 +130,7 @@ impl<'g> Game<'g> {
         Ok(fen)
     }
 
+    /// Parse game state from FEN notation
     pub fn parse_fen(fen: &str) -> Result<(GameConfig, GameState)> {
         let mut parts = fen.split_whitespace();
         
@@ -163,7 +149,7 @@ impl<'g> Game<'g> {
             .into_iter()
             .map(MapLabel::from_index)
             .collect::<Result<Vec<_>>>()?;
-    
+            
         let num_techs = parts.next()
             .ok_or_else(|| anyhow!("Missing number of techs"))?
             .parse::<usize>()?;
@@ -178,53 +164,27 @@ impl<'g> Game<'g> {
             .into_iter()
             .map(Tech::from_index)
             .collect::<Result<Vec<_>>>()?;
+            
+        if techs.len() != num_techs {
+            bail!("Number of techs does not match the specified count");
+        }
     
-        // Create game config
         let config = GameConfig {
             num_boards,
             maps,
-            techline: Techline { num_techs, techs }, 
+            techline: Techline { techs }, 
         };
         
         // Parse board states
         let board_states = parts.next()
             .ok_or_else(|| anyhow!("Missing board states"))?
             .split('|')
-            .map(|board_str| {
-                let mut board = Board::new();
-                let rows = board_str.split('/');
-                for (row_idx, row) in rows.enumerate() {
-                    let mut col = 0;
-                    let mut chars = row.chars();
-                    while let Some(c) = chars.next() {
-                        if c.is_digit(10) {
-                            let empty = if c == '0' { 10 } else { c.to_digit(10).unwrap() as usize };
-                            col += empty;
-                        } else {
-                            let side = if c.is_ascii_uppercase() {
-                                Side::S0
-                            } else {
-                                Side::S1
-                            };
-                            let unit = UnitLabel::from_fen_char(c.to_ascii_uppercase())
-                                .ok_or_else(|| anyhow!("Invalid unit label"))?;
-                            let piece = Piece {
-                                loc: Loc { row: row_idx as i32, col: col as i32 },
-                                side,
-                                unit,
-                                modifiers: Modifiers::default(),
-                            };
-                            board.add_piece(piece);
-                            col += 1;
-                        }
-                    }
-                    if col != 10 {
-                        return Err(anyhow!("Invalid row length"));
-                    }
-                }
-                Ok(board)
-            })
+            .map(|s| Board::from_fen(s))
             .collect::<Result<Vec<_>>>()?;
+
+        if board_states.len() != num_boards {
+            bail!("Number of board states does not match the specified count");
+        }
             
         // Parse side to move
         let side_to_move = Side::from_index(
@@ -269,5 +229,57 @@ impl<'g> Game<'g> {
         };
         
         Ok((config, state))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::{map::Loc, units::UnitLabel};
+
+    #[test]
+    fn test_basic_fen_conversion() {
+        let fen = "1 0 4 1,2,3,4 Z8i/0/0/0/0/0/0/0/0/0 0 LLLUUA|LLLLLA 10|5";
+        let (config, state) = Game::parse_fen(fen).unwrap();
+
+        assert_eq!(config.num_boards, 1);
+        assert_eq!(config.maps.len(), 1);
+        assert_eq!(config.techline.techs.len(), 4);
+        assert_eq!(state.side_to_move, Side::S0);
+        assert_eq!(*state.money.get(Side::S0).unwrap(), 10);
+        assert_eq!(*state.money.get(Side::S1).unwrap(), 5);
+    }
+
+    #[test]
+    fn test_empty_spaces_fen() {
+        let fen = "2 0,1 4 1,2,3,4 0/0/0/0/0/0/0/0/0/0|0/0/0/0/0/0/0/0/0/0 1 LLLUUA|LLLLLA 10|5";
+        let (config, state) = Game::parse_fen(fen).unwrap();
+
+        assert_eq!(config.num_boards, 2);
+        assert_eq!(state.boards.len(), 2);
+        assert_eq!(state.side_to_move, Side::S1);
+    }
+
+    #[test]
+    fn test_fen_with_modifiers() {
+        let fen = "1 0 4 1,2,3,4 Z8i/0/0/0/0/0/0/0/0/0 0 LLLUUA|LLLLLA 10|5";
+        let (_, state) = Game::parse_fen(fen).unwrap();
+
+        let piece = state.boards[0].get_piece(Loc { row: 0, col: 0 }).unwrap();
+        assert_eq!(piece.side, Side::S0);
+        assert_eq!(piece.unit, UnitLabel::Zombie);
+        assert!(!piece.modifiers.shielded);
+    }
+
+    #[test]
+    fn test_invalid_fen() {
+        // Invalid number of boards
+        assert!(Game::parse_fen("0 0 4 0,1,2,3 0/0/0/0/0/0/0/0/0/0 0 LLLUUA|LLLLLA 10|5").is_err());
+
+        // Invalid tech status
+        assert!(Game::parse_fen("1 0 4 0,1,2,3 0/0/0/0/0/0/0/0/0/0 0 LLLUUX|LLLLLA 10|5").is_err());
+
+        // Invalid money format
+        assert!(Game::parse_fen("1 0 4 0,1,2,3 0/0/0/0/0/0/0/0/0/0 0 LLLUUA|LLLLLA 10").is_err());
     }
 }

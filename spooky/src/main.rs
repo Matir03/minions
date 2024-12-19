@@ -1,4 +1,4 @@
-use spooky::Game;
+use spooky::core::game::{Game, GameConfig, GameState};
 use std::io::{self, BufRead};
 
 mod uci;
@@ -9,7 +9,9 @@ fn main() {
     println!("Spooky - Minions Engine");
     
     let stdin = io::stdin();
-    let _game = Game::new();
+    let config = GameConfig::default();
+    let state = GameState::default();
+    let _game = Game::new(&config, state);
     
     for line in stdin.lock().lines() {
         let input = line.unwrap();

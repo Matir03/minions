@@ -96,3 +96,54 @@ pub struct Map {
     pub hexes: HexArray<TileType>,
     pub label: MapLabel,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_map_label_conversion() {
+        assert_eq!(MapLabel::from_index(0).unwrap(), MapLabel::BlackenedShores);
+        assert_eq!(MapLabel::from_index(1).unwrap(), MapLabel::MidnightLake);
+        assert!(MapLabel::from_index(2).is_err());
+
+        assert_eq!(MapLabel::BlackenedShores.to_index().unwrap(), 0);
+        assert_eq!(MapLabel::MidnightLake.to_index().unwrap(), 1);
+    }
+
+    #[test]
+    fn test_hex_array() {
+        let mut array = HexArray::new(10, 10, TileType::Land);
+        
+        // Test in_bounds
+        assert!(array.in_bounds(Loc { row: 0, col: 0 }));
+        assert!(array.in_bounds(Loc { row: 9, col: 9 }));
+        assert!(!array.in_bounds(Loc { row: 10, col: 0 }));
+        assert!(!array.in_bounds(Loc { row: 0, col: 10 }));
+        assert!(!array.in_bounds(Loc { row: -1, col: 0 }));
+        
+        // Test get/set
+        let loc = Loc { row: 5, col: 5 };
+        assert_eq!(array.get(loc), Some(&TileType::Land));
+        array.set(loc, TileType::Graveyard);
+        assert_eq!(array.get(loc), Some(&TileType::Graveyard));
+    }
+
+    #[test]
+    fn test_map() {
+        let map = Map {
+            hexes: HexArray::new(10, 10, TileType::Land),
+            label: MapLabel::BlackenedShores,
+        };
+        assert_eq!(map.label, MapLabel::BlackenedShores);
+        assert_eq!(map.hexes.width, 10);
+        assert_eq!(map.hexes.height, 10);
+    }
+
+    #[test]
+    fn test_loc() {
+        let loc = Loc { row: 3, col: 4 };
+        assert_eq!(loc.row, 3);
+        assert_eq!(loc.col, 4);
+    }
+}

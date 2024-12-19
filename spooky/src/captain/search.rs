@@ -1,10 +1,10 @@
-//! Search algorithms for single board positions
+//! Search for the best move
 
-use crate::core::board::Board;
-use crate::core::action::Action;
+use crate::core::game::Game;
+use crate::core::action::Move;
 
 /// Search for the best move in a single board position
-pub fn search_position(board: &Board, depth: u32) -> Option<Action> {
+pub fn find_best_move(game: &Game) -> Option<Move> {
     // TODO: Implement search
     None
 }

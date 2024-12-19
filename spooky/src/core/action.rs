@@ -43,14 +43,14 @@ pub enum BoardAction {
 
 /// Represents a complete turn in the game
 #[derive(Debug, Clone)]
-pub struct GameTurn {
+pub struct Move {
     pub num_spells_bought: usize,
     pub board_spells: Vec<usize>,  // board -> spell index
     pub tech_spells: Vec<usize>,   // techline indices
     pub board_actions: Vec<Vec<BoardAction>>,
 }
 
-impl GameTurn {
+impl Move {
     /// Create a new turn with the given number of boards
     pub fn new(num_boards: usize) -> Self {
         Self {
@@ -68,3 +68,6 @@ impl GameTurn {
         }
     }
 }
+
+#[cfg(test)]
+mod tests { }

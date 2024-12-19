@@ -715,3 +715,91 @@ const UNIT_STATS: [Unit; NUM_UNITS] = [
         blink: false,
     },
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_unit_label_conversion() {
+        // Test basic conversions
+        assert_eq!(UnitLabel::from_index(0).unwrap().to_index().unwrap(), 0);
+        
+        // Test all unit labels have unique indices
+        let mut indices = Vec::new();
+        for i in 0..33 {
+            if let Ok(label) = UnitLabel::from_index(i) {
+                let idx = label.to_index().unwrap();
+                assert!(!indices.contains(&idx), "Duplicate index: {}", idx);
+                indices.push(idx);
+            }
+        }
+        
+        // Test invalid index
+        assert!(UnitLabel::from_index(100).is_err());
+    }
+
+    #[test]
+    fn test_unit_fen_chars() {
+        // Test basic unit label to FEN char conversion
+        assert_eq!(UnitLabel::Zombie.to_fen_char(), 'Z');
+        assert_eq!(UnitLabel::Initiate.to_fen_char(), 'I');
+        
+        // Test FEN char to unit label conversion
+        assert_eq!(UnitLabel::from_fen_char('Z').unwrap(), UnitLabel::Zombie);
+        assert_eq!(UnitLabel::from_fen_char('I').unwrap(), UnitLabel::Initiate);
+        
+        // Test case insensitivity
+        assert_eq!(UnitLabel::from_fen_char('z').unwrap(), UnitLabel::Zombie);
+        assert_eq!(UnitLabel::from_fen_char('i').unwrap(), UnitLabel::Initiate);
+        
+        // Test invalid char
+        assert!(UnitLabel::from_fen_char('X').is_none());
+    }
+
+    #[test]
+    fn test_attack() {
+        let attack = Attack::Damage(3);
+        
+        match attack {
+            Attack::Damage(damage) => assert_eq!(damage, 3),
+            _ => panic!("Expected Damage attack"),
+        }
+    }
+
+    #[test]
+    fn test_unit() {
+        let unit = Unit {
+            cost: 100,
+            num_attack: 1,
+            defense: 10,
+            speed: 2,
+            range: 1,
+            rebate: 0,
+            necromancer: false,
+            lumbering: false,
+            flying: false,
+            persistent: true,
+            spawn: true,
+            blink: false,
+            attack: Attack::Damage(2),
+        };
+        
+        assert_eq!(unit.cost, 100);
+        assert_eq!(unit.num_attack, 1);
+        assert_eq!(unit.defense, 10);
+        assert_eq!(unit.speed, 2);
+        assert_eq!(unit.range, 1);
+        assert_eq!(unit.rebate, 0);
+        assert!(!unit.necromancer);
+        assert!(!unit.lumbering);
+        assert!(!unit.flying);
+        assert!(unit.persistent);
+        assert!(unit.spawn);
+        assert!(!unit.blink);
+        match unit.attack {
+            Attack::Damage(damage) => assert_eq!(damage, 2),
+            _ => panic!("Expected Damage attack"),
+        }
+    }
+}
