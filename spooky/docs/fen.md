@@ -34,7 +34,8 @@ The Spooky FEN (Forsyth-Edwards Notation) format is a string representation that
 
 7. **Tech Status** - Two groups separated by "|", one for each side
    - Each tech: "L" (Locked), "U" (Unlocked), or "A" (Active)
-   Example: `LLLUUA|LLLLLA`
+   - There can be at most one "L"; all subsequent techs are assumed to be locked as well
+   Example: `UUAL|AAUAUL`
 
 8. **Money** - Two numbers separated by "|" for each side's money
    Example: `10|5`

@@ -3,7 +3,7 @@ use spooky::core::board::Board;
 use spooky::captain::eval::evaluate;
 
 fn eval_benchmark(c: &mut Criterion) {
-    let board = Board {};  // TODO: Set up test position
+    let board = Board::default();
     
     c.bench_function("position evaluation", |b| {
         b.iter(|| evaluate(black_box(&board)))

@@ -2,6 +2,7 @@ use anyhow::{anyhow, Result};
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::{FromPrimitive, ToPrimitive};
 use super::convert::{FromIndex, ToIndex};
+use std::ops::{Index, IndexMut, Not};
 
 /// Side/player in the game
 #[derive(Debug, Clone, Copy, PartialEq, Eq, FromPrimitive, ToPrimitive)]
@@ -23,6 +24,17 @@ impl ToIndex for Side {
             .ok_or_else(|| anyhow!("Invalid side value"))
     }
 }
+
+impl Not for Side {
+    type Output = Self;
+
+    fn not(self) -> Self::Output {
+        match self {
+            Side::S0 => Side::S1,
+            Side::S1 => Side::S0,
+        }
+    }
+}   
 
 /// Array indexed by game side
 #[derive(Debug, Clone)]
@@ -51,6 +63,20 @@ impl<T> SideArray<T> {
 
     pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut T> {
         self.values.iter_mut()
+    }
+}
+
+impl<T> Index<Side> for SideArray<T> {
+    type Output = T;
+
+    fn index(&self, index: Side) -> &Self::Output {
+        &self.values[index.to_index().unwrap()]
+    }
+}
+
+impl<T> IndexMut<Side> for SideArray<T> {
+    fn index_mut(&mut self, index: Side) -> &mut Self::Output {
+        &mut self.values[index.to_index().unwrap()]
     }
 }
 

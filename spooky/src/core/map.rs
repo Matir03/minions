@@ -3,40 +3,62 @@
 use anyhow::{anyhow, Result};
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::{FromPrimitive, ToPrimitive};
-use super::convert::{FromIndex, ToIndex};
+use super::{
+    convert::{FromIndex, ToIndex},
+    loc::{Loc, GRID_LEN, GRID_SIZE},
+    units::Unit,
+};
 
 /// Type of tile in the hex grid
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TileType {
-    Land,
-    Water,
+    Ground,
     Graveyard,
     // Add other tile types
 }
 
-/// Represents a location on the hex grid
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Loc {
-    pub row: i32,
-    pub col: i32,
+pub enum Terrain {
+    Flood,
+    Earthquake,
+    Whirlwind,
+    Firestorm,
+}
+
+impl Terrain {
+    pub fn allows(&self, unit: &Unit) -> bool {
+        let stats = unit.stats();
+
+        match self {
+            Terrain::Flood => stats.flying,
+            Terrain::Earthquake => stats.speed >= 2,
+            Terrain::Whirlwind => stats.persistent,
+            Terrain::Firestorm => stats.defense >= 4,
+        }
+    }
+}
+
+impl Default for TileType {
+    fn default() -> Self {
+        TileType::Ground
+    }
+}
+
+/// Represents a game map with its hex grid
+#[derive(Debug, Clone)]
+pub struct MapSpec {
+    pub tiles: HexGrid<TileType>,
 }
 
 /// Grid of hexagonal tiles
 #[derive(Debug, Clone)]
-pub struct HexArray<T> {
-    width: usize,
-    height: usize,
-    tiles: Vec<T>,
+pub struct HexGrid<T> {
+    tiles: [T; GRID_SIZE],
 }
 
-impl<T: Clone> HexArray<T> {
+impl<T> HexGrid<T> {
     /// Create a new hex grid with given dimensions
-    pub fn new(width: usize, height: usize, default: T) -> Self {
-        Self {
-            width,
-            height,
-            tiles: vec![default; width * height],
-        }
+    pub const fn new(tiles: [T; GRID_SIZE]) -> Self {
+        Self { tiles, }
     }
 
     /// Get tile at specified location
@@ -60,42 +82,54 @@ impl<T: Clone> HexArray<T> {
     }
 
     fn in_bounds(&self, loc: Loc) -> bool {
-        loc.row >= 0 && loc.row < self.width as i32 && 
-        loc.col >= 0 && loc.col < self.height as i32
+        loc.y >= 0 && loc.y < GRID_LEN as i32 && 
+        loc.x >= 0 && loc.x < GRID_LEN as i32
     }
 
     fn index(&self, loc: Loc) -> usize {
-        (loc.col as usize) * self.width + (loc.row as usize)
+        (loc.x as usize) * GRID_LEN + (loc.y as usize)
     }
 }
 
 /// Different map types available in the game
 #[derive(Debug, Clone, Copy, PartialEq, Eq, FromPrimitive, ToPrimitive)]
-pub enum MapLabel {
+pub enum Map {
     BlackenedShores = 0,
     MidnightLake = 1,
 }
 
-impl FromIndex for MapLabel {
+const NUM_MAPS: usize = 2;
+
+impl Map {
+    pub fn spec(&self) -> &MapSpec {
+        &MAPS[*self as usize]
+    }
+}
+
+impl FromIndex for Map {
     fn from_index(idx: usize) -> Result<Self> {
         FromPrimitive::from_usize(idx)
             .ok_or_else(|| anyhow!("Invalid map index: {}", idx))
     }
 }
 
-impl ToIndex for MapLabel {
+impl ToIndex for Map {
     fn to_index(&self) -> Result<usize> {
         ToPrimitive::to_usize(self)
             .ok_or_else(|| anyhow!("Invalid map label"))
     }
 }
 
-/// Represents a game map with its hex grid
-#[derive(Debug, Clone)]
-pub struct Map {
-    pub hexes: HexArray<TileType>,
-    pub label: MapLabel,
-}
+const MAPS: [MapSpec; NUM_MAPS] = [
+    // TODO: Add map specs
+    MapSpec {
+        tiles: HexGrid::new([TileType::Ground; GRID_SIZE]),
+    },
+
+    MapSpec {
+        tiles: HexGrid::new([TileType::Ground; GRID_SIZE]),
+    },
+];
 
 #[cfg(test)]
 mod tests {
@@ -103,47 +137,43 @@ mod tests {
 
     #[test]
     fn test_map_label_conversion() {
-        assert_eq!(MapLabel::from_index(0).unwrap(), MapLabel::BlackenedShores);
-        assert_eq!(MapLabel::from_index(1).unwrap(), MapLabel::MidnightLake);
-        assert!(MapLabel::from_index(2).is_err());
+        assert_eq!(Map::from_index(0).unwrap(), Map::BlackenedShores);
+        assert_eq!(Map::from_index(1).unwrap(), Map::MidnightLake);
+        assert!(Map::from_index(2).is_err());
 
-        assert_eq!(MapLabel::BlackenedShores.to_index().unwrap(), 0);
-        assert_eq!(MapLabel::MidnightLake.to_index().unwrap(), 1);
+        assert_eq!(Map::BlackenedShores.to_index().unwrap(), 0);
+        assert_eq!(Map::MidnightLake.to_index().unwrap(), 1);
     }
 
     #[test]
     fn test_hex_array() {
-        let mut array = HexArray::new(10, 10, TileType::Land);
+        let mut array = HexGrid::new([TileType::Ground; GRID_SIZE]);
         
         // Test in_bounds
-        assert!(array.in_bounds(Loc { row: 0, col: 0 }));
-        assert!(array.in_bounds(Loc { row: 9, col: 9 }));
-        assert!(!array.in_bounds(Loc { row: 10, col: 0 }));
-        assert!(!array.in_bounds(Loc { row: 0, col: 10 }));
-        assert!(!array.in_bounds(Loc { row: -1, col: 0 }));
+        assert!(array.in_bounds(Loc { y: 0, x: 0 }));
+        assert!(array.in_bounds(Loc { y: 9, x: 9 }));
+        assert!(!array.in_bounds(Loc { y: 10, x: 0 }));
+        assert!(!array.in_bounds(Loc { y: 0, x: 10 }));
+        assert!(!array.in_bounds(Loc { y: -1, x: 0 }));
         
         // Test get/set
-        let loc = Loc { row: 5, col: 5 };
-        assert_eq!(array.get(loc), Some(&TileType::Land));
+        let loc = Loc { y: 5, x: 5 };
+        assert_eq!(array.get(loc), Some(&TileType::Ground));
         array.set(loc, TileType::Graveyard);
         assert_eq!(array.get(loc), Some(&TileType::Graveyard));
     }
 
-    #[test]
-    fn test_map() {
-        let map = Map {
-            hexes: HexArray::new(10, 10, TileType::Land),
-            label: MapLabel::BlackenedShores,
-        };
-        assert_eq!(map.label, MapLabel::BlackenedShores);
-        assert_eq!(map.hexes.width, 10);
-        assert_eq!(map.hexes.height, 10);
-    }
+    // #[test]
+    // fn test_map() {
+    //     let map = MapSpec {
+    //         tiles: HexGrid::new([TileType::Land; GRID_SIZE]),
+    //     };
+    // }
 
     #[test]
     fn test_loc() {
-        let loc = Loc { row: 3, col: 4 };
-        assert_eq!(loc.row, 3);
-        assert_eq!(loc.col, 4);
+        let loc = Loc { y: 3, x: 4 };
+        assert_eq!(loc.y, 3);
+        assert_eq!(loc.x, 4);
     }
 }

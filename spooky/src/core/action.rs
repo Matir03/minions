@@ -1,39 +1,38 @@
 //! Game actions and moves
 
 use super::{
-    map::Loc,
-    units::UnitLabel,
-    board::Spell,
+    loc::Loc,
+    units::Unit,
+    spells::{Spell, SpellCast},
+    tech::TechAssignment
 };
-
-/// Parameters for spell casting
-#[derive(Debug, Clone)]
-pub struct CastParams {
-    pub target_loc: Loc,
-    // Add other spell parameters as needed
-}
 
 /// Represents a legal move in the game
 #[derive(Debug, Clone)]
 pub enum BoardAction {
     Move {
-        from_sq: Loc,
-        to_sq: Loc,
+        from_loc: Loc,
+        to_loc: Loc,
+    },
+    MoveCyclic {
+        locs: Vec<Loc>,
     },
     Attack {
-        attacker_sq: Loc,
-        target_sq: Loc,
+        attacker_loc: Loc,
+        target_loc: Loc,
     },
     Blink {
-        blink_sq: Loc,
+        blink_loc: Loc,
+    },
+    Buy {
+        unit: Unit,
     },
     Spawn {
-        spawn_sq: Loc,
-        unit: UnitLabel,
+        spawn_loc: Loc,
+        unit: Unit,
     },
     Cast {
-        spell: Spell,
-        params: CastParams,
+        spell_cast: SpellCast,
     },
     Discard {
         spell: Spell,
@@ -43,20 +42,20 @@ pub enum BoardAction {
 
 /// Represents a complete turn in the game
 #[derive(Debug, Clone)]
-pub struct Move {
-    pub num_spells_bought: usize,
-    pub board_spells: Vec<usize>,  // board -> spell index
-    pub tech_spells: Vec<usize>,   // techline indices
+pub struct Turn {
+    // pub num_spells_bought: usize,
+    pub spell_assignment: Vec<usize>,  // board -> spell index
+    pub tech_assignment: TechAssignment,
     pub board_actions: Vec<Vec<BoardAction>>,
 }
 
-impl Move {
+impl Turn {
     /// Create a new turn with the given number of boards
     pub fn new(num_boards: usize) -> Self {
         Self {
-            num_spells_bought: 0,
-            board_spells: vec![0; num_boards],
-            tech_spells: Vec::new(),
+            // num_spells_bought: 0,
+            spell_assignment: vec![0; num_boards],
+            tech_assignment: TechAssignment::default(),
             board_actions: vec![Vec::new(); num_boards],
         }
     }
