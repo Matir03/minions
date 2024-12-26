@@ -14,6 +14,7 @@ use super::{
 #[derive(Debug, Clone)]
 pub struct GameConfig {
     pub num_boards: usize,
+    pub points_to_win: i32,
     pub maps: Vec<Map>,
     pub techline: Techline,
 }
@@ -22,6 +23,7 @@ impl Default for GameConfig {
     fn default() -> Self {
         Self {
             num_boards: 1,
+            points_to_win: 1,
             maps: vec![Map::BlackenedShores],
             techline: Techline::default(),
         }
@@ -33,6 +35,7 @@ impl Default for GameConfig {
 pub struct GameState {
     pub side_to_move: Side,
     pub boards: Vec<Board>,
+    pub board_points: SideArray<i32>,
     pub tech_state: TechState,
     pub money: SideArray<i32>,
 }
@@ -42,6 +45,7 @@ impl Default for GameState {
         Self {
             side_to_move: Side::S0,
             boards: vec![Board::default()],
+            board_points: SideArray::new(0, 0),
             tech_state: TechState::new(),
             money: SideArray::new(0, 6),
         }
@@ -60,7 +64,7 @@ impl<'g> Game<'g> {
         Self { config, state }
     }
 
-    pub fn take_turn(&mut self, turn: Turn) -> Result<()> {
+    pub fn take_turn(&mut self, turn: Turn) -> Result<Option<Side>> {
         let num_boards = self.config.num_boards;
 
         // Process tech assignments
@@ -88,19 +92,45 @@ impl<'g> Game<'g> {
         // Process board actions for each board
         ensure!(turn.board_actions.len() == self.state.boards.len(),
             "Invalid board_actions length");
+
         for (board_idx, actions) 
         in turn.board_actions.into_iter().enumerate() {
             let board = &mut self.state.boards[board_idx];
+            let map = &self.config.maps[board_idx];
             
             // Execute each action in sequence
             for action in actions {
-                board.do_action(action, &mut self.state.money, &self.state.tech_state, self.state.side_to_move)?;
+                board.do_action(action, 
+                    &mut self.state.money, 
+                    &mut self.state.board_points,
+                    &self.state.tech_state, 
+                    map, 
+                    self.state.side_to_move
+                )?;
             }
+
+            board.end_turn(
+                &mut self.state.money, 
+                map, 
+                &mut self.state.board_points,
+                self.state.side_to_move
+            )?;
         }
 
         // Switch sides after the turn
         self.state.side_to_move = !self.state.side_to_move;
-        Ok(())
+
+        Ok(self.winner())
+    }
+
+    pub fn winner(&self) -> Option<Side> {
+        if self.state.board_points[!self.state.side_to_move] >= self.config.points_to_win {
+            Some(!self.state.side_to_move)            
+        } else if self.state.board_points[self.state.side_to_move] >= self.config.points_to_win {
+            Some(self.state.side_to_move)
+        } else {
+            None
+        }
     }
 
     /// Convert game state to FEN notation
@@ -201,6 +231,7 @@ impl<'g> Game<'g> {
     
         let config = GameConfig {
             num_boards,
+            points_to_win: todo!(),
             maps,
             techline: Techline { techs }, 
         };
@@ -242,6 +273,7 @@ impl<'g> Game<'g> {
             boards: board_states,
             tech_state,
             money,
+            board_points: todo!()
         };
         
         Ok((config, state))

@@ -15,7 +15,7 @@ pub enum Spell {
     // TODO: Add other spell types
 }
 
-#[derive(Debug, Clone, EnumVariantType)]
+#[derive(Debug, Clone, PartialEq, Eq, EnumVariantType)]
 pub enum SpellCast {
     CastShield {
         target: Loc,

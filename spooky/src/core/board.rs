@@ -1,8 +1,7 @@
 //! Board representation and rules
 
 use std::{
-    cell::RefCell,
-    collections::HashMap,
+    arch::is_aarch64_feature_detected, cell::RefCell, collections::HashMap
     // ops::Deref,
 };
 use hashbag::HashBag;
@@ -17,7 +16,7 @@ use super::{
     action::BoardAction,
     spells::Spell,
     tech::TechState,
-    map::Terrain,
+    map::{Map, Terrain},
 };
 
 /// Status modifiers that can be applied to pieces
@@ -86,6 +85,8 @@ pub struct Board {
     pub pieces: HashMap<Loc, Piece>,
     pub reinforcements: SideArray<HashBag<Unit>>,
     pub spells: SideArray<HashBag<Spell>>,
+    pub winner: Option<Side>,
+    pub resetting: bool,
 }
 
 impl Board {
@@ -98,6 +99,8 @@ impl Board {
             pieces: HashMap::new(),
             reinforcements: SideArray::new(HashBag::new(), HashBag::new()),
             spells: SideArray::new(HashBag::new(), HashBag::new()),
+            winner: None,
+            resetting: false,
         }
     }
 
@@ -109,9 +112,9 @@ impl Board {
     //     self.pieces.get_mut(loc)
     // }
 
-    pub fn get_terrain(&self, _loc: &Loc) -> Option<Terrain> {
-        todo!("refactor board to include terrain info");
-    }
+    // pub fn get_terrain(&self, _loc: &Loc) -> Option<Terrain> {
+    //     todo!("refactor board to include terrain info");
+    // }
 
     /// Add a piece to the board
     pub fn add_piece(&mut self, piece: Piece) {
@@ -132,7 +135,7 @@ impl Board {
         self.reinforcements[side].insert(unit);
     }
 
-    pub fn can_move(&self, from_loc: &Loc, to_loc: &Loc, side_to_move: Side) -> Result<()> {
+    pub fn can_move(&self, from_loc: &Loc, to_loc: &Loc, map: &Map, side_to_move: Side) -> Result<()> {
         // if let Some(piece) = self.get(to_loc) {
         //     ensure!(piece.side == side_to_move, "Cannot move to occupied square");            
         // }
@@ -167,7 +170,7 @@ impl Board {
                     }
                 };
 
-                if let Some(terrain) = self.get_terrain(&loc) {
+                if let Some(terrain) = map.get_terrain(&loc) {
                     if !terrain.allows(&piece.unit) { continue 'outer; }
                 }
             }            
@@ -180,7 +183,7 @@ impl Board {
 
     fn move_piece(&mut self, mut piece: Piece, to_loc: &Loc) {
         piece.loc = *to_loc;
-        piece.state.get_mut().moved = true;
+        piece.state.borrow_mut().moved = true;
 
         self.add_piece(piece);
     }
@@ -244,18 +247,61 @@ impl Board {
         Ok((remove, bounce))
     }
 
-    pub fn do_action(&mut self, action: BoardAction, money: &mut SideArray<i32>, tech_state: &TechState, side_to_move: Side) -> Result<()> {
+    pub fn units_on_graveyards(&self, side: Side, map: &Map) -> i32 {
+        map.spec().graveyards.iter()
+            .filter(|loc| 
+                self.get_piece(loc)
+                    .map(|piece| piece.side == side)
+                    .unwrap_or(false))
+            .count() as i32
+    }
+
+    pub fn do_action(&mut self, 
+            action: BoardAction, 
+            money: &mut SideArray<i32>, 
+            board_points: &mut SideArray<i32>, 
+            tech_state: &TechState, 
+            map: &Map,
+            side_to_move: Side
+        ) -> Result<()> {
+
+        ensure!(!self.resetting, "Cannot do action on resetting board");
+
+        if let Some(winner) = self.winner {
+            match action {
+                BoardAction::SaveUnit { unit } => {
+                    if let Some(unit) = unit {
+                        ensure!(!unit.stats().necromancer, "Cannot save necromancer");
+
+                        ensure!(self.reinforcements[side_to_move].contains(&unit) > 0, 
+                            "Cannot save unit not in reinforcements");
+
+                        self.reinforcements[side_to_move].clear();
+                        self.reinforcements[side_to_move].insert(unit);
+                    } else {
+                        self.reinforcements[side_to_move].clear();
+                    }
+
+                    if winner != side_to_move {
+                        self.winner = None;
+                    }
+                }
+
+                _ => bail!("Only SaveUnit action allowed on board yet to be restarted")
+            }
+
+            return Ok(());
+        }
+        
         match action {
             BoardAction::Move { from_loc, to_loc} => {
                 ensure!(self.phase.is_attack(), "Cannot move in spawn phase");
                 ensure!(self.get_piece(&to_loc).is_none(), "Cannot move to occupied square");
 
-                self.can_move(&from_loc, &to_loc, side_to_move)?;
+                self.can_move(&from_loc, &to_loc, map, side_to_move)?;
 
                 let piece = self.remove_piece(&from_loc).unwrap();
                 self.move_piece(piece, &to_loc);
-
-                Ok(())
             }
             BoardAction::MoveCyclic { locs } => {
                 ensure!(self.phase.is_attack(), "Cannot move in spawn phase");
@@ -267,7 +313,7 @@ impl Board {
                 for i in 0..num_locs {
                     let from_loc = &locs[i];
                     let to_loc = &locs[(i + 1) % num_locs];
-                    self.can_move(from_loc, to_loc, side_to_move)?;
+                    self.can_move(from_loc, to_loc, map, side_to_move)?;
                 }
 
                 // Store first piece
@@ -287,8 +333,6 @@ impl Board {
 
                 // Add the last piece
                 self.move_piece(current_piece, first_loc);
-
-                Ok(())
             }
             BoardAction::Attack { attacker_loc, target_loc } => {
                 ensure!(self.phase.is_attack(), "Cannot attack in spawn phase");
@@ -300,13 +344,13 @@ impl Board {
 
                 let target_piece = self.remove_piece(&target_loc).unwrap();
 
-                if bounce {
+                if target_piece.unit.stats().necromancer {
+                    self.win(side_to_move, board_points);
+                } else if bounce {
                     self.bounce_piece(target_piece);
                 } else {
                     money[!side_to_move] += target_piece.unit.stats().rebate;
                 }
-
-                Ok(())
             }
             BoardAction::Blink { blink_loc: blink_sq } => {
                 if let Some(piece) = self.get_piece(&blink_sq) {
@@ -318,7 +362,6 @@ impl Board {
 
                 let piece = self.remove_piece(&blink_sq).unwrap();
                 self.bounce_piece(piece);
-                Ok(())
             }
             BoardAction::Buy { unit } => {
                 ensure!(self.phase.is_spawn(), "Cannot buy in attack phase");
@@ -331,17 +374,27 @@ impl Board {
                 money[side_to_move] -= cost;
 
                 self.add_reinforcement(unit, side_to_move);
-
-                Ok(())
             }
             BoardAction::Spawn { spawn_loc, unit } => {
                 ensure!(self.phase.is_spawn(), "Cannot spawn in attack phase");
 
                 ensure!(self.get_piece(&spawn_loc).is_none(), "Can't spawn on occupied square");
 
-                if let Some(terrain) = self.get_terrain(&spawn_loc) {
+                if let Some(terrain) = map.get_terrain(&spawn_loc) {
                     ensure!(terrain.allows(&unit), "Terrain does not allow spawn");
                 }
+
+                let has_spawner = spawn_loc.neighbors().iter().any(|neighbor| 
+                    self.get_piece(neighbor)
+                        .map_or(false, 
+                            |piece| 
+                            piece.side == side_to_move && 
+                            piece.unit.stats().spawn &&
+                            !piece.state.borrow().exhausted
+                        )
+                    );
+
+                ensure!(has_spawner, "No spawner around spawn location");
 
                 let num_units = self.reinforcements[side_to_move].remove(&unit);
                 ensure!(num_units > 0, "Can't spawn unit not in reinforcements");
@@ -355,32 +408,94 @@ impl Board {
                 };
 
                 self.add_piece(piece);
-                Ok(())
             }
             BoardAction::Cast { spell_cast } => {
-                spell_cast.cast(self, side_to_move)
+                spell_cast.cast(self, side_to_move)?;
             }
             BoardAction::Discard { spell } => {
                 let count = self.spells[side_to_move].remove(&spell);
                 ensure!(count > 0, "Cannot discard unowned spell");
-
-                Ok(())
             }
             BoardAction::EndPhase => {
-                self.phase = match self.phase {
-                    Phase::Attack => Phase::Spawn,
-                    Phase::Spawn => {
-                        for piece in self.pieces.values_mut() {
-                            piece.state.get_mut().reset();
-                        }
-
-                        Phase::Attack
-                    }
-                };
-
-                Ok(())
+                self.phase = Phase::Spawn;
+            }
+            BoardAction::Resign => {
+                self.lose(side_to_move, board_points);
+            }
+            BoardAction::SaveUnit { .. } => {
+                bail!("Cannot save unit during game")
             }
         }
+
+        Ok(())
+    }
+
+    pub fn end_turn(&mut self, 
+            money: &mut SideArray<i32>,
+            map: &Map,
+            board_points: &mut SideArray<i32>,
+            side_to_move: Side, 
+        ) -> Result<()> {
+
+        let income = self.units_on_graveyards(side_to_move, map) + 3;
+        money[side_to_move] += income;
+
+        if self.winner.is_none() {
+            let enemies_on_graveyards = self.units_on_graveyards(!side_to_move, map);
+
+            if enemies_on_graveyards >= 8  {
+                self.lose(side_to_move, board_points);
+            }
+        }
+
+        self.phase = Phase::Attack;
+
+        if self.resetting {
+            self.reset();
+            self.resetting = false;
+
+            return Ok(());
+        } 
+
+        if self.winner == Some(side_to_move) {
+            ensure!(self.reinforcements[side_to_move].iter().count() <= 1, 
+                "Must choose a unit to save before ending winning turn");
+        }
+
+        for piece in self.pieces.values() {
+            piece.state.borrow_mut().reset();
+        }
+
+        Ok(())
+    }
+
+    pub fn win(&mut self, side: Side, board_points: &mut SideArray<i32>) {
+        self.winner = Some(side);
+        board_points[side] += 1;
+        self.reset();
+    }
+
+    pub fn lose(&mut self, side: Side, board_points: &mut SideArray<i32>) {
+        self.winner = Some(!side);
+        board_points[!side] += 1;
+        self.resetting = true;
+    }
+
+    fn clear(&mut self) {
+        for (loc, piece) in self.pieces.iter() {
+            self.reinforcements[piece.side].insert(piece.unit);
+        }
+
+        self.pieces.clear();
+    }
+
+    fn reset(&mut self) {
+        self.clear();
+
+        let reinforcements = self.reinforcements.clone();
+
+        self.pieces = Board::default().pieces;
+        self.reinforcements = reinforcements;
     }
 
     /// Convert board state to FEN notation

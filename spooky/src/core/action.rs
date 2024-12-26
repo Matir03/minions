@@ -8,7 +8,7 @@ use super::{
 };
 
 /// Represents a legal move in the game
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BoardAction {
     Move {
         from_loc: Loc,
@@ -38,6 +38,10 @@ pub enum BoardAction {
         spell: Spell,
     },
     EndPhase,
+    Resign,
+    SaveUnit {
+        unit: Option<Unit>,
+    }
 }
 
 /// Represents a complete turn in the game

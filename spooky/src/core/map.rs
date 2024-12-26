@@ -8,6 +8,7 @@ use super::{
     loc::{Loc, GRID_LEN, GRID_SIZE},
     units::Unit,
 };
+use lazy_static::lazy_static;
 
 /// Type of tile in the hex grid
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -15,8 +16,10 @@ pub enum TileType {
     Ground,
     Graveyard,
     // Add other tile types
+    NativeTerrain(Terrain),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Terrain {
     Flood,
     Earthquake,
@@ -47,6 +50,7 @@ impl Default for TileType {
 #[derive(Debug, Clone)]
 pub struct MapSpec {
     pub tiles: HexGrid<TileType>,
+    pub graveyards: Vec<Loc>,
 }
 
 /// Grid of hexagonal tiles
@@ -62,7 +66,7 @@ impl<T> HexGrid<T> {
     }
 
     /// Get tile at specified location
-    pub fn get(&self, loc: Loc) -> Option<&T> {
+    pub fn get(&self, loc: &Loc) -> Option<&T> {
         if self.in_bounds(loc) {
             Some(&self.tiles[self.index(loc)])
         } else {
@@ -71,7 +75,7 @@ impl<T> HexGrid<T> {
     }
 
     /// Set tile at specified location
-    pub fn set(&mut self, loc: Loc, value: T) -> bool {
+    pub fn set(&mut self, loc: &Loc, value: T) -> bool {
         if self.in_bounds(loc) {
             let index = self.index(loc);
             self.tiles[index] = value;
@@ -81,12 +85,12 @@ impl<T> HexGrid<T> {
         }
     }
 
-    fn in_bounds(&self, loc: Loc) -> bool {
+    fn in_bounds(&self, loc: &Loc) -> bool {
         loc.y >= 0 && loc.y < GRID_LEN as i32 && 
         loc.x >= 0 && loc.x < GRID_LEN as i32
     }
 
-    fn index(&self, loc: Loc) -> usize {
+    fn index(&self, loc: &Loc) -> usize {
         (loc.x as usize) * GRID_LEN + (loc.y as usize)
     }
 }
@@ -104,6 +108,13 @@ impl Map {
     pub fn spec(&self) -> &MapSpec {
         &MAPS[*self as usize]
     }
+
+    pub fn get_terrain(&self, loc: &Loc) -> Option<Terrain> {
+        match self.spec().tiles.get(loc) {
+            Some(TileType::NativeTerrain(t)) => Some(*t),
+            _ => None,
+        }
+    }
 }
 
 impl FromIndex for Map {
@@ -120,14 +131,16 @@ impl ToIndex for Map {
     }
 }
 
-const MAPS: [MapSpec; NUM_MAPS] = [
+static MAPS: [MapSpec; NUM_MAPS] = [
     // TODO: Add map specs
     MapSpec {
         tiles: HexGrid::new([TileType::Ground; GRID_SIZE]),
+        graveyards: vec![],
     },
 
     MapSpec {
         tiles: HexGrid::new([TileType::Ground; GRID_SIZE]),
+        graveyards: vec![],
     },
 ];
 
@@ -150,17 +163,17 @@ mod tests {
         let mut array = HexGrid::new([TileType::Ground; GRID_SIZE]);
         
         // Test in_bounds
-        assert!(array.in_bounds(Loc { y: 0, x: 0 }));
-        assert!(array.in_bounds(Loc { y: 9, x: 9 }));
-        assert!(!array.in_bounds(Loc { y: 10, x: 0 }));
-        assert!(!array.in_bounds(Loc { y: 0, x: 10 }));
-        assert!(!array.in_bounds(Loc { y: -1, x: 0 }));
+        assert!(array.in_bounds(&Loc { y: 0, x: 0 }));
+        assert!(array.in_bounds(&Loc { y: 9, x: 9 }));
+        assert!(!array.in_bounds(&Loc { y: 10, x: 0 }));
+        assert!(!array.in_bounds(&Loc { y: 0, x: 10 }));
+        assert!(!array.in_bounds(&Loc { y: -1, x: 0 }));
         
         // Test get/set
         let loc = Loc { y: 5, x: 5 };
-        assert_eq!(array.get(loc), Some(&TileType::Ground));
-        array.set(loc, TileType::Graveyard);
-        assert_eq!(array.get(loc), Some(&TileType::Graveyard));
+        assert_eq!(array.get(&loc), Some(&TileType::Ground));
+        array.set(&loc, TileType::Graveyard);
+        assert_eq!(array.get(&loc), Some(&TileType::Graveyard));
     }
 
     // #[test]
