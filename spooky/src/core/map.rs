@@ -1,6 +1,7 @@
 //! Map and hex grid representations
 
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, bail, ensure, Context, Result};
+use indoc::indoc;
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::{FromPrimitive, ToPrimitive};
 use super::{
@@ -38,6 +39,16 @@ impl Terrain {
             Terrain::Firestorm => stats.defense >= 4,
         }
     }
+
+    pub fn from_fen_char(c: char) -> Option<Terrain> {
+        match c {
+            'A' => Some(Terrain::Whirlwind),
+            'W' => Some(Terrain::Flood),
+            'E' => Some(Terrain::Earthquake),
+            'F' => Some(Terrain::Firestorm),
+            _ => None,
+        }
+    }
 }
 
 impl Default for TileType {
@@ -51,6 +62,58 @@ impl Default for TileType {
 pub struct MapSpec {
     pub tiles: HexGrid<TileType>,
     pub graveyards: Vec<Loc>,
+}
+
+impl MapSpec {
+    pub fn new() -> Self {
+        Self {
+            tiles: HexGrid::new([TileType::Ground; GRID_SIZE]),
+            graveyards: vec![],
+        }
+    }
+
+    pub fn from_fen (fen: &str) -> Result<Self> {
+        let mut x: i32 = 0;
+        let mut y: i32 = 0;
+        let mut spec = MapSpec::new();
+
+        for c in fen.chars() {
+            match c {
+                '/' => {
+                    ensure!(x == 10, "Invalid FEN: wrong number of squares in x");
+                    ensure!(y < 10, "Invalid FEN: too many rows");
+                    y += 1;
+                    x = 0;
+                }
+                '0'..='9' => {
+                    let empty = if c == '0' { 10 } else { c.to_digit(10).unwrap() as i32 };
+                    x += empty;
+                }
+                'G' => {
+                    ensure!(x < 10 && y < 10, "Invalid FEN: graveyard position out of bounds");
+                    let loc = Loc { x, y };
+
+                    spec.graveyards.push(loc);
+                    spec.tiles.set(&loc, TileType::Graveyard);
+                    x += 1;
+                }
+                'A'..='Z' => {
+                    ensure!(x < 10 && y < 10, "Invalid FEN: terrain position out of bounds");
+
+                    let terrain = Terrain::from_fen_char(c)
+                        .context("Invalid FEN: unknown terrain")?;
+
+                    let loc = Loc { x, y };
+
+                    spec.tiles.set(&loc, TileType::NativeTerrain(terrain));
+                    x += 1;
+                }
+                _ => bail!("Invalid FEN: unexpected character {}", c),
+            }
+        }
+
+        Ok(spec)
+    }
 }
 
 /// Grid of hexagonal tiles
@@ -98,8 +161,8 @@ impl<T> HexGrid<T> {
 /// Different map types available in the game
 #[derive(Debug, Clone, Copy, PartialEq, Eq, FromPrimitive, ToPrimitive)]
 pub enum Map {
-    BlackenedShores = 0,
-    MidnightLake = 1,
+    BlackenedShores,
+    MidnightLake,
 }
 
 const NUM_MAPS: usize = 2;
@@ -131,18 +194,23 @@ impl ToIndex for Map {
     }
 }
 
-static MAPS: [MapSpec; NUM_MAPS] = [
-    // TODO: Add map specs
-    MapSpec {
-        tiles: HexGrid::new([TileType::Ground; GRID_SIZE]),
-        graveyards: vec![],
-    },
+const MAP_FENS: [&str; NUM_MAPS] = [
+    // BlackenedShores
+    "2G3G3/W9/W9/W4G3G/GW4G3/W2WW5/WG2W5/W1W6G/3G1W4/2WWWGWWW1", 
 
-    MapSpec {
-        tiles: HexGrid::new([TileType::Ground; GRID_SIZE]),
-        graveyards: vec![],
-    },
+    // MidnightLake
+    "1G1WW3G1/9G/0/G2G1WW3/W3WWW3/4WW3W/1G4G2W/0/3G5G/5WG3",
+
 ];
+
+lazy_static! {
+    pub static ref MAPS: [MapSpec; NUM_MAPS] = MAP_FENS
+        .iter()
+        .map(|fen| MapSpec::from_fen(fen).unwrap())
+        .collect::<Vec<_>>()
+        .try_into()
+        .unwrap();
+}
 
 #[cfg(test)]
 mod tests {

@@ -8,7 +8,7 @@ use anyhow::Result;
 use enum_variant_type::EnumVariantType;
 
 /// Types of spells that can be cast
-#[derive(Debug, Clone, Hash, PartialEq, Eq, EnumVariantType)]
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, EnumVariantType)]
 pub enum Spell {
     Shield,
     Reposition,

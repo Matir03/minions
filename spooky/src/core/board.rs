@@ -89,6 +89,8 @@ pub struct Board {
     pub resetting: bool,
 }
 
+const GRAVEYARDS_TO_WIN: i32 = 8;
+
 impl Board {
     const START_FEN: &str = "0/2ZZ6/1ZNZ6/1ZZ7/0/0/7zz1/6znz1/6zz2/0";
 
@@ -443,7 +445,7 @@ impl Board {
         if self.winner.is_none() {
             let enemies_on_graveyards = self.units_on_graveyards(!side_to_move, map);
 
-            if enemies_on_graveyards >= 8  {
+            if enemies_on_graveyards >= GRAVEYARDS_TO_WIN  {
                 self.lose(side_to_move, board_points);
             }
         }
@@ -468,6 +470,12 @@ impl Board {
 
         Ok(())
     }
+
+    pub fn assign_spell(&mut self, spell: Spell, side: Side) -> Result<()> {
+        self.spells[side].insert(spell);
+        Ok(())
+    }
+
 
     pub fn win(&mut self, side: Side, board_points: &mut SideArray<i32>) {
         self.winner = Some(side);

@@ -7,7 +7,8 @@ use super::{
     board::Board, 
     map::Map, 
     side::{Side, SideArray}, 
-    tech::{Tech, TechState, Techline, SPELL_COST}
+    tech::{Tech, TechState, Techline, SPELL_COST},
+    spells::Spell,
 };
 
 /// Static configuration for a Minions game
@@ -64,7 +65,7 @@ impl<'g> Game<'g> {
         Self { config, state }
     }
 
-    pub fn take_turn(&mut self, turn: Turn) -> Result<Option<Side>> {
+    pub fn take_turn(&mut self, turn: Turn, spells: &[Spell]) -> Result<Option<Side>> {
         let num_boards = self.config.num_boards;
 
         // Process tech assignments
@@ -84,9 +85,11 @@ impl<'g> Game<'g> {
         // Process spell assignments
         ensure!(turn.spell_assignment.len() == self.state.boards.len(), 
             "Invalid spell_assignment length");
-        for (_board_idx, _spell_idx) 
+        for (board_idx, spell_idx) 
         in turn.spell_assignment.into_iter().enumerate() {
-            // TODO: Handle spell assignment logic
+            let board = &mut self.state.boards[board_idx];
+            let spell = spells[spell_idx];
+            board.assign_spell(spell, self.state.side_to_move);
         }
 
         // Process board actions for each board
