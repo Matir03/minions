@@ -71,7 +71,7 @@ Play a turn from the current position.
 `play [movetime <time in ms>] [nodes <nodes>] [spells <spells>]`
 
 #### Response 
-The engine should respond with a sequence of actions representing its move, possibly along with search info. Every action should follow the format `action <actiontype> [actionparams...]`, and everyone information string should follow the format `info <infostring>`. Actions and info strings should be separated by newlines. Possible actions are
+The engine should respond with the line `turn`, followed by a sequence of actions representing its turn, followed by the line `endturn`, possibly along with search info. Every action should follow the format `action <actiontype> [actionparams...]`, and everyone information string should follow the format `info <infostring>`. Actions and info strings should be separated by newlines. Possible actions are
 
 - `buyspell`
     -- the GUI should respond with a chosen spell in the format `spell <spellname>`

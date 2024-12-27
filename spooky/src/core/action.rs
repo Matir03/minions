@@ -9,7 +9,7 @@ use super::{
 
 use anyhow::{ensure, Result, bail};
 use hashbag::HashBag;
-use std::ops::{Range, RangeBounds};
+use std::{fmt::Display, ops::{Range, RangeBounds}};
 
 /// Represents a legal move in the game
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -194,6 +194,39 @@ impl Turn {
         if board_index < self.board_actions.len() {
             self.board_actions[board_index].push(action);
         }
+    }
+}
+
+impl Display for BoardAction {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BoardAction::Move { from_loc, to_loc } => write!(f, "move {} {}", from_loc, to_loc),
+            BoardAction::MoveCyclic { locs } => write!(f, "movecyclic {}", locs.iter().map(|l| l.to_string()).collect::<Vec<String>>().join(" ")),
+            BoardAction::Attack { attacker_loc, target_loc } => write!(f, "attack {} {}", attacker_loc, target_loc),
+            BoardAction::Blink { blink_loc } => write!(f, "blink {}", blink_loc),
+            BoardAction::Buy { unit } => write!(f, "buy {}", unit),
+            BoardAction::Spawn { spawn_loc, unit } => write!(f, "spawn {} {}", spawn_loc, unit),
+            BoardAction::Cast { spell_cast } => todo!("spells not implemented yet"),
+            BoardAction::Discard { spell } => write!(f, "discard {}", spell),
+            BoardAction::EndPhase => write!(f, "endphase"),
+            BoardAction::Resign => write!(f, "resign"),
+            BoardAction::SaveUnit { unit: Some(unit) } => write!(f, "saveunit {}", unit),
+            BoardAction::SaveUnit { unit: None } => write!(f, "saveunit"),
+        }
+    }
+}
+
+impl Display for Turn {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "turn")?;
+
+        for (board_idx, board_actions) in self.board_actions.iter().enumerate() {
+            for action in board_actions {
+                writeln!(f, "action {} {}", board_idx, action)?;
+            }
+        }
+
+        writeln!(f, "endturn")
     }
 }
 

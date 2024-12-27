@@ -3,7 +3,13 @@
 use std::io::{self, Write};
 use anyhow::{bail, ensure, Context, Result};
 use spooky::{
-    core::{action::GameAction, game::parse_fen, Spell, Turn}, 
+    core::{
+        GameConfig,
+        GameState,
+        GameAction, 
+        parse_fen, 
+        Spell,
+    }, 
     engine::{Engine, SearchOptions}
 };
 
@@ -59,7 +65,7 @@ pub fn handle_command(cmd: &str, engine: &mut Engine) -> Result<()> {
         }
         "go" => {
             let args = parts[1..].join(" ");
-            let mut search_options = args.parse::<SearchOptions>()?;
+            let search_options = args.parse::<SearchOptions>()?;
 
             let eval = engine.go(&search_options);
             let winprob = eval.winprob(engine.state.side_to_move);
@@ -68,7 +74,7 @@ pub fn handle_command(cmd: &str, engine: &mut Engine) -> Result<()> {
         }
         "play" => {
             let args = parts[1..].join(" ");
-            let mut search_options = args.parse::<SearchOptions>()?;
+            let search_options = args.parse::<SearchOptions>()?;
 
             let turn = engine.play(&search_options, || {
                 todo!("implement spell buying communication");
@@ -116,8 +122,8 @@ pub fn handle_command(cmd: &str, engine: &mut Engine) -> Result<()> {
         "perft" => {
             ensure!(parts.len() >= 2, "perft command requires at least 2 arguments");
             let board_indices = parts[1..].iter()
-                .map(|s| engine.perft(
-                    s.parse().context("invalid board index")?)
+                .map(|s| Ok(engine.perft(
+                    s.parse().context("invalid board index")?))
                 )
                 .collect::<Result<Vec<u64>>>()?;
 

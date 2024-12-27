@@ -13,20 +13,22 @@ use super::{
 
 impl fmt::Display for GameState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "=== Minions Game ===")?;
-        writeln!(f, "Current Side: {}", self.side_to_move)?;
-        writeln!(f, "Points: S0: {} | S1: {}", 
-            self.board_points[Side::S0],
-            self.board_points[Side::S1])?;
-        writeln!(f, "Money: S0: {} | S1: {}", 
-            self.money[Side::S0],
-            self.money[Side::S1])?;
+        // writeln!(f, "=== Minions Game ===")?;
+        writeln!(f)?;
+        writeln!(f, "Current Turn: {}", self.side_to_move)?;
+        writeln!(f, "Points: {} | {}", 
+            self.board_points[Side::S0].to_string().bright_blue(),
+            self.board_points[Side::S1].to_string().bright_red())?;
+        writeln!(f, "Money: {} | {}", 
+            self.money[Side::S0].to_string().bright_blue(),
+            self.money[Side::S1].to_string().bright_red())?;
         writeln!(f)?;
 
         writeln!(f, "Tech State:")?;
         write!(f, "{}", self.tech_state)?;
 
         for (i, board) in self.boards.iter().enumerate() {
+            writeln!(f)?;
             writeln!(f, "Board {}:", i)?;
             write!(f, "{}", board)?;
             writeln!(f)?;
@@ -41,19 +43,19 @@ impl fmt::Display for Board {
         // Print column numbers with proper spacing for hex grid
         write!(f, "    ")?;
         for x in 0..10 {
-            write!(f, "{} ", x)?;
+            write!(f, " {} ", x)?;
         }
         writeln!(f)?;
 
         // Top border with proper hex spacing
-        write!(f, "    ")?;
+        write!(f, "   ")?;
         writeln!(f, "{}", "─".repeat(32))?;
 
         for y in 0..10 {  // Reversed to match game coordinates
             // Add proper indentation for hex grid
             let indent = y as usize;
             write!(f, "{:2} {}", y, " ".repeat(indent))?;
-            write!(f, "│")?;
+            write!(f, "\\")?;
             
             for x in 0..10 {
                 let loc = Loc::new(x, y);
@@ -63,11 +65,11 @@ impl fmt::Display for Board {
                     write!(f, " · ")?;  // Using middle dot for empty spaces
                 }
             }
-            writeln!(f, " │")?;
+            writeln!(f, " \\")?;
         }
 
         // Bottom border with proper hex spacing
-        write!(f, "    ")?;
+        write!(f, "    {}", " ".repeat(9))?;
         writeln!(f, "{}", "─".repeat(32))?;
         Ok(())
     }
@@ -89,31 +91,26 @@ impl fmt::Display for Piece {
 impl fmt::Display for Side {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Side::S0 => write!(f, "{}", "Player 1".bright_blue()),
-            Side::S1 => write!(f, "{}", "Player 2".bright_red()),
+            Side::S0 => write!(f, "{}", "Blue".bright_blue()),
+            Side::S1 => write!(f, "{}", "Red".bright_red()),
         }
     }
 }
 
 impl fmt::Display for TechState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "S0 Tech:")?;
+        write!(f, "{}", "Blue Tech: ".bright_blue())?;
         for (i, tech) in self.status[Side::S0].iter().enumerate() {
             write!(f, "{:?} ", tech)?;
-            if (i + 1) % 5 == 0 {
-                writeln!(f)?;
-            }
         }
         writeln!(f)?;
 
-        writeln!(f, "S1 Tech:")?;
+        write!(f, "{}", "Red Tech: ".bright_red())?;
         for (i, tech) in self.status[Side::S1].iter().enumerate() {
             write!(f, "{:?} ", tech)?;
-            if (i + 1) % 5 == 0 {
-                writeln!(f)?;
-            }
         }
         writeln!(f)?;
+
         Ok(())
     }
 }

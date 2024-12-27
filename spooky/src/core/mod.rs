@@ -13,7 +13,7 @@ pub mod spells;
 pub mod tech;
 pub mod units;
 
-pub use game::{GameConfig, GameState};
+pub use game::{GameConfig, GameState, parse_fen};
 pub use board::Board;
 pub use action::{Turn, BoardAction, GameAction};
 pub use tech::{Tech, Techline, TechStatus};

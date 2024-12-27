@@ -1,0 +1,5 @@
+turn
+action advancetech 1
+action boardaction 0 move 3,2 3,3
+endturn
+display

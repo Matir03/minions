@@ -5,7 +5,7 @@ use super::{
     loc::Loc,
 };
 use anyhow::anyhow;
-use std::str::FromStr;
+use std::{fmt::Display, str::FromStr};
 
 /// Types of spells that can be cast
 #[derive(Debug, Clone, Copy, Hash, PartialEq, Eq)]
@@ -15,6 +15,17 @@ pub enum Spell {
     Shield,
     Reposition,
     // TODO: Add other spell types
+}
+
+impl Display for Spell {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Spell::Blank => write!(f, "blank"),
+            Spell::Unknown => write!(f, "unknown"),
+            Spell::Shield => write!(f, "shield"),
+            Spell::Reposition => write!(f, "reposition"),
+        }
+    }
 }
 
 impl FromStr for Spell {

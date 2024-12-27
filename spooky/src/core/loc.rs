@@ -62,7 +62,7 @@ impl FromStr for Loc {
 
 impl Display for Loc {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "({}, {})", self.x, self.y)
+        write!(f, "{},{}", self.x, self.y)
     }
 }
 
@@ -203,7 +203,8 @@ lazy_static!(
             for (delta, paths) in hashmap.iter() {
                 for neighbor in delta.neighbors() {
                     for path in paths {
-                        if let Some(prev_delta) = path.get(path.len() - 2) {
+                        if path.len() >= 2 {
+                            let prev_delta = &path[path.len() - 2];
                             if neighbor.dist(prev_delta) <= 1 {
                                 continue;
                             }                     

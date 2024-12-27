@@ -225,8 +225,8 @@ impl GameState {
         let num_boards = config.num_boards;
 
         // Process tech assignments
-        let spells_bought = (turn.tech_assignment.num_spells() - 1) as i32;
-        ensure!(spells_bought >= 0, "Cannot buy negative spells");
+        let spells_bought = turn.tech_assignment.num_spells() - 1;
+        ensure!(spells_bought >= 0, "Must assign all techs");
         
         let total_spell_cost = spells_bought * (num_boards as i32) * SPELL_COST;
         ensure!(self.money[self.side_to_move] >= total_spell_cost);

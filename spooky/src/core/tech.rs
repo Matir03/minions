@@ -100,8 +100,8 @@ impl TechAssignment {
         Self { advance_by, acquire }
     }
 
-    pub fn num_spells(&self) -> usize {
-        self.advance_by + self.acquire.len()
+    pub fn num_spells(&self) -> i32 {
+        (self.advance_by + self.acquire.len()) as i32
     }
 
     pub fn advance(&mut self, advance_by: usize) {
@@ -138,9 +138,9 @@ impl TechState {
 
     pub fn assign_techs(&mut self, assignment: TechAssignment, side: Side, techline: &Techline) -> Result<()> {
         let advanced_index = self.unlock_index[side] + assignment.advance_by;
-        ensure!(advanced_index < techline.techs.len(), "Cannot advance past last tech");
+        ensure!(advanced_index <= techline.techs.len(), "Cannot advance past last tech");
 
-        for i in (self.unlock_index[side] + 1)..=advanced_index {
+        for i in self.unlock_index[side]..advanced_index {
             self.status[side][i] = TechStatus::Unlocked;
         }
 
@@ -148,7 +148,7 @@ impl TechState {
 
         for tech_index in assignment.acquire {
             let tech = techline[tech_index];
-            ensure!(tech_index <= self.unlock_index[side], "Cannot acquire locked tech");
+            ensure!(tech_index < self.unlock_index[side], "Cannot acquire locked tech");
             ensure!(
                 tech == Tech::Copycat ||
                 self.acquired_techs[side].contains(&Tech::Copycat) ||
