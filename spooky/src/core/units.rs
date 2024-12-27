@@ -1,4 +1,12 @@
 /// Type of attack a unit can perform
+
+use std::str::FromStr;
+
+use num_derive::{FromPrimitive, ToPrimitive};
+use num_traits::{FromPrimitive, ToPrimitive};
+use anyhow::{anyhow, Result, Context, ensure};
+use super::convert::{FromIndex, ToIndex};
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Attack {
     Damage(i32),
@@ -23,11 +31,6 @@ pub struct UnitStats {
     pub spawn: bool,
     pub blink: bool,
 }
-
-use num_derive::{FromPrimitive, ToPrimitive};
-use num_traits::{FromPrimitive, ToPrimitive};
-use anyhow::{anyhow, Result};
-use super::convert::{FromIndex, ToIndex};
 
 /// Labels for different unit types
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, FromPrimitive, ToPrimitive)]
@@ -138,6 +141,17 @@ impl Unit {
 
     pub fn stats(&self) -> &UnitStats {
         &UNIT_STATS[*self as usize]
+    }
+}
+
+impl FromStr for Unit {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        ensure!(s.len() == 1, "Invalid unit label");
+
+        Unit::from_fen_char(s.chars().next().unwrap())
+            .context("Invalid unit label")
     }
 }
 

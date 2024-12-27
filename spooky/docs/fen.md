@@ -12,13 +12,16 @@ The Spooky FEN (Forsyth-Edwards Notation) format is a string representation that
 1. **Number of Boards** - Single integer
    Example: `2`
 
-2. **Map Indices** - Comma-separated list of map indices, no spaces
+2. **Points to win** - Single integer
+   Example: `2`
+
+3. **Map Indices** - Comma-separated list of map indices, no spaces
    Example: `0,1`
 
-3. **Number of Techs** - Single integer
+4. **Number of Techs** - Single integer
    Example: `4`
 
-4. **Tech Indices** - Comma-separated list of tech indices defining the permutation, no spaces
+5. **Tech Indices** - Comma-separated list of tech indices defining the permutation, no spaces
    Example: `0,1,2,3`
 
 ### Game State Section

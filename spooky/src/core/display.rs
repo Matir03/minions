@@ -2,7 +2,7 @@ use std::fmt;
 use colored::Colorize;
 
 use super::{
-    game::{Game, GameState},
+    game::GameState,
     board::{Board, Piece, PieceState},
     side::Side,
     units::Unit,
@@ -11,22 +11,22 @@ use super::{
     map::Terrain,
 };
 
-impl fmt::Display for Game<'_> {
+impl fmt::Display for GameState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(f, "=== Minions Game ===")?;
-        writeln!(f, "Current Side: {}", self.state.side_to_move)?;
+        writeln!(f, "Current Side: {}", self.side_to_move)?;
         writeln!(f, "Points: S0: {} | S1: {}", 
-            self.state.board_points[Side::S0],
-            self.state.board_points[Side::S1])?;
+            self.board_points[Side::S0],
+            self.board_points[Side::S1])?;
         writeln!(f, "Money: S0: {} | S1: {}", 
-            self.state.money[Side::S0],
-            self.state.money[Side::S1])?;
+            self.money[Side::S0],
+            self.money[Side::S1])?;
         writeln!(f)?;
 
         writeln!(f, "Tech State:")?;
-        write!(f, "{}", self.state.tech_state)?;
+        write!(f, "{}", self.tech_state)?;
 
-        for (i, board) in self.state.boards.iter().enumerate() {
+        for (i, board) in self.boards.iter().enumerate() {
             writeln!(f, "Board {}:", i)?;
             write!(f, "{}", board)?;
             writeln!(f)?;

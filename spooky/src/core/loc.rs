@@ -1,8 +1,7 @@
 use std::{
-    ops::{Add, Neg, Sub},
-    collections::HashMap,
-    fmt::Display,
+    collections::HashMap, fmt::Display, ops::{Add, Neg, Sub}, str::FromStr
 };
+use anyhow::Context;
 use lazy_static::lazy_static;
 
 pub const GRID_LEN: usize = 10;
@@ -38,6 +37,26 @@ impl Loc {
 
     pub fn index(&self) -> usize {
         (self.x as usize) * GRID_LEN + (self.y as usize)
+    }
+}
+
+impl From<(i32, i32)> for Loc {
+    fn from((x, y): (i32, i32)) -> Self {
+        Self { x, y }
+    }
+}
+
+impl FromStr for Loc {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let (x, y) = s.split_once(',')
+            .context("Invalid loc")?;
+
+        Ok(Loc {
+            x: x.parse()?,
+            y: y.parse()?,
+        })
     }
 }
 

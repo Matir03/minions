@@ -92,16 +92,24 @@ impl Default for Techline {
 #[derive(Debug, Clone, Default)]
 pub struct TechAssignment {
     pub advance_by: usize,
-    pub acquire: Vec<Tech>,
+    pub acquire: Vec<usize>,
 }
 
 impl TechAssignment {
-    pub fn new(advance_by: usize, acquire: Vec<Tech>) -> Self {
+    pub fn new(advance_by: usize, acquire: Vec<usize>) -> Self {
         Self { advance_by, acquire }
     }
 
     pub fn num_spells(&self) -> usize {
         self.advance_by + self.acquire.len()
+    }
+
+    pub fn advance(&mut self, advance_by: usize) {
+        self.advance_by += advance_by;
+    }
+
+    pub fn acquire(&mut self, acquire: usize) {
+        self.acquire.push(acquire);
     }
 }
 
@@ -138,8 +146,8 @@ impl TechState {
 
         self.unlock_index[side] = advanced_index;
 
-        for tech in assignment.acquire {
-            let tech_index = tech.to_index()?;
+        for tech_index in assignment.acquire {
+            let tech = techline[tech_index];
             ensure!(tech_index <= self.unlock_index[side], "Cannot acquire locked tech");
             ensure!(
                 tech == Tech::Copycat ||

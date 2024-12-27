@@ -1,11 +1,11 @@
 # Minions Board Game Engine
 
-This is an implementation of the Minions board game, with a UCI-like interface for engine communication.
+This is an implementation of the Minions board game, with a UMI interface for engine communication.
 
 ## Project Structure
 
 - `minions-engine`: The core game logic library
-- `minions-uci`: A binary implementing a UCI-like protocol for engine communication
+- `minions-umi`: A binary implementing a UMI protocol for engine communication
 
 ## Building
 
@@ -16,14 +16,16 @@ cargo build
 ## Running
 
 ```bash
-cargo run -p minions-uci
+cargo run -p minions-umi
 ```
 
-## UCI-like Protocol
+## UMI Protocol
 
-The engine supports these commands:
+See [docs/umi.md](docs/umi.md) for protocol documentation.
 
-- `uci`: Switch to UCI mode and identify the engine
+### Basic Commands
+
+- `umi`: Switch to UMI mode and identify the engine
 - `isready`: Check if the engine is ready to accept commands
 - `quit`: Exit the program
 

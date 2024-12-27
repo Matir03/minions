@@ -58,8 +58,17 @@ Sets the position for the engine. Can only be called after `newgame`. Must be co
 Perform a search on the current position.
 
 #### Format
-`go [infinite] [movetime <time in ms>] [nodes <nodes>] [spells <spells>]` 
+`go [movetime <time in ms>] [nodes <nodes>] [spells <spells>]` 
 `spells` should be specified if spells are enabled
+
+#### Response
+Output current evaluation in the format `info eval <score>`.
+
+### `play`
+Play a turn from the current position.
+
+#### Format
+`play [movetime <time in ms>] [nodes <nodes>] [spells <spells>]`
 
 #### Response 
 The engine should respond with a sequence of actions representing its move, possibly along with search info. Every action should follow the format `action <actiontype> [actionparams...]`, and everyone information string should follow the format `info <infostring>`. Actions and info strings should be separated by newlines. Possible actions are
@@ -69,35 +78,29 @@ The engine should respond with a sequence of actions representing its move, poss
 - `advancetech <numtechs>`
 - `acquiretech <techindex>`
 - `givespell <boardindex> <spellname>`
-- `move <boardindex> <from> <to>`
-- `movecyclic <boardindex> <locs>`
-- `attack <boardindex> <from> <to>`
-- `spawn <boardindex> <loc>`
-- `cast <boardindex> <spellname> <params>`
-- `discard <boardindex> <spellname>`
-- `endphase <boardindex>`
-- `resign <boardindex>`
-- `saveunit <boardindex> <unit>`
-- `endturn`
-    -- this should be the last action
+- `boardaction <boardindex> <boardaction> <boardactionparams...>`
+    - `move <from> <to>`
+    - `movecyclic <locs>`
+    - `attack <from> <to>`
+    - `blink <loc>`
+    - `buy <unit>`
+    - `spawn <loc> <unit>`
+    - `cast <spellname> <params>`
+    - `discard <spellname>`
+    - `endphase`
+    - `resign`
+    - `saveunit <unit>`
 
-### `stop`
-Terminate search from `go`.
+After the last action, a final line `endturn` will signal the end of the turn.
 
-#### Response
-The engine should output its current best move in the same format as `go`.
-
-### `play`
-Play the most recently computed best move for the current position.
-
-### `move`
-Perform a move on the current position.
+### `turn`
+Perform a turn on the current position.
 
 #### Format
-Uses the same format as the `go` response. The initial line may be `spells <spells>` if spells are enabled and not hidden from the engine. Each `buyspell` may similarly be followed by `spell <spellname>`.
+`turn [spells <spells>]`. Uses the same format as the `play` response for actions. Each `buyspell` follows the format `action buyspell <spellname>`.
 
-### `display <board_index>`
-Output the current position of the game and the specified board in ASCII format.
+### `display`
+Output the current position of the game in ASCII format.
 
 ### `perft <board_index>`
 Counts the number of distinct minimal attacking turns in the given position, as a debugging measure. 
