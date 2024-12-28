@@ -2,13 +2,22 @@ use anyhow::{anyhow, Result};
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::{FromPrimitive, ToPrimitive};
 use super::convert::{FromIndex, ToIndex};
-use std::ops::{Index, IndexMut, Not};
+use std::ops::{Index, IndexMut, Not, Add};
 
 /// Side/player in the game
 #[derive(Debug, Clone, Copy, PartialEq, Eq, FromPrimitive, ToPrimitive)]
 pub enum Side {
     S0,
     S1,
+}
+
+impl Side {
+    pub fn sign(&self) -> i32 {
+        match self {
+            Side::S0 => 1,
+            Side::S1 => -1,
+        }
+    }
 }
 
 impl FromIndex for Side {
@@ -65,6 +74,16 @@ impl<T> SideArray<T> {
         self.values.iter_mut()
     }
 }
+
+// impl<T: Add + Copy> Add for SideArray<T> {
+//     type Output = SideArray<T::Output>;
+
+//     fn add(self, rhs: Self) -> Self::Output {
+//         SideArray {
+//             values: [self.values[0] + rhs.values[0], self.values[1] + rhs.values[1]],
+//         }
+//     }
+// }
 
 impl<T> Index<Side> for SideArray<T> {
     type Output = T;

@@ -1,0 +1,1 @@
+This folder contains descriptions of heuristics for use before the neural networks are implemented.

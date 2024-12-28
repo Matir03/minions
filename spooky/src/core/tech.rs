@@ -113,7 +113,7 @@ impl TechAssignment {
     }
 }
 
-// state of both teams' tech
+/// state of both teams' tech
 #[derive(Debug, Clone)]
 pub struct TechState {
     pub unlock_index: SideArray<usize>,

@@ -1,5 +1,5 @@
 use crate::core::{GameConfig, GameState, GameAction, Spell, Side, Turn};
-use crate::general::Eval;
+use crate::ai::Eval;
 
 use super::options::EngineOptions;
 use super::search::{search_no_spells, SearchOptions};
@@ -72,9 +72,9 @@ impl Engine {
             todo!("implement spells");
         }
 
-        let node = search_no_spells(&self.config, &self.state, search_options);
+        let result = search_no_spells(&self.config, &self.state, search_options);
 
-        node.best_turn()
+        result.best_turn
     }
 
     /// Start a search with the given options and return the evaluation
@@ -83,9 +83,9 @@ impl Engine {
             todo!("implement spells");
         }
 
-        let node = search_no_spells(&self.config, &self.state, search_options);
+        let result = search_no_spells(&self.config, &self.state, search_options);
 
-        node.eval()       
+        result.eval
     }
 
     pub fn display(&self) {

@@ -1,7 +1,8 @@
 use crate::core::{GameConfig, GameState, Turn, Spell};
-use crate::general::Node;
+use crate::ai::{Search, SearchResult};
 
 use anyhow::{bail, Context};
+use bumpalo::Bump;
 
 use std::str::FromStr;
 use std::time::Instant;
@@ -65,17 +66,19 @@ impl Default for SearchOptions {
     }
 }
 
-pub fn search_no_spells<'g>(config: &'g GameConfig, state: &GameState, search_options: &SearchOptions) -> Node<'g> {
-    let now = Instant::now();
-    let mut node = Node::new(config, state.clone());
+pub fn search_no_spells<'a>(config: &GameConfig, state: &GameState, search_options: &SearchOptions) -> SearchResult {
+    let start_time = Instant::now();
+    let arena = Bump::new();
+
+    let mut search = Search::new(config, state.clone(), &arena);
 
     for _ in 0..search_options.nodes {
-        node.explore();
+        search.explore();
 
-        if now.elapsed().as_millis() > search_options.move_time.into() {
+        if start_time.elapsed().as_millis() > search_options.move_time.into() {
             break;
         }
     }
 
-    node
+    search.result()
 }

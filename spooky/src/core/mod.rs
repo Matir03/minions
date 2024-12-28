@@ -21,5 +21,6 @@ pub use units::{UnitStats, Unit, Attack};
 pub use map::{MapSpec, Map, TileType, HexGrid};
 pub use spells::{Spell, SpellCast};
 pub use loc::Loc;
-pub use side::Side;
+pub use side::{Side, SideArray};
 pub use display::*;
+pub use convert::{FromIndex, ToIndex};

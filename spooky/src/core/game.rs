@@ -23,9 +23,9 @@ pub struct GameConfig {
 impl Default for GameConfig {
     fn default() -> Self {
         Self {
-            num_boards: 1,
-            points_to_win: 1,
-            maps: vec![Map::BlackenedShores],
+            num_boards: 2,
+            points_to_win: 2,
+            maps: vec![Map::BlackenedShores, Map::MidnightLake],
             techline: Techline::default(),
         }
     }
@@ -122,8 +122,8 @@ impl GameConfig {
 /// State of a Minions game (excluding the static configuration)
 #[derive(Debug, Clone)]
 pub struct GameState {
-    pub side_to_move: Side,
     pub boards: Vec<Board>,
+    pub side_to_move: Side,
     pub board_points: SideArray<i32>,
     pub tech_state: TechState,
     pub money: SideArray<i32>,
@@ -133,15 +133,24 @@ impl Default for GameState {
     fn default() -> Self {
         Self {
             side_to_move: Side::S0,
-            boards: vec![Board::default()],
+            boards: vec![Board::default(), Board::default()],
             board_points: SideArray::new(0, 0),
             tech_state: TechState::new(),
-            money: SideArray::new(0, 6),
+            money: SideArray::new(0, 12),
         }
     }
 }
 
 impl GameState {
+    pub fn new(side_to_move: Side, boards: Vec<Board>, tech_state: TechState, money: SideArray<i32>) -> Self {
+        Self {
+            side_to_move,
+            boards,
+            board_points: SideArray::new(0, 0),
+            tech_state,
+            money,
+        }
+    }
     /// Convert state to FEN notation
     pub fn to_fen(&self) -> Result<String> {
         let mut fen = String::new();

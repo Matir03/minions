@@ -3,8 +3,7 @@
 #![allow(unused)]
 
 pub mod core;
-pub mod captain;
-pub mod general;
+pub mod ai;
 pub mod engine;
 
 pub use engine::Engine;
