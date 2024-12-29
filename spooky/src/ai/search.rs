@@ -3,7 +3,7 @@
 use crate::core::{GameConfig, GameState, Turn};
 
 use super::{
-    mcts::GameNode,
+    mcts::{GameNode, MCTSNode},
     eval::Eval,
     rng::make_rng,
 };
@@ -19,11 +19,11 @@ pub struct SearchResult {
 pub struct SearchArgs<'a> {
     pub config: &'a GameConfig,
     pub arena: &'a Bump,
-    pub rng: StdRng,
 }
 
 pub struct Search<'a> {
     pub args: SearchArgs<'a>,
+    pub rng: StdRng,
     pub root: GameNode<'a>,
 }
 
@@ -36,14 +36,14 @@ impl<'a> Search<'a> {
             args: SearchArgs {
                 config,
                 arena,
-                rng: make_rng(),
             },
+            rng: make_rng(),
             root,
         }
     }
 
     pub fn explore(&mut self) {
-        self.root.explore(&mut self.args);
+        self.root.explore(&self.args, &mut self.rng);
     }
 
     pub fn best_turn(&self) -> Turn {

@@ -4,24 +4,25 @@ use crate::core::{GameState, GameConfig, Side, ToIndex};
 
 #[derive(Debug, Clone, Copy)]
 pub struct Eval {
-    /// score in [-1, 1] for S0
-    score: f32,
+    /// winprob in [0, 1] for current player
+    pub winprob: f32,
 }
 
 impl Eval {
-    pub fn new(score: f32) -> Self {
-        Self { score }
+    pub fn new(winprob: f32) -> Self {
+        Self { winprob }
     }
 
-    pub fn score(&self, side: Side) -> f32 {
-        match side {
-            Side::S0 => self.score,
-            Side::S1 => -self.score        
+    pub fn score(&self, same_side: bool) -> f32 {
+        if same_side {
+            self.winprob
+        } else {
+            -self.winprob
         }
     }
 
-    pub fn winprob(&self, side: Side) -> f32 {
-        (self.score + 1.0) / 2.0
+    pub fn winprob(&self) -> f32 {
+        self.winprob
     }
 
     /// evaluate position without calculating moves
@@ -87,8 +88,18 @@ impl Eval {
 
         // Final score calculation
         let d = C_W * (w0 - w1) + c_t * tech_score + C_M * (m0 - m1) + C_B * board_score + C_H * hmb;
-        let score = d.tanh() * C_D;
+        let winprob = d.sigmoid() * C_D;
 
-        Eval::new(score)
+        Eval::new(winprob)
+    }
+}
+
+trait Sigmoid {
+    fn sigmoid(self) -> f32;
+}
+
+impl Sigmoid for f32 {
+    fn sigmoid(self) -> f32 {
+        1.0 / (1.0 + (-self).exp())
     }
 }

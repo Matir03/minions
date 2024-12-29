@@ -8,8 +8,10 @@ use crate::core::{
     tech::{TechAssignment, TechState},
 };
 
+use rand::prelude::*;
+
 use super::{
-    mcts::NodeStats,
+    mcts::{NodeStats, MCTSNode},
     eval::Eval,
     search::SearchArgs,
 };
@@ -33,15 +35,28 @@ impl <'a> GeneralNode<'a> {
         }
     }
 
-    pub fn explore(&mut self, args: &SearchArgs<'a>) -> &'a mut GeneralNode<'a> {
-        todo!()
-    }
-
-    pub fn eval(&self) -> Eval {
-        todo!()
-    }
-
     pub fn best_assignment(&self) -> TechAssignment {
         todo!()
+    }
+}
+
+impl<'a> MCTSNode<'a> for GeneralNode<'a> {
+    type Child = GeneralNode<'a>;
+    type Etc = ();
+
+    fn stats(&self) -> &NodeStats {
+        &self.stats
+    }
+
+    fn children(&self) -> &Vec<'a, GeneralNodeRef<'a>> {
+        &self.children
+    }
+
+    fn make_child(&mut self, args: &SearchArgs<'a>, rng: &mut impl Rng, _etc: ()) -> (bool, usize) {
+        todo!()
+    }
+
+    fn update(&mut self, eval: &Eval) {
+        self.stats.update(eval);
     }
 }
