@@ -5,6 +5,7 @@ pub mod mcts;
 pub mod eval;
 pub mod search;
 
+pub mod game;
 pub mod general;
 pub mod attack;
 pub mod blotto;

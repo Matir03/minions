@@ -21,6 +21,10 @@ impl Eval {
         }
     }
 
+    pub fn flip(&self) -> Self {
+        Self { winprob: 1.0 - self.winprob }
+    }
+
     pub fn winprob(&self) -> f32 {
         self.winprob
     }

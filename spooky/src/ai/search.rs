@@ -3,7 +3,8 @@
 use crate::core::{GameConfig, GameState, Turn};
 
 use super::{
-    mcts::{GameNode, MCTSNode},
+    mcts::MCTSNode,
+    game::GameNode,
     eval::Eval,
     rng::make_rng,
 };
@@ -51,7 +52,7 @@ impl<'a> Search<'a> {
     }
 
     pub fn eval(&self) -> Eval {
-        self.root.eval()
+        self.root.eval().flip()
     }
 
     pub fn result(&self) -> SearchResult {

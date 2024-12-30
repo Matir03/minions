@@ -2,7 +2,7 @@
 
 use rand::prelude::*;
 
-use super::{general::GeneralNode, mcts::GameNode, spawn::{SpawnNode, SpawnNodeRef}};
+use super::{general::GeneralNode, game::GameNode, spawn::{SpawnNode, SpawnNodeRef}};
 
 type Blotto = Vec<i32>;
 

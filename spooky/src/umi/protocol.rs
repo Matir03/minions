@@ -68,7 +68,7 @@ pub fn handle_command(cmd: &str, engine: &mut Engine) -> Result<()> {
             let search_options = args.parse::<SearchOptions>()?;
 
             let eval = engine.go(&search_options);
-            let winprob = eval.winprob(engine.state.side_to_move);
+            let winprob = eval.winprob();
 
             println!("info eval winprob {}", winprob);
         }

@@ -32,6 +32,10 @@ impl Default for GameConfig {
 }
 
 impl GameConfig {
+    pub fn spell_cost(&self) -> i32 {
+        SPELL_COST * self.num_boards as i32
+    }
+
     /// Convert config to FEN notation
     pub fn to_fen(&self) -> Result<String> {
         let mut fen = String::new();

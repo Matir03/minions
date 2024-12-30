@@ -67,6 +67,10 @@ impl Techline {
     pub fn new(techs: Vec<Tech>) -> Self {
         Self { techs }
     }
+
+    pub fn len(&self) -> usize {
+        self.techs.len()
+    }
 }
 
 impl Index<usize> for Techline {
@@ -116,6 +120,7 @@ impl TechAssignment {
 /// state of both teams' tech
 #[derive(Debug, Clone)]
 pub struct TechState {
+    /// index of next tech to unlock
     pub unlock_index: SideArray<usize>,
     pub status: SideArray<[TechStatus; NUM_TECHS]>,
     pub acquired_techs: SideArray<Set<Tech>>
@@ -134,6 +139,11 @@ impl TechState {
                 Set::new(),
             )
         }
+    }
+
+    pub fn acquirable(&self, tech_index: usize) -> bool {
+        self.status[Side::S0][tech_index] != TechStatus::Acquired &&
+        self.status[Side::S1][tech_index] != TechStatus::Acquired
     }
 
     pub fn assign_techs(&mut self, assignment: TechAssignment, side: Side, techline: &Techline) -> Result<()> {
