@@ -67,7 +67,7 @@ pub trait MCTSNode<'a> {
     type Etc;
 
     fn stats(&self) -> &NodeStats;
-    fn children(&self) -> &Vec<'a, &'a RefCell<Self::Child>>;
+    fn children(&self) -> &StdVec<&'a RefCell<Self::Child>>;
 
     /// (whether a new child was made, index of selected child)
     fn make_child(&mut self, args: &SearchArgs<'a>, rng: &mut impl Rng, etc: Self::Etc) -> (bool, usize);

@@ -1,5 +1,6 @@
 use bumpalo::{Bump, collections::Vec};
 use std::cell::RefCell;
+use std::vec::Vec as StdVec;
 
 use crate::core::{
     Side,
@@ -18,7 +19,7 @@ use super::{
 
 pub struct GeneralNode<'a> {
     pub stats: NodeStats,
-    pub side: Side, 
+    pub side: Side,
     pub tech_state: TechState,
     pub delta_money: SideArray<i32>,
     pub children: Vec<'a, GeneralNodeRef<'a>>,
@@ -57,8 +58,8 @@ impl<'a> MCTSNode<'a> for GeneralNode<'a> {
         &self.stats
     }
 
-    fn children(&self) -> &Vec<'a, GeneralNodeRef<'a>> {
-        &self.children
+    fn children(&self) -> &StdVec<&'a RefCell<Self::Child>> {
+        unsafe { std::mem::transmute(&self.children) }
     }
 
     fn make_child(&mut self, args: &SearchArgs<'a>, rng: &mut impl Rng, money: i32) -> (bool, usize) {
@@ -102,7 +103,7 @@ impl<'a> MCTSNode<'a> for GeneralNode<'a> {
 
                         if !can_tech {
                             continue;
-                        }                        
+                        }
 
                         if dist.sample(rng) {
                             acquire.push(j);

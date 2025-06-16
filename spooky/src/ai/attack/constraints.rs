@@ -1,94 +1,344 @@
 use std::collections::HashMap;
+use crate::core::{Loc, Side, units::{Attack, UnitStats}};
+use super::combat::CombatGraph;
 
-use z3::{Config, Context, Solver, ast::{Bool, Int, Ast}};
-use super::combat::{CombatGraph, CombatPair};
-
-pub struct Variables<'ctx> {
-    r_vars: Vec<Bool<'ctx>>,
-    tr_vars: Vec<Int<'ctx>>,
-    k_vars: Vec<Bool<'ctx>>,
-    u_vars: Vec<Bool<'ctx>>,
-    p_vars: Vec<Bool<'ctx>>,
-    ta_vars: Vec<Int<'ctx>>,
-    m_vars: HashMap<CombatPair, Bool<'ctx>>,
-    a_vars: Vec<Bool<'ctx>>,
-    d_vars: Vec<Int<'ctx>>,
-}
-
-pub fn add_constraints<'a>(ctx: &'a Context, solver: &mut Solver, graph: &CombatGraph) -> Variables<'a> {
+/// Variables for the constraint satisfaction problem
+#[derive(Debug, Clone)]
+pub struct Variables {
     // Defender variables
-    let mut r_vars = Vec::new();  // removal bools
-    let mut tr_vars = Vec::new(); // removal times
-    let mut k_vars = Vec::new();  // killed bools
-    let mut u_vars = Vec::new();  // unsummoned bools
-    
-    // Create defender variables
-    for _ in graph.defenders.iter() {
-        r_vars.push(Bool::fresh_const(ctx, "r"));
-        tr_vars.push(Int::fresh_const(ctx, "tr"));
-        k_vars.push(Bool::fresh_const(ctx, "k"));
-        u_vars.push(Bool::fresh_const(ctx, "u"));
-    }
+    pub removed: HashMap<Loc, bool>,      // r_y: whether piece is removed
+    pub removal_time: HashMap<Loc, i32>,  // tr_y: time of removal
+    pub killed: HashMap<Loc, bool>,       // k_y: whether piece is killed
+    pub unsummoned: HashMap<Loc, bool>,   // u_y: whether piece is unsummoned
 
     // Attacker variables
-    let mut p_vars = Vec::new();   // passive bools
-    let mut ta_vars = Vec::new();  // attack times
-    let mut m_vars = HashMap::new();   // move bools
-
-    // Create attacker variables
-    for attacker in graph.attackers.iter() {
-        p_vars.push(Bool::fresh_const(ctx, "p"));
-        ta_vars.push(Int::fresh_const(ctx, "ta"));
-
-        // For each possible attack hex
-        for hex in graph.attack_hexes[attacker].iter() {
-            m_vars.insert((*attacker, *hex), Bool::fresh_const(ctx, "m"));
-        }
-    }
+    pub passive: HashMap<Loc, bool>,      // p_x: whether piece is passive
+    pub attack_time: HashMap<Loc, i32>,   // ta_x: combat engagement time
+    pub attack_hex: HashMap<Loc, Option<Loc>>, // m_xs: which hex attacker moved to
 
     // Combat variables
-    let mut a_vars = Vec::new();  // attack bools
-    let mut d_vars = Vec::new();  // damage ints
+    pub attacks: HashMap<(Loc, Loc), bool>, // a_xy: whether x attacked y
+    pub damage: HashMap<(Loc, Loc), i32>,   // d_xy: damage dealt by x to y
+}
 
-    for _ in graph.pairs.iter() {
-        a_vars.push(Bool::fresh_const(ctx, "a"));
-        d_vars.push(Int::fresh_const(ctx, "d"));
-    }
+impl Variables {
+    pub fn new(graph: &CombatGraph) -> Self {
+        let mut vars = Variables {
+            removed: HashMap::new(),
+            removal_time: HashMap::new(),
+            killed: HashMap::new(),
+            unsummoned: HashMap::new(),
+            passive: HashMap::new(),
+            attack_time: HashMap::new(),
+            attack_hex: HashMap::new(),
+            attacks: HashMap::new(),
+            damage: HashMap::new(),
+        };
 
-    // Add constraints
-    
-    // // Hex constraints - at most one piece per hex
-    for hex in graph.hexes.iter() {
-        let mut movers = Vec::new();
-
-        for attacker in graph.hex_attackers[hex].iter() {
-            movers.push((&m_vars[&(*attacker, *hex)], 1));
+        // Initialize defender variables
+        for defender in &graph.defenders {
+            vars.removed.insert(*defender, false);
+            vars.removal_time.insert(*defender, 0);
+            vars.killed.insert(*defender, false);
+            vars.unsummoned.insert(*defender, false);
         }
 
-        solver.assert(&Bool::pb_le(ctx, &movers, 1));
+        // Initialize attacker variables
+        for attacker in &graph.attackers {
+            vars.passive.insert(*attacker, false);
+            vars.attack_time.insert(*attacker, 0);
+            vars.attack_hex.insert(*attacker, None);
+        }
+
+        // Initialize combat variables
+        for pair in &graph.pairs {
+            vars.attacks.insert((pair.attacker_pos, pair.defender_pos), false);
+            vars.damage.insert((pair.attacker_pos, pair.defender_pos), 0);
+        }
+
+        vars
+    }
+}
+
+/// Constraint types for the combat system
+#[derive(Debug, Clone)]
+pub enum Constraint {
+    // Hex constraints
+    AtMostOnePiecePerHex(Loc),
+    MovementTiming(Loc, Loc, i32), // hex, attacker, time
+
+    // Attacker constraints
+    ExactlyOneAction(Loc), // passive OR move to exactly one hex
+    AttackRange(Loc, Loc), // attacker, defender
+    AttackTiming(Loc, Loc), // attacker, defender
+    AttackLimit(Loc, i32), // attacker, max attacks
+    DamageCalculation(Loc, Loc), // attacker, defender
+
+    // Defender constraints
+    ExactlyOneFate(Loc), // not removed OR killed OR unsummoned
+    UnsummonCondition(Loc), // unsummoned if attacked by unsummon
+    DamageResolution(Loc), // removed if damage >= defense
+    NoOverkill(Loc), // optional: no overkill
+}
+
+/// Constraint solver for combat resolution
+pub struct ConstraintSolver {
+    pub variables: Variables,
+    pub constraints: Vec<Constraint>,
+    pub hex_assignments: HashMap<Loc, Loc>, // hex -> attacker
+    pub time_counter: i32,
+}
+
+impl ConstraintSolver {
+    pub fn new(graph: &CombatGraph) -> Self {
+        Self {
+            variables: Variables::new(graph),
+            constraints: Vec::new(),
+            hex_assignments: HashMap::new(),
+            time_counter: 0,
+        }
     }
 
-    todo!();
-    // // Movement timing constraints
-    // for (i, pair) in pairs.iter().enumerate() {
-    //     // ta_x > tr_y for blocking pieces
-    //     let ta = &ta_vars[i];
-    //     for (j, _) in pairs.iter().enumerate() {
-    //         if i != j {
-    //             let tr = &tr_vars[j];
-    //             solver.assert(&Int::gt(ta, tr));
-    //         }
-    //     }
-    // }
+    /// Add all constraints for the combat graph
+    pub fn add_all_constraints(&mut self, graph: &CombatGraph, board: &crate::core::Board) {
+        // Hex constraints
+        for hex in &graph.hexes {
+            self.constraints.push(Constraint::AtMostOnePiecePerHex(*hex));
+        }
 
-    // // Basic combat constraints
-    // for i in 0..pairs.len() {
-    //     // Removal implies killed or unsummoned
-    //     solver.assert(&Bool::implies(&r_vars[i], 
-    //         &Bool::or(ctx, &[&k_vars[i], &u_vars[i]])));
-        
-    //     // Attack implies not passive
-    //     solver.assert(&Bool::implies(&a_vars[i], 
-    //         &Bool::not(&p_vars[i])));
-    // }
+        // Attacker constraints
+        for attacker in &graph.attackers {
+            self.constraints.push(Constraint::ExactlyOneAction(*attacker));
+
+            if let Some(piece) = board.get_piece(attacker) {
+                let stats = piece.unit.stats();
+                self.constraints.push(Constraint::AttackLimit(*attacker, stats.num_attacks));
+            }
+        }
+
+        // Combat pair constraints
+        for pair in &graph.pairs {
+            self.constraints.push(Constraint::AttackRange(pair.attacker_pos, pair.defender_pos));
+            self.constraints.push(Constraint::AttackTiming(pair.attacker_pos, pair.defender_pos));
+            self.constraints.push(Constraint::DamageCalculation(pair.attacker_pos, pair.defender_pos));
+        }
+
+        // Defender constraints
+        for defender in &graph.defenders {
+            self.constraints.push(Constraint::ExactlyOneFate(*defender));
+            self.constraints.push(Constraint::UnsummonCondition(*defender));
+            self.constraints.push(Constraint::DamageResolution(*defender));
+        }
+    }
+
+    /// Check if a constraint is satisfied
+    pub fn check_constraint(&self, constraint: &Constraint, board: &crate::core::Board) -> bool {
+        match constraint {
+            Constraint::AtMostOnePiecePerHex(hex) => {
+                let mut count = 0;
+                for (attacker, hex_assignment) in &self.variables.attack_hex {
+                    if let Some(assigned_hex) = hex_assignment {
+                        if assigned_hex == hex {
+                            count += 1;
+                        }
+                    }
+                }
+                count <= 1
+            }
+
+            Constraint::ExactlyOneAction(attacker) => {
+                let is_passive = self.variables.passive.get(attacker).unwrap_or(&false);
+                let has_hex = self.variables.attack_hex.get(attacker).unwrap_or(&None).is_some();
+                *is_passive != has_hex // exactly one must be true
+            }
+
+            Constraint::AttackRange(attacker, defender) => {
+                if let Some(attack_hex) = self.variables.attack_hex.get(attacker).unwrap_or(&None) {
+                    if let Some(piece) = board.get_piece(attacker) {
+                        let stats = piece.unit.stats();
+                        attack_hex.dist(defender) <= stats.range
+                    } else {
+                        false
+                    }
+                } else {
+                    true // no attack hex means no attack
+                }
+            }
+
+            Constraint::AttackTiming(attacker, defender) => {
+                let attack_time = self.variables.attack_time.get(attacker).unwrap_or(&0);
+                let removal_time = self.variables.removal_time.get(defender).unwrap_or(&0);
+                *attack_time <= *removal_time
+            }
+
+            Constraint::AttackLimit(attacker, max_attacks) => {
+                let mut attack_count = 0;
+                for (_, is_attack) in &self.variables.attacks {
+                    if *is_attack {
+                        attack_count += 1;
+                    }
+                }
+                attack_count <= *max_attacks
+            }
+
+            Constraint::DamageCalculation(attacker, defender) => {
+                if let Some(is_attack) = self.variables.attacks.get(&(*attacker, *defender)) {
+                    if !*is_attack {
+                        return true; // no attack, no damage
+                    }
+
+                    if let Some(attacker_piece) = board.get_piece(attacker) {
+                        if let Some(defender_piece) = board.get_piece(defender) {
+                            let attacker_stats = attacker_piece.unit.stats();
+                            let defender_stats = defender_piece.unit.stats();
+
+                            let expected_damage = match attacker_stats.attack {
+                                Attack::Damage(damage) => damage,
+                                Attack::Deathtouch => {
+                                    if defender_stats.necromancer {
+                                        0
+                                    } else {
+                                        defender_stats.defense
+                                    }
+                                }
+                                Attack::Unsummon => {
+                                    if defender_stats.persistent {
+                                        1
+                                    } else {
+                                        0 // unsummon doesn't do damage
+                                    }
+                                }
+                            };
+
+                            let actual_damage = self.variables.damage.get(&(*attacker, *defender)).unwrap_or(&0);
+                            *actual_damage == expected_damage
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    }
+                } else {
+                    true
+                }
+            }
+
+            Constraint::ExactlyOneFate(defender) => {
+                let removed = self.variables.removed.get(defender).unwrap_or(&false);
+                let killed = self.variables.killed.get(defender).unwrap_or(&false);
+                let unsummoned = self.variables.unsummoned.get(defender).unwrap_or(&false);
+
+                // Exactly one of removed, killed, or unsummoned must be true
+                (*removed as i32 + *killed as i32 + *unsummoned as i32) == 1
+            }
+
+            Constraint::UnsummonCondition(defender) => {
+                let unsummoned = self.variables.unsummoned.get(defender).unwrap_or(&false);
+                if !*unsummoned {
+                    return true; // not unsummoned, constraint satisfied
+                }
+
+                // Check if any attacker with unsummon attack is attacking this defender
+                let mut has_unsummon_attacker = false;
+                for ((attacker, defender_check), is_attack) in &self.variables.attacks {
+                    if defender_check == defender && *is_attack {
+                        if let Some(piece) = board.get_piece(attacker) {
+                            if matches!(piece.unit.stats().attack, Attack::Unsummon) {
+                                has_unsummon_attacker = true;
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                has_unsummon_attacker
+            }
+
+            Constraint::DamageResolution(defender) => {
+                let removed = self.variables.removed.get(defender).unwrap_or(&false);
+                if !*removed {
+                    return true; // not removed, constraint satisfied
+                }
+
+                // Calculate total damage
+                let mut total_damage = 0;
+                for ((attacker, defender_check), damage) in &self.variables.damage {
+                    if defender_check == defender {
+                        total_damage += damage;
+                    }
+                }
+
+                if let Some(piece) = board.get_piece(defender) {
+                    let stats = piece.unit.stats();
+                    total_damage >= stats.defense
+                } else {
+                    false
+                }
+            }
+
+            _ => true, // Other constraints not fully implemented yet
+        }
+    }
+
+    /// Check if all constraints are satisfied
+    pub fn is_satisfiable(&self, board: &crate::core::Board) -> bool {
+        for constraint in &self.constraints {
+            if !self.check_constraint(constraint, board) {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// Apply a prophecy to the variables
+    pub fn apply_prophecy(&mut self, prophecy: &super::prophecy::Prophecy) {
+        // Apply passive probabilities
+        for (loc, prob) in &prophecy.passive_probabilities {
+            if let Some(passive) = self.variables.passive.get_mut(loc) {
+                *passive = *prob > 0.5;
+            }
+        }
+
+        // Apply removal probabilities
+        for (loc, prob) in &prophecy.removal_probabilities {
+            if let Some(removed) = self.variables.removed.get_mut(loc) {
+                *removed = *prob > 0.5;
+            }
+        }
+    }
+
+    /// Generate a move from the solved variables
+    pub fn generate_move(&self, board: &crate::core::Board, side: Side) -> Vec<crate::core::action::BoardAction> {
+        let mut actions = Vec::new();
+
+        // Generate movement actions
+        for (attacker, attack_hex) in &self.variables.attack_hex {
+            if let Some(hex) = attack_hex {
+                if let Some(piece) = board.get_piece(attacker) {
+                    if piece.side == side && *attacker != *hex {
+                        actions.push(crate::core::action::BoardAction::Move {
+                            from_loc: *attacker,
+                            to_loc: *hex,
+                        });
+                    }
+                }
+            }
+        }
+
+        // Generate attack actions
+        for ((attacker, defender), is_attack) in &self.variables.attacks {
+            if *is_attack {
+                if let Some(attack_hex) = self.variables.attack_hex.get(attacker) {
+                    if let Some(hex) = attack_hex {
+                        actions.push(crate::core::action::BoardAction::Attack {
+                            attacker_loc: *hex,
+                            target_loc: *defender,
+                        });
+                    }
+                }
+            }
+        }
+
+        actions
+    }
 }

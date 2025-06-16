@@ -3,7 +3,7 @@ use std::{
     collections::HashMap,
 };
 
-use crate::core::{GameConfig, GameState, Side, SideArray, Turn};
+use crate::core::{GameConfig, GameState, Side, SideArray, Turn, action::BoardAction};
 
 use super::{
     mcts::{MCTSNode, NodeStats},
@@ -32,7 +32,7 @@ pub struct GameNode<'a> {
     pub index_map: HashMap<NodeIndex, usize>,
     pub general_node: GeneralNodeRef<'a>,
     pub board_nodes: Vec<'a, AttackNodeRef<'a>>,
-    pub children: Vec<'a, GameNodeRef<'a>>,
+    pub children: StdVec<GameNodeRef<'a>>,
 }
 
 pub type GameNodeRef<'a> = &'a RefCell<GameNode<'a>>;
@@ -79,7 +79,7 @@ impl <'a> GameNode<'a> {
             index_map: HashMap::new(),
             general_node: general_next,
             board_nodes: boards_next,
-            children: Vec::new_in(args.arena),
+            children: StdVec::new(),
         }
     }
 
@@ -113,7 +113,7 @@ impl <'a> GameNode<'a> {
             index_map: HashMap::new(),
             general_node,
             board_nodes,
-            children: Vec::new_in(arena),
+            children: StdVec::new(),
         }
     }
 
@@ -163,47 +163,88 @@ impl<'a> MCTSNode<'a> for GameNode<'a> {
         &self.stats
     }
 
-    fn children(&self) -> &Vec<'a, GameNodeRef<'a>> {
-        &self.children
+    fn children(&self) -> &StdVec<&'a RefCell<Self::Child>> {
+        // Convert from StdVec<GameNodeRef<'a>> to StdVec<&'a RefCell<GameNode<'a>>>
+        // This is a bit of a hack, but it should work
+        unsafe { std::mem::transmute(&self.children) }
     }
 
-    fn make_child(&mut self, args: &SearchArgs<'a>, rng: &mut impl Rng, etc: Self::Etc) -> (bool, usize) {
+    fn make_child(&mut self, args: &SearchArgs<'a>, rng: &mut impl Rng, _etc: ()) -> (bool, usize) {
+        // Step 1: Get general node child (tech decisions)
         let money = self.state.money[self.state.side_to_move];
         let (general_index, general_next) = self.general_node.borrow_mut().get_child(args, rng, money);
 
-        let (attack_indices, boards_next) = self.board_nodes.iter()
-                .map(|node| node.borrow_mut().get_child(args, rng, etc))
-                .unzip::<_, _, StdVec<_>, StdVec<_>>();
+        // Step 2: Apply attack moves to each board
+        let mut attack_indices = StdVec::new();
+        let mut boards_after_attack = StdVec::new();
 
-        let blotto = blotto(self, &general_next.borrow(), &boards_next, rng);
+        for board_node in &self.board_nodes {
+            let (attack_index, _) = board_node.borrow_mut().get_child(args, rng, ());
+            attack_indices.push(attack_index);
 
-        let (spawn_indices, boards_next) = boards_next
-            .into_iter()
-            .zip(blotto)
-            .map(|(node, blotto)| node.borrow_mut().get_child(args, rng, blotto))
-            .unzip::<_, _, StdVec<_>, StdVec<_>>();
+            // Get the updated board state from the attack node
+            let board_after_attack = board_node.borrow().board.clone();
+            boards_after_attack.push(board_after_attack);
+        }
 
+        // Step 3: Apply blotto allocation
+        let blotto_allocations = super::blotto::BlottoStage::allocate(&self.state, self.state.side_to_move);
+
+        // Step 4: Apply spawn actions to each board
+        let mut spawn_indices = StdVec::new();
+        let mut final_boards = StdVec::new();
+
+        for (board_idx, board) in boards_after_attack.iter().enumerate() {
+            let blotto_allocation = blotto_allocations.get(board_idx).copied().unwrap_or(0);
+            let spawn_actions = super::spawn::SpawnStage::generate_spawns(board, self.state.side_to_move, blotto_allocation, rng);
+
+            // Apply spawn actions to create final board state
+            let mut final_board = board.clone();
+            for action in spawn_actions {
+                if let BoardAction::Spawn { spawn_loc, unit } = action {
+                    let piece = crate::core::board::Piece {
+                        loc: spawn_loc,
+                        side: self.state.side_to_move,
+                        unit,
+                        modifiers: crate::core::board::Modifiers::default(),
+                        state: crate::core::board::PieceState::default().into(),
+                    };
+                    final_board.add_piece(piece);
+                }
+            }
+
+            final_boards.push(final_board);
+            spawn_indices.push(0); // Simplified for now
+        }
+
+        // Create the next game state
+        let mut next_state = self.state.clone();
+        next_state.side_to_move = !self.state.side_to_move;
+        next_state.boards = final_boards;
+
+        // Update tech state and money based on general node
+        let general_node = general_next.borrow();
+        next_state.tech_state = general_node.tech_state.clone();
+        next_state.money[Side::S0] += general_node.delta_money[Side::S0];
+        next_state.money[Side::S1] += general_node.delta_money[Side::S1];
+
+        // Create the next game node
+        let next_node = args.arena.alloc(RefCell::new(
+            GameNode::from_state(next_state, args.config, args.arena)
+        ));
+
+        let child_index = self.children.len();
+        self.children.push(next_node);
+
+        // Store the index mapping
         let next_index = NodeIndex {
             general_index,
             attack_indices,
             spawn_indices,
         };
+        self.index_map.insert(next_index, child_index);
 
-        if let Some(&index) = self.index_map.get(&next_index) {
-            return (false, index);
-        }
-
-        let boards_next = Vec::from_iter_in(boards_next, args.arena);
-
-        let new_child = args.arena.alloc(RefCell::new(
-            GameNode::new(self, &general_next, boards_next, args)
-        ));
-        let new_child_index = self.children.len();
-
-        self.children.push(new_child);
-        self.index_map.insert(next_index, new_child_index);
-
-        (true, new_child_index)
+        (true, child_index)
     }
 
     fn update(&mut self, eval: &Eval) {

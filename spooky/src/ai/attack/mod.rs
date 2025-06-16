@@ -1,6 +1,7 @@
 pub mod combat;
 pub mod prophecy;
 pub mod solver;
+mod constraints;
 
 use std::collections::HashMap;
 use std::cell::RefCell;
@@ -32,23 +33,20 @@ impl AttackStage {
         // Build combat graph
         let graph = board.combat_graph();
 
-        // Generate multiple prophecies
         for i in 0..num_candidates {
             let mut prophecy = Prophecy::generate_basic(board, side);
-
-            // Add noise for variation
             if i > 0 {
                 prophecy = prophecy.add_noise(0.2);
             }
 
-            // Solve constraints
-            let mut solver = CombatSolver::new(graph.clone(), prophecy);
+            // Use the constraint solver
+            let mut solver = crate::ai::attack::constraints::ConstraintSolver::new(&graph);
+            solver.add_all_constraints(&graph, board);
+            solver.apply_prophecy(&prophecy);
 
-            if solver.solve() {
+            if solver.is_satisfiable(board) {
                 let actions = solver.generate_move(board, side);
-
-                // Basic validation
-                if !actions.is_empty() && solver.is_valid_move(board, side) {
+                if !actions.is_empty() {
                     candidates.push(actions);
                 }
             }
@@ -170,8 +168,8 @@ pub struct AttackNode<'a> {
     pub delta_money: SideArray<i32>,
     pub combat_graph: CombatGraph,
     pub attack_stage: AttackStage,
-    pub parent: Option<SpawnNodeRef<'a>>,
-    pub children: bumpalo::collections::Vec<'a, SpawnNodeRef<'a>>,
+    pub parent: Option<super::general::GeneralNodeRef<'a>>,
+    pub children: Vec<super::blotto::BlottoNodeRef<'a>>,
 }
 
 pub type AttackNodeRef<'a> = &'a RefCell<AttackNode<'a>>;
@@ -188,21 +186,21 @@ impl<'a> AttackNode<'a> {
             delta_money: SideArray::new(0, 0),
             combat_graph,
             attack_stage,
-            children: bumpalo::collections::Vec::new_in(arena),
+            children: Vec::new(),
             parent: None,
         }
     }
 }
 
 impl<'a> MCTSNode<'a> for AttackNode<'a> {
-    type Child = SpawnNode<'a>;
+    type Child = super::blotto::BlottoNode<'a>;
     type Etc = ();
 
     fn stats(&self) -> &NodeStats {
         &self.stats
     }
 
-    fn children(&self) -> &bumpalo::collections::Vec<'a, SpawnNodeRef<'a>> {
+    fn children(&self) -> &Vec<super::blotto::BlottoNodeRef<'a>> {
         &self.children
     }
 
@@ -214,12 +212,37 @@ impl<'a> MCTSNode<'a> for AttackNode<'a> {
             return (false, 0);
         }
 
-        // For now, just pick a random candidate
+        // Pick a random candidate and apply it
         let selected_move = rng.gen_range(0..candidates.len());
+        let actions = &candidates[selected_move];
 
-        // TODO: Apply the move to create a new board state
-        // For now, just return the index
-        (true, selected_move)
+        // Apply the move to create a new board state
+        let mut new_board = self.board.clone();
+        for action in actions {
+            match action {
+                BoardAction::Move { from_loc, to_loc } => {
+                    if let Some(piece) = new_board.remove_piece(from_loc) {
+                        let mut new_piece = piece;
+                        new_piece.loc = *to_loc;
+                        new_board.add_piece(new_piece);
+                    }
+                }
+                BoardAction::Attack { attacker_loc, target_loc } => {
+                    // Simplified: just remove the target
+                    new_board.remove_piece(target_loc);
+                }
+                _ => {
+                    // Skip other action types for now
+                }
+            }
+        }
+
+        // Update the board state
+        self.board = new_board;
+
+        // For now, just return the first child index
+        // In a full implementation, we would create BlottoNodes here
+        (false, 0)
     }
 
     fn update(&mut self, eval: &Eval) {
