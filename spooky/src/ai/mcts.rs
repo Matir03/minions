@@ -1,18 +1,18 @@
 //! Strategic decision making across multiple boards
 
 use std::{
-    cell::RefCell, 
+    cell::RefCell,
     collections::HashMap,
 };
 
 use crate::core::{GameConfig, GameState, Side, SideArray, Turn};
 
 use super::{
-    attack::{AttackNode, AttackNodeRef}, 
-    blotto::blotto, 
-    eval::Eval, 
-    general::{GeneralNode, GeneralNodeRef}, 
-    search::SearchArgs, 
+    attack::{AttackNode, AttackNodeRef},
+    blotto::blotto,
+    eval::Eval,
+    general::{GeneralNode, GeneralNodeRef},
+    search::SearchArgs,
 };
 
 use rand::prelude::*;
@@ -105,14 +105,18 @@ pub trait MCTSNode<'a> {
 
         let phantom_uct = phantom_stats.uct(ln_n, rng);
 
-        if best_uct > phantom_uct {
-            (false, best_child_index)
-        } else {
-            self.make_child(args, rng, etc)
+        if best_uct <= phantom_uct {
+            let (is_new, child_index) = self.make_child(args, rng, etc);
+
+            if is_new {
+                return (true, child_index);
+            }
         }
+
+        (false, best_child_index)
     }
 
-    fn get_child(&mut self, args: &SearchArgs<'a>, rng: &mut impl Rng, etc: Self::Etc) -> (usize, &'a RefCell<Self::Child>) 
+    fn get_child(&mut self, args: &SearchArgs<'a>, rng: &mut impl Rng, etc: Self::Etc) -> (usize, &'a RefCell<Self::Child>)
         where Self: 'a {
 
         let (_, index) = self.poll(args, rng, etc);
@@ -122,7 +126,7 @@ pub trait MCTSNode<'a> {
 
     fn update(&mut self, eval: &Eval);
 
-    // fn get_child(&mut self, args: &SearchArgs<'a>, rng: &mut impl Rng) -> (usize, Self::Child) 
+    // fn get_child(&mut self, args: &SearchArgs<'a>, rng: &mut impl Rng) -> (usize, Self::Child)
     // where Self: 'a {
     //     let (_, child_index) = self.poll(args, rng);
 

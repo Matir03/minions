@@ -1,5 +1,5 @@
 use std::{
-    cell::RefCell, 
+    cell::RefCell,
     collections::HashMap,
 };
 
@@ -7,11 +7,11 @@ use crate::core::{GameConfig, GameState, Side, SideArray, Turn};
 
 use super::{
     mcts::{MCTSNode, NodeStats},
-    attack::{AttackNode, AttackNodeRef}, 
-    blotto::blotto, 
-    eval::Eval, 
-    general::{GeneralNode, GeneralNodeRef}, 
-    search::SearchArgs, 
+    attack::{AttackNode, AttackNodeRef},
+    blotto::blotto,
+    eval::Eval,
+    general::{GeneralNode, GeneralNodeRef},
+    search::SearchArgs,
 };
 
 use rand::prelude::*;
@@ -80,7 +80,7 @@ impl <'a> GameNode<'a> {
             general_node: general_next,
             board_nodes: boards_next,
             children: Vec::new_in(args.arena),
-        }        
+        }
     }
 
     pub fn from_state(state: GameState, config: &GameConfig, arena: &'a Bump) -> Self {
@@ -101,7 +101,7 @@ impl <'a> GameNode<'a> {
                     node.update(&eval);
 
                     node
-                })) as AttackNodeRef), 
+                })) as AttackNodeRef),
             arena);
 
         Self {
