@@ -30,6 +30,11 @@ impl<'a> SpawnNode<'a> {
             children: Vec::new(),
         }
     }
+// Helper to check if a node is a dummy node (for future reference)
+impl<'a> SpawnNode<'a> {
+    pub fn is_dummy(&self) -> bool {
+        self.children.is_empty() && self.parent.is_none()
+    }
 }
 
 impl<'a> MCTSNode<'a> for SpawnNode<'a> {
@@ -76,6 +81,14 @@ impl<'a> MCTSNode<'a> for SpawnNode<'a> {
 
         let child_index = self.children.len();
         self.children.push(general_node);
+
+        // Ensure at least one child exists
+        if self.children.is_empty() {
+            println!("[DEBUG] make_child: creating dummy node for SpawnNode");
+            let dummy_node = args.arena.alloc(RefCell::new(super::general::GeneralNode::new(self.side, crate::core::tech::TechState::new(), crate::core::SideArray::new(0, 0), args.arena)));
+            self.children.push(dummy_node);
+            return (true, self.children.len() - 1);
+        }
 
         (true, child_index)
     }
@@ -129,6 +142,11 @@ impl SpawnStage {
                     unit,
                 });
             }
+        }
+        // Dummy fallback if no spawn actions generated
+        if actions.is_empty() {
+            println!("[DEBUG] No spawn actions found, generating dummy null move");
+            actions.push(BoardAction::EndPhase);
         }
         actions
     }

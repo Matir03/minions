@@ -33,6 +33,11 @@ impl AttackStage {
         // Build combat graph
         let graph = board.combat_graph();
 
+        println!("[DEBUG] Board has {} pieces:", board.pieces.len());
+        for (loc, piece) in &board.pieces {
+            println!("[DEBUG] Piece at {:?}: {:?}", loc, piece.unit);
+        }
+
         for i in 0..num_candidates {
             let mut prophecy = Prophecy::generate_basic(board, side);
             if i > 0 {
@@ -52,6 +57,12 @@ impl AttackStage {
             }
         }
 
+        if candidates.is_empty() {
+            println!("[DEBUG] No candidate moves found, generating dummy null move");
+            candidates.push(vec![BoardAction::EndPhase]);
+        }
+
+        println!("[DEBUG] AttackStage: generated {} candidate moves", candidates.len());
         self.generated_moves = candidates.clone();
         candidates
     }
@@ -209,7 +220,11 @@ impl<'a> MCTSNode<'a> for AttackNode<'a> {
         let candidates = self.attack_stage.generate_candidates(&self.board, Side::S0, 3);
 
         if candidates.is_empty() {
-            return (false, 0);
+            // Create a dummy child if no candidates
+            println!("[DEBUG] make_child: creating dummy node for AttackNode");
+            let dummy_node = args.arena.alloc(RefCell::new(super::blotto::BlottoNode::new(vec![], self.board.side, args.arena)));
+            self.children.push(dummy_node);
+            return (true, self.children.len() - 1);
         }
 
         // Pick a random candidate and apply it

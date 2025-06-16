@@ -85,6 +85,11 @@ impl<'a> BlottoNode<'a> {
             children: Vec::new(),
         }
     }
+// Helper to check if a node is a dummy node (for future reference)
+impl<'a> BlottoNode<'a> {
+    pub fn is_dummy(&self) -> bool {
+        self.children.is_empty() && self.boards.is_empty()
+    }
 }
 
 impl<'a> MCTSNode<'a> for BlottoNode<'a> {
@@ -130,6 +135,15 @@ impl<'a> MCTSNode<'a> for BlottoNode<'a> {
         }
 
         self.children = new_children;
+
+        // Ensure at least one child exists
+        if self.children.is_empty() {
+            println!("[DEBUG] make_child: creating dummy node for BlottoNode");
+            let dummy_node = args.arena.alloc(RefCell::new(SpawnNode::new(Board::default(), self.side, args.arena)));
+            self.children.push(dummy_node);
+            return (true, 0);
+        }
+
         (true, 0) // Return first child for now
     }
 

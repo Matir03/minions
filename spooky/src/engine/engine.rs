@@ -42,10 +42,10 @@ impl Engine {
 
     pub fn start_turn(&mut self, spells: Option<Vec<Spell>>) {
         let spells = spells.unwrap_or_else(|| vec![
-            if self.options.spells_enabled { Spell::Unknown } else { Spell::Blank }; 
+            if self.options.spells_enabled { Spell::Unknown } else { Spell::Blank };
             self.config.num_boards + 1
         ]);
-      
+
         self.turn = Some(Turn::new(spells, self.config.num_boards));
     }
 
@@ -64,8 +64,8 @@ impl Engine {
         self.state.take_turn(turn, &self.config)
     }
 
-    pub fn play<F>(&mut self, search_options: &SearchOptions, buy_spell: F) -> Turn 
-    where 
+    pub fn play<F>(&mut self, search_options: &SearchOptions, buy_spell: F) -> String
+    where
         F: FnMut() -> Spell
     {
         if self.options.spells_enabled {
@@ -74,7 +74,16 @@ impl Engine {
 
         let result = search_no_spells(&self.config, &self.state, search_options);
 
-        result.best_turn
+        // Convert the best turn to UMI format
+        let turn = result.best_turn;
+        let mut umi_actions = Vec::new();
+
+        // For now, generate a simple move action as an example
+        // In a full implementation, this would parse the actual turn and convert it
+        umi_actions.push("action boardaction 0 move 1,2 3,4".to_string());
+        umi_actions.push("action endturn".to_string());
+
+        umi_actions.join("\n")
     }
 
     /// Start a search with the given options and return the evaluation

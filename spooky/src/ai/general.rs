@@ -48,6 +48,11 @@ impl <'a> GeneralNode<'a> {
 
         self.assignments[best_index].clone()
     }
+// Helper to check if a node is a dummy node (for future reference)
+impl<'a> GeneralNode<'a> {
+    pub fn is_dummy(&self) -> bool {
+        self.children.is_empty() && self.assignments.is_empty()
+    }
 }
 
 impl<'a> MCTSNode<'a> for GeneralNode<'a> {
@@ -115,8 +120,13 @@ impl<'a> MCTSNode<'a> for GeneralNode<'a> {
                 }
             }
 
-
-            TechAssignment::new(advance, acquire)
+            // Dummy fallback: if no techs can be acquired, make a no-op assignment
+            if advance == 0 && acquire.is_empty() {
+                println!("[DEBUG] No tech assignment possible, generating dummy assignment");
+                TechAssignment::new(0, vec![])
+            } else {
+                TechAssignment::new(advance, acquire)
+            }
         };
 
         let num_spells = assignment.num_spells();
@@ -132,6 +142,15 @@ impl<'a> MCTSNode<'a> for GeneralNode<'a> {
 
         self.children.push(new_child);
         self.assignments.push(assignment);
+
+        // Ensure at least one child exists
+        if self.children.is_empty() {
+            println!("[DEBUG] make_child: creating dummy node for GeneralNode");
+            let dummy_node = args.arena.alloc(RefCell::new(GeneralNode::new(self.side, self.tech_state.clone(), SideArray::new(0, 0), args.arena)));
+            self.children.push(dummy_node);
+            self.assignments.push(TechAssignment::new(0, vec![])); // dummy assignment
+            return (true, self.children.len() - 1);
+        }
 
         (true, self.children.len() - 1)
     }

@@ -152,6 +152,11 @@ impl <'a> GameNode<'a> {
         // let best_child = self.children.iter().max_by_key(|c| c.stats.visits).unwrap();
         // best_child.best_turn()
     }
+// Helper to check if a node is a dummy node (for future reference)
+impl<'a> GameNode<'a> {
+    pub fn is_dummy(&self) -> bool {
+        self.children.is_empty() && self.index_map.is_empty()
+    }
 }
 
 
@@ -178,7 +183,7 @@ impl<'a> MCTSNode<'a> for GameNode<'a> {
         let mut attack_indices = StdVec::new();
         let mut boards_after_attack = StdVec::new();
 
-        for board_node in &self.board_nodes {
+        for (i, board_node) in self.board_nodes.iter().enumerate() {
             let (attack_index, _) = board_node.borrow_mut().get_child(args, rng, ());
             attack_indices.push(attack_index);
 
@@ -198,14 +203,17 @@ impl<'a> MCTSNode<'a> for GameNode<'a> {
             let blotto_allocation = blotto_allocations.get(board_idx).copied().unwrap_or(0);
             let spawn_actions = super::spawn::SpawnStage::generate_spawns(board, self.state.side_to_move, blotto_allocation, rng);
 
+            // Debug: print number of spawn actions
+            println!("[DEBUG] Board {}: {} spawn actions generated", board_idx, spawn_actions.len());
+
             // Apply spawn actions to create final board state
             let mut final_board = board.clone();
-            for action in spawn_actions {
+            for action in &spawn_actions {
                 if let BoardAction::Spawn { spawn_loc, unit } = action {
                     let piece = crate::core::board::Piece {
-                        loc: spawn_loc,
+                        loc: *spawn_loc,
                         side: self.state.side_to_move,
-                        unit,
+                        unit: *unit,
                         modifiers: crate::core::board::Modifiers::default(),
                         state: crate::core::board::PieceState::default().into(),
                     };
@@ -228,6 +236,11 @@ impl<'a> MCTSNode<'a> for GameNode<'a> {
         next_state.money[Side::S0] += general_node.delta_money[Side::S0];
         next_state.money[Side::S1] += general_node.delta_money[Side::S1];
 
+        // Debug: print if any children will be created
+        if self.children.len() > 100 {
+            println!("[DEBUG] Warning: children vector is very large: {}", self.children.len());
+        }
+
         // Create the next game node
         let next_node = args.arena.alloc(RefCell::new(
             GameNode::from_state(next_state, args.config, args.arena)
@@ -243,6 +256,26 @@ impl<'a> MCTSNode<'a> for GameNode<'a> {
             spawn_indices,
         };
         self.index_map.insert(next_index, child_index);
+
+        println!("[DEBUG] make_child: created child at index {} (total children: {})", child_index, self.children.len());
+
+        // Ensure at least one child exists
+        if self.children.is_empty() {
+            // Create a dummy node
+            let mut dummy_state = self.state.clone();
+            // Optionally mark this as dummy in state (e.g., set a field or add a log)
+            println!("[DEBUG] make_child: creating dummy node for GameNode");
+            let dummy_node = args.arena.alloc(RefCell::new(GameNode {
+                stats: NodeStats::new(),
+                state: dummy_state,
+                index_map: HashMap::new(),
+                general_node: self.general_node.clone(),
+                board_nodes: self.board_nodes.clone(),
+                children: StdVec::new(),
+            }));
+            self.children.push(dummy_node);
+            return (true, self.children.len() - 1);
+        }
 
         (true, child_index)
     }

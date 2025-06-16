@@ -24,7 +24,7 @@ impl FromStr for SearchOptions {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut i = 1;
+        let mut i = 0;
         let mut search_options = SearchOptions::default();
 
         let parts = s.split_whitespace().collect::<Vec<_>>();

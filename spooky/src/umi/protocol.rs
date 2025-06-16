@@ -6,17 +6,17 @@ use spooky::{
     core::{
         GameConfig,
         GameState,
-        GameAction, 
-        parse_fen, 
+        GameAction,
+        parse_fen,
         Spell,
-    }, 
+    },
     engine::{Engine, SearchOptions}
 };
 
 /// Handle a UMI command
 pub fn handle_command(cmd: &str, engine: &mut Engine) -> Result<()> {
     let parts: Vec<&str> = cmd.split_whitespace().collect();
-    
+
     if parts.is_empty() {
         return Ok(());
     }
@@ -33,7 +33,7 @@ pub fn handle_command(cmd: &str, engine: &mut Engine) -> Result<()> {
             io::stdout().flush().unwrap();
         }
         "setoption" => {
-            ensure!(parts.len() == 4 && parts[1] == "name" && parts[3] == "value", 
+            ensure!(parts.len() == 4 && parts[1] == "name" && parts[3] == "value",
                 "invalid setoption command");
 
             let option_name = parts[2];
@@ -76,11 +76,11 @@ pub fn handle_command(cmd: &str, engine: &mut Engine) -> Result<()> {
             let args = parts[1..].join(" ");
             let search_options = args.parse::<SearchOptions>()?;
 
-            let turn = engine.play(&search_options, || {
+            let turn_response = engine.play(&search_options, || {
                 todo!("implement spell buying communication");
             });
 
-            println!("{}", turn);
+            println!("{}", turn_response);
         }
         "turn" => {
             let spells = if parts.len() >= 2 {

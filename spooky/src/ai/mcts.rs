@@ -76,6 +76,12 @@ pub trait MCTSNode<'a> {
     fn poll(&mut self, args: &SearchArgs<'a>, rng: &mut impl Rng, etc: Self::Etc) -> (bool, usize)
         where Self: 'a {
 
+        // If no children exist, always create a new one
+        if self.children().is_empty() {
+            let (is_new, child_index) = self.make_child(args, rng, etc);
+            return (is_new, child_index);
+        }
+
         let mut best_child_index = 0;
         let mut best_uct = f32::NEG_INFINITY;
         let mut total_score: f32 = 0.0;
@@ -119,7 +125,22 @@ pub trait MCTSNode<'a> {
     fn get_child(&mut self, args: &SearchArgs<'a>, rng: &mut impl Rng, etc: Self::Etc) -> (usize, &'a RefCell<Self::Child>)
         where Self: 'a {
 
-        let (_, index) = self.poll(args, rng, etc);
+        // Ensure we have at least one child
+        if self.children().is_empty() {
+            let (is_new, index) = self.make_child(args, rng, etc);
+            if !is_new {
+                // If make_child failed, create a dummy child or panic
+                panic!("Failed to create child node");
+            }
+            return (index, self.children()[index]);
+        }
+
+        let (is_new, index) = self.poll(args, rng, etc);
+
+        // Ensure the index is valid
+        if index >= self.children().len() {
+            panic!("Invalid child index: {} >= {}", index, self.children().len());
+        }
 
         (index, self.children()[index])
     }
