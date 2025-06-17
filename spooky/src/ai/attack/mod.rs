@@ -175,6 +175,7 @@ impl AttackStage {
 pub struct AttackNode<'a> {
     pub stats: NodeStats,
     pub board: Board,
+    pub side: Side,
     pub delta_points: SideArray<i32>,
     pub delta_money: SideArray<i32>,
     pub combat_graph: CombatGraph,
@@ -186,13 +187,14 @@ pub struct AttackNode<'a> {
 pub type AttackNodeRef<'a> = &'a RefCell<AttackNode<'a>>;
 
 impl<'a> AttackNode<'a> {
-    pub fn new(board: Board, arena: &'a bumpalo::Bump) -> Self {
+    pub fn new(board: Board, side: Side, arena: &'a bumpalo::Bump) -> Self {
         let combat_graph = board.combat_graph();
         let attack_stage = AttackStage::new();
 
         Self {
             stats: NodeStats::new(),
             board,
+            side,
             delta_points: SideArray::new(0, 0),
             delta_money: SideArray::new(0, 0),
             combat_graph,
@@ -217,15 +219,7 @@ impl<'a> MCTSNode<'a> for AttackNode<'a> {
 
     fn make_child(&mut self, args: &SearchArgs<'a>, rng: &mut impl Rng, _etc: ()) -> (bool, usize) {
         // Generate candidate moves
-        let candidates = self.attack_stage.generate_candidates(&self.board, Side::S0, 3);
-
-        if candidates.is_empty() {
-            // Create a dummy child if no candidates
-            println!("[DEBUG] make_child: creating dummy node for AttackNode");
-            let dummy_node = args.arena.alloc(RefCell::new(super::blotto::BlottoNode::new(vec![], self.board.side, args.arena)));
-            self.children.push(dummy_node);
-            return (true, self.children.len() - 1);
-        }
+        let candidates = self.attack_stage.generate_candidates(&self.board, self.side, 3);
 
         // Pick a random candidate and apply it
         let selected_move = rng.gen_range(0..candidates.len());

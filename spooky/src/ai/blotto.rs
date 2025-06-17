@@ -85,11 +85,6 @@ impl<'a> BlottoNode<'a> {
             children: Vec::new(),
         }
     }
-// Helper to check if a node is a dummy node (for future reference)
-impl<'a> BlottoNode<'a> {
-    pub fn is_dummy(&self) -> bool {
-        self.children.is_empty() && self.boards.is_empty()
-    }
 }
 
 impl<'a> MCTSNode<'a> for BlottoNode<'a> {

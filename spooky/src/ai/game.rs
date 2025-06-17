@@ -97,7 +97,7 @@ impl <'a> GameNode<'a> {
         let board_nodes = Vec::from_iter_in(
             state.boards.into_iter()
                 .map(|b| arena.alloc(RefCell::new({
-                    let mut node = AttackNode::new(b, arena);
+                    let mut node = AttackNode::new(b, state.side_to_move, arena);
                     node.update(&eval);
 
                     node
@@ -152,13 +152,7 @@ impl <'a> GameNode<'a> {
         // let best_child = self.children.iter().max_by_key(|c| c.stats.visits).unwrap();
         // best_child.best_turn()
     }
-// Helper to check if a node is a dummy node (for future reference)
-impl<'a> GameNode<'a> {
-    pub fn is_dummy(&self) -> bool {
-        self.children.is_empty() && self.index_map.is_empty()
-    }
 }
-
 
 impl<'a> MCTSNode<'a> for GameNode<'a> {
     type Child = GameNode<'a>;
@@ -260,22 +254,25 @@ impl<'a> MCTSNode<'a> for GameNode<'a> {
         println!("[DEBUG] make_child: created child at index {} (total children: {})", child_index, self.children.len());
 
         // Ensure at least one child exists
-        if self.children.is_empty() {
-            // Create a dummy node
-            let mut dummy_state = self.state.clone();
-            // Optionally mark this as dummy in state (e.g., set a field or add a log)
-            println!("[DEBUG] make_child: creating dummy node for GameNode");
-            let dummy_node = args.arena.alloc(RefCell::new(GameNode {
-                stats: NodeStats::new(),
-                state: dummy_state,
-                index_map: HashMap::new(),
-                general_node: self.general_node.clone(),
-                board_nodes: self.board_nodes.clone(),
-                children: StdVec::new(),
-            }));
-            self.children.push(dummy_node);
-            return (true, self.children.len() - 1);
-        }
+        // if self.children.is_empty() {
+        //     // Create a dummy node
+        //     let mut dummy_state = self.state.clone();
+        //     dummy_state.side_to_move = !dummy_state.side_to_move;
+        //     dummy_state.boards.iter_mut().for_each(|b| b.side_to_move = !b.side_to_move);
+
+        //     // Optionally mark this as dummy in state (e.g., set a field or add a log)
+        //     println!("[DEBUG] make_child: creating dummy node for GameNode");
+        //     let dummy_node = args.arena.alloc(RefCell::new(GameNode {
+        //         stats: NodeStats::new(),
+        //         state: dummy_state,
+        //         index_map: HashMap::new(),
+        //         general_node: self.general_node,
+        //         board_nodes: self.board_nodes.clone(),
+        //         children: StdVec::new(),
+        //     }));
+        //     self.children.push(dummy_node);
+        //     return (true, self.children.len() - 1);
+        // }
 
         (true, child_index)
     }

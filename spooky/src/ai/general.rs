@@ -48,11 +48,6 @@ impl <'a> GeneralNode<'a> {
 
         self.assignments[best_index].clone()
     }
-// Helper to check if a node is a dummy node (for future reference)
-impl<'a> GeneralNode<'a> {
-    pub fn is_dummy(&self) -> bool {
-        self.children.is_empty() && self.assignments.is_empty()
-    }
 }
 
 impl<'a> MCTSNode<'a> for GeneralNode<'a> {

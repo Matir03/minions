@@ -30,11 +30,6 @@ impl<'a> SpawnNode<'a> {
             children: Vec::new(),
         }
     }
-// Helper to check if a node is a dummy node (for future reference)
-impl<'a> SpawnNode<'a> {
-    pub fn is_dummy(&self) -> bool {
-        self.children.is_empty() && self.parent.is_none()
-    }
 }
 
 impl<'a> MCTSNode<'a> for SpawnNode<'a> {
