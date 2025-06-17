@@ -6,7 +6,11 @@ mod constraints;
 use std::collections::HashMap;
 use std::cell::RefCell;
 use crate::core::{Board, Side, action::BoardAction, SideArray};
-use super::{eval::Eval, mcts::{MCTSNode, NodeStats, Stage}, search::SearchArgs, spawn::{SpawnNode, SpawnNodeRef}};
+use super::{
+    eval::Eval,
+    mcts::{MCTSNode, NodeStats, Stage},
+    search::SearchArgs,
+};
 use combat::CombatGraph;
 use prophecy::Prophecy;
 use solver::CombatSolver;
@@ -168,97 +172,5 @@ impl AttackStage {
         }
 
         best_move
-    }
-}
-
-/// MCTS node for the attack stage
-pub struct AttackNode<'a> {
-    pub stats: NodeStats,
-    pub board: Board,
-    pub side: Side,
-    pub delta_points: SideArray<i32>,
-    pub delta_money: SideArray<i32>,
-    pub combat_graph: CombatGraph,
-    pub attack_stage: AttackStage,
-    pub parent: Option<super::general::GeneralNodeRef<'a>>,
-    pub children: Vec<super::blotto::BlottoNodeRef<'a>>,
-}
-
-pub type AttackNodeRef<'a> = &'a RefCell<AttackNode<'a>>;
-
-impl<'a> AttackNode<'a> {
-    pub fn new(board: Board, side: Side, arena: &'a bumpalo::Bump) -> Self {
-        let combat_graph = board.combat_graph();
-        let attack_stage = AttackStage::new();
-
-        Self {
-            stats: NodeStats::new(),
-            board,
-            side,
-            delta_points: SideArray::new(0, 0),
-            delta_money: SideArray::new(0, 0),
-            combat_graph,
-            attack_stage,
-            children: Vec::new(),
-            parent: None,
-        }
-    }
-}
-
-impl<'a> MCTSNode<'a> for AttackNode<'a> {
-    type Child = super::blotto::BlottoNode<'a>;
-    type Etc = ();
-
-    fn stats(&self) -> &NodeStats {
-        &self.stats
-    }
-
-    fn children(&self) -> &Vec<super::blotto::BlottoNodeRef<'a>> {
-        &self.children
-    }
-
-    fn make_child(&mut self, args: &SearchArgs<'a>, rng: &mut impl Rng, _etc: ()) -> (bool, usize) {
-        // Generate candidate moves
-        let candidates = self.attack_stage.generate_candidates(&self.board, self.side, 3);
-
-        // Pick a random candidate and apply it
-        let selected_move = rng.gen_range(0..candidates.len());
-        let actions = &candidates[selected_move];
-
-        // Apply the move to create a new board state
-        let mut new_board = self.board.clone();
-        for action in actions {
-            match action {
-                BoardAction::Move { from_loc, to_loc } => {
-                    if let Some(piece) = new_board.remove_piece(from_loc) {
-                        let mut new_piece = piece;
-                        new_piece.loc = *to_loc;
-                        new_board.add_piece(new_piece);
-                    }
-                }
-                BoardAction::Attack { attacker_loc, target_loc } => {
-                    // Simplified: just remove the target
-                    new_board.remove_piece(target_loc);
-                }
-                _ => {
-                    // Skip other action types for now
-                }
-            }
-        }
-
-        // Update the board state
-        self.board = new_board;
-
-        // For now, just return the first child index
-        // In a full implementation, we would create BlottoNodes here
-        (false, 0)
-    }
-
-    fn update(&mut self, eval: &Eval) {
-        self.stats.update(eval);
-
-        if let Some(parent) = &self.parent {
-            parent.borrow_mut().update(eval);
-        }
     }
 }

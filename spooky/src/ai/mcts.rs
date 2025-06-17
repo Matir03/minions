@@ -8,8 +8,7 @@ use std::{
 use crate::core::{GameConfig, GameState, Side, SideArray, Turn};
 
 use super::{
-    attack::{AttackNode, AttackNodeRef},
-    blotto::blotto,
+    blotto, // Assuming we'll have a blotto function/module here
     eval::Eval,
     general::{GeneralNode, GeneralNodeRef},
     search::SearchArgs,
@@ -23,9 +22,11 @@ use std::vec::Vec as StdVec;
 #[derive(Debug, Clone, Copy)]
 pub enum Stage {
     General,
-    Attack,
-    Blotto,
-    Spawn,
+    // Blotto is now handled as a functional step within GameNode::make_child.
+    // BoardNode now handles board-specific logic including attack and spawn internally.
+    // If a stage is needed for BoardNode itself, it could be 'BoardProcessing' or similar,
+    // or GameNode's children are simply other GameNodes, and BoardNode's internal MCTS is separate.
+    // For now, removing Blotto as a distinct top-level MCTS stage.
 }
 
 pub struct NodeStats {
@@ -63,22 +64,21 @@ impl NodeStats {
 
 
 pub trait MCTSNode<'a> {
-    type Child: MCTSNode<'a>;
-    type Etc;
+    type Args;
 
     fn stats(&self) -> &NodeStats;
-    fn children(&self) -> &StdVec<&'a RefCell<Self::Child>>;
+    fn children(&self) -> &StdVec<&'a RefCell<Self>>;
 
     /// (whether a new child was made, index of selected child)
-    fn make_child(&mut self, args: &SearchArgs<'a>, rng: &mut impl Rng, etc: Self::Etc) -> (bool, usize);
+    fn make_child(&mut self, search_args: &SearchArgs<'a>, rng: &mut impl Rng, args: Self::Args) -> (bool, usize);
 
     /// (whether a new child was made, index of selected child)
-    fn poll(&mut self, args: &SearchArgs<'a>, rng: &mut impl Rng, etc: Self::Etc) -> (bool, usize)
+    fn poll(&mut self, search_args: &SearchArgs<'a>, rng: &mut impl Rng, args: Self::Args) -> (bool, usize)
         where Self: 'a {
 
         // If no children exist, always create a new one
         if self.children().is_empty() {
-            let (is_new, child_index) = self.make_child(args, rng, etc);
+            let (is_new, child_index) = self.make_child(search_args, rng, args);
             return (is_new, child_index);
         }
 
@@ -112,7 +112,7 @@ pub trait MCTSNode<'a> {
         let phantom_uct = phantom_stats.uct(ln_n, rng);
 
         if best_uct <= phantom_uct {
-            let (is_new, child_index) = self.make_child(args, rng, etc);
+            let (is_new, child_index) = self.make_child(search_args, rng, args);
 
             if is_new {
                 return (true, child_index);
@@ -122,12 +122,12 @@ pub trait MCTSNode<'a> {
         (false, best_child_index)
     }
 
-    fn get_child(&mut self, args: &SearchArgs<'a>, rng: &mut impl Rng, etc: Self::Etc) -> (usize, &'a RefCell<Self::Child>)
+    fn get_child(&mut self, search_args: &SearchArgs<'a>, rng: &mut impl Rng, args: Self::Args) -> (usize, &'a RefCell<Self>)
         where Self: 'a {
 
         // Ensure we have at least one child
         if self.children().is_empty() {
-            let (is_new, index) = self.make_child(args, rng, etc);
+            let (is_new, index) = self.make_child(search_args, rng, args);
             if !is_new {
                 // If make_child failed, create a dummy child or panic
                 panic!("Failed to create child node");
@@ -135,7 +135,7 @@ pub trait MCTSNode<'a> {
             return (index, self.children()[index]);
         }
 
-        let (is_new, index) = self.poll(args, rng, etc);
+        let (is_new, index) = self.poll(search_args, rng, args);
 
         // Ensure the index is valid
         if index >= self.children().len() {

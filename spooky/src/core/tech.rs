@@ -207,9 +207,13 @@ impl TechState {
             let side = Side::from_index(side_index)?;
             for (i, c) in side_str.chars().enumerate() {
                 state.status[side][i] = match c {
-                    'L' => { 
-                        state.unlock_index[side] = i;
-                        break; 
+                    'L' => {
+                        // Record the first 'L' as the unlock_index, but continue parsing to fill status array.
+                        // This might be refined later if multiple 'L's are disallowed or handled differently.
+                        if state.status[side].iter().take(i).all(|s| *s != TechStatus::Locked) { // only set if this is the first L
+                           state.unlock_index[side] = i;
+                        }
+                        TechStatus::Locked
                     }
                     'U' => TechStatus::Unlocked,
                     'A' => {
@@ -222,11 +226,12 @@ impl TechState {
         }
 
         state.unlock_index.values = state.status.values
-            .map(|side_techs| 
-                side_techs
+            .map(|side_techs_full_array|
+                side_techs_full_array[0..num_techs]
                     .iter()
                     .position(|&status| status == TechStatus::Locked)
-                    .unwrap_or(1) - 1
+                    .unwrap_or(num_techs)
+                    .saturating_sub(1)
             );
         
         state.acquired_techs.values = state.status.values

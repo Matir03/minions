@@ -1,14 +1,14 @@
-# Attack Stage
+# Attack Resolution Logic for BoardNode
 
-The attack stage handles combat resolution through a sophisticated constraint satisfaction system. This document details the technical implementation of combat mechanics.
+This document details a sophisticated constraint satisfaction system intended for handling combat resolution. This logic is designed to be encapsulated within `BoardNode`s, which manage actions on individual game boards as part of the overall `GameNode` MCTS expansion.
 
 ## Overview
 
-The attack stage processes combat in several phases:
-1. Pair identification
-2. Constraint graph construction
-3. Move generation
-4. Position evaluation
+Combat resolution within a `BoardNode` can be processed in several phases:
+1. Combat Pair identification
+2. Constraint graph construction for attack planning
+3. Candidate move generation based on solving constraints
+4. Evaluation of resulting board states
 
 ## Combat Pair Identification
 

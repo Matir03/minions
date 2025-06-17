@@ -2,16 +2,17 @@ Search:
 
 - MCTS for overall search  
   - static evaluator with confidence interval for pruning "bad" explores  
-- expand ply by subply "stages":  
-  - generaling stage  
-  - attack stage  
-  - blotto stage  
-  - spawn stage  
-- generaling and attack stage independent, blotto stage dependent on both, spawn stage dependent on all  
-- each stage tracks backpropagated feedback  
-- stages lazily generate refined candidate moves
+- MCTS tree consists of `GameNode`s.
+- `GameNode` expansion involves:
+  - Calling a blotto function to distribute money.
+  - A `GeneralNode` making tech/strategic decisions.
+  - Multiple `BoardNode`s (one per board) determining board-specific actions (attacks, spawns, etc.).
+- `GeneralNode` decisions provide context for `BoardNode`s. `BoardNode`s operate with allocated money and tech state.  
+- Feedback (e.g., evaluation scores) is backpropagated up the `GameNode` tree.
+- `GeneralNode` and `BoardNode`s might internally use lazy generation or refinement for their respective decisions.
 
 General:
+(This logic is now primarily handled within `GeneralNode` as part of `GameNode` expansion.)
 
 - decide which unit(s) to tech to  
 - just generate all possible choices at this point  
@@ -20,6 +21,7 @@ General:
   - use refinement based approach at this point
 
 Attack:
+(This logic is now primarily handled within `BoardNode`s for each board, as part of `GameNode` expansion.)
 
 - for each friendly piece, compute all pieces they can hit (possibly from hexes blocked by enemy pieces), to generate all attacker-defender pairs (and all possible attack hexes for each such pair)  
 - generate constraint graph with following attributes:  
@@ -77,6 +79,7 @@ Attack:
 - maybe do something with the lookahead from MCTS backpropagation?
 
 Spawn:
+(This logic, including blotto-informed decisions, is now primarily handled within `BoardNode`s for each board, as part of `GameNode` expansion.)
 
 - compute candidate spawn location \+ unit combos for spawn stage  
 - tabulate combo: heuristic goodness, price values  

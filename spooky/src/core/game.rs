@@ -335,9 +335,21 @@ impl GameState {
 // }
 
 /// Parse game state from FEN notation
-pub fn parse_fen(fen: &str) -> Result<(GameConfig, GameState)> {
-    let config = GameConfig::from_fen(fen)?;
-    let state = GameState::from_fen(fen, &config)?;
+pub fn parse_fen(fen_str: &str) -> Result<(GameConfig, GameState)> {
+    let mut parts_iter = fen_str.split_whitespace();
+    
+    // First 5 parts are for GameConfig
+    let config_fen_string_parts: Vec<&str> = parts_iter.by_ref().take(5).collect();
+    ensure!(config_fen_string_parts.len() == 5, "Invalid FEN: Not enough parts for GameConfig - expected 5, got {}", config_fen_string_parts.len());
+    let config_fen_to_parse = config_fen_string_parts.join(" ");
+    let config = GameConfig::from_fen(&config_fen_to_parse)?;
+
+    // The rest of the parts are for GameState
+    let state_fen_string_parts: Vec<&str> = parts_iter.collect();
+    ensure!(!state_fen_string_parts.is_empty(), "Invalid FEN: No parts remaining for GameState");
+    let state_fen_to_parse = state_fen_string_parts.join(" ");
+    let state = GameState::from_fen(&state_fen_to_parse, &config)?;
+    
     Ok((config, state))
 }
 
@@ -348,7 +360,7 @@ mod tests {
 
     #[test]
     fn test_basic_fen_conversion() {
-        let fen = "1 0 4 1,2,3,4 Z8i/0/0/0/0/0/0/0/0/0 0 LLLUUA|LLLLLA 10|5";
+        let fen = "1 0 0 4 1,2,3,4 Z8i/0/0/0/0/0/0/0/0/0 0 LLLU|LLLL 10|5"; // Restored original board FEN, kept TechState fix
         let (config, state) = parse_fen(fen).unwrap();
 
         assert_eq!(config.num_boards, 1);
@@ -361,7 +373,7 @@ mod tests {
 
     #[test]
     fn test_empty_spaces_fen() {
-        let fen = "2 0,1 4 1,2,3,4 0/0/0/0/0/0/0/0/0/0|0/0/0/0/0/0/0/0/0/0 1 LLLUUA|LLLLLA 10|5";
+        let fen = "2 10 0,1 4 1,2,3,4 0/0/0/0/0/0/0/0/0/0|0/0/0/0/0/0/0/0/0/0 1 LLLU|LLLL 10|5";
         let (config, state) = parse_fen(fen).unwrap();
 
         assert_eq!(config.num_boards, 2);

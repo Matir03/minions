@@ -51,14 +51,13 @@ impl <'a> GeneralNode<'a> {
 }
 
 impl<'a> MCTSNode<'a> for GeneralNode<'a> {
-    type Child = GeneralNode<'a>;
-    type Etc = i32;
+    type Args = i32;
 
     fn stats(&self) -> &NodeStats {
         &self.stats
     }
 
-    fn children(&self) -> &StdVec<&'a RefCell<Self::Child>> {
+    fn children(&self) -> &StdVec<&'a RefCell<Self>> {
         unsafe { std::mem::transmute(&self.children) }
     }
 
