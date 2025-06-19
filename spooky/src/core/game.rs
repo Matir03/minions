@@ -3,7 +3,7 @@
 use anyhow::{Result, anyhow, bail, ensure, Context};
 use crate::core::convert::{FromIndex, ToIndex};
 use super::{
-    action::Turn, 
+    action::GameTurn, 
     board::Board, 
     map::Map, 
     side::{Side, SideArray}, 
@@ -234,7 +234,7 @@ impl GameState {
         })
     }
 
-    pub fn take_turn(&mut self, turn: Turn, config: &GameConfig) -> Result<Option<Side>> {
+    pub fn take_turn(&mut self, turn: GameTurn, config: &GameConfig) -> Result<Option<Side>> {
         let num_boards = config.num_boards;
 
         // Process tech assignments

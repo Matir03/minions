@@ -3,7 +3,7 @@ use std::{
     collections::HashMap,
 };
 
-use crate::core::{GameConfig, GameState, Side, SideArray, Turn, board::Board, tech::TechState};
+use crate::core::{GameConfig, GameState, Side, SideArray, GameTurn, board::Board, tech::TechState};
 use crate::ai::mcts::{MCTSNode, NodeStats};
 use crate::ai::general::{GeneralNode, GeneralNodeRef};
 use crate::ai::board_node::{BoardNode, BoardNodeRef};
@@ -25,23 +25,28 @@ pub struct NodeIndex {
     // then we'd need something like: pub board_node_child_indices: StdVec<usize>,
 }
 
+pub struct GameEdge<'a> {
+    pub turn: GameTurn,
+    pub child: GameNodeRef<'a>,
+}
+
 pub struct GameNode<'a> {
     pub stats: NodeStats,
     pub state: GameState,
-    pub index_map: HashMap<NodeIndex, usize>,
+    // pub index_map: HashMap<NodeIndex, usize>,
     pub general_node: GeneralNodeRef<'a>,
     pub board_nodes: Vec<'a, BoardNodeRef<'a>>, 
-    pub children: StdVec<GameNodeRef<'a>>,
+    pub edges: Vec<'a, GameEdge<'a>>,
 }
 
 pub type GameNodeRef<'a> = &'a RefCell<GameNode<'a>>;
 
 impl <'a> GameNode<'a> {
-    pub fn new(parent: &GameNode<'a>, general_next: GeneralNodeRef<'a>, boards_next: Vec<'a, BoardNodeRef<'a>>, args: &SearchArgs<'a>) -> Self {
+    pub fn from_nodes(parent: &GameNode<'a>, general_node: GeneralNodeRef<'a>, board_nodes: Vec<'a, BoardNodeRef<'a>>, args: &SearchArgs<'a>) -> Self {
         let mut board_points = parent.state.board_points.clone();
         let mut money = parent.state.money.clone();
 
-        for b in &boards_next {
+        for b in &board_nodes {
             let b = b.borrow();
             board_points[Side::S0] += b.delta_points[Side::S0];
             board_points[Side::S1] += b.delta_points[Side::S1];
@@ -50,7 +55,7 @@ impl <'a> GameNode<'a> {
             money[Side::S1] += b.delta_money[Side::S1];
         }
 
-        let mut g = general_next.borrow_mut();
+        let mut g = general_node.borrow_mut();
 
         money[Side::S0] += g.delta_money[Side::S0];
         money[Side::S1] += g.delta_money[Side::S1];
@@ -58,7 +63,7 @@ impl <'a> GameNode<'a> {
         let state = GameState {
             tech_state: g.tech_state.clone(),
             side_to_move: !parent.state.side_to_move,
-            boards: boards_next.iter().map(|b_node_ref| b_node_ref.borrow().board.clone()).collect(), 
+            boards: board_nodes.iter().map(|b_node_ref| b_node_ref.borrow().board.clone()).collect(), 
             board_points,
             money,
         };
@@ -67,7 +72,7 @@ impl <'a> GameNode<'a> {
 
         g.update(&eval);
 
-        boards_next.iter().for_each(|b| b.borrow_mut().update(&eval));
+        board_nodes.iter().for_each(|b| b.borrow_mut().update(&eval));
 
         Self {
             stats: NodeStats {
@@ -75,10 +80,10 @@ impl <'a> GameNode<'a> {
                 eval,
             },
             state,
-            index_map: HashMap::new(),
-            general_node: general_next,
-            board_nodes: boards_next,
-            children: StdVec::new(),
+            // index_map: HashMap::new(),
+            general_node,
+            board_nodes,
+            edges: Vec::new_in(args.arena),
         }
     }
 
@@ -108,16 +113,16 @@ impl <'a> GameNode<'a> {
                 eval,
             },
             state: state_clone,
-            index_map: HashMap::new(),
+            // index_map: HashMap::new(),
             general_node,
             board_nodes,
-            children: StdVec::new(),
+            edges: Vec::new_in(arena),
         }
     }
 
     pub fn explore(&mut self, args: &SearchArgs<'a>, rng: &mut impl Rng) -> Eval {
         let (is_new, explore_index) = self.poll(args, rng, ());
-        let mut next_node = self.children[explore_index].borrow_mut();
+        let mut next_node = self.edges[explore_index].child.borrow_mut();
 
         let eval = if is_new {
             next_node.eval()
@@ -145,11 +150,17 @@ impl <'a> GameNode<'a> {
         self.stats.eval.flip()
     }
 
-    pub fn best_turn(&self) -> Turn {
-        todo!()
-        // let best_child = self.children.iter().max_by_key(|c| c.stats.visits).unwrap();
-        // best_child.best_turn()
+    pub fn best_turn(&self) -> GameTurn {
+        self.edges.iter()
+            .max_by_key(|edge| 
+                edge.child.borrow().stats.visits
+            )
+            .unwrap()
+            .turn
+            .clone()
     }
+
+
 }
 
 impl<'a> MCTSNode<'a> for GameNode<'a> {
@@ -159,8 +170,8 @@ impl<'a> MCTSNode<'a> for GameNode<'a> {
         &self.stats
     }
 
-    fn children(&self) -> &StdVec<&'a RefCell<Self>> {
-        unsafe { std::mem::transmute(&self.children) }
+    fn children(&self) -> &Vec<'a, &'a RefCell<Self>> {
+        &self.edges.child
     }
 
     fn make_child(&mut self, args: &SearchArgs<'a>, rng: &mut impl Rng, _etc: ()) -> (bool, usize) {
@@ -219,7 +230,7 @@ impl<'a> MCTSNode<'a> for GameNode<'a> {
         // We need to ensure the `boards_next_refs` are the `BoardNodeRef`s that correspond to the `next_board_states`.
         // The `next_board_node_refs_for_new_game_node` are the children resulting from `board_node_ref.borrow_mut().get_child(...)`.
 
-        let new_child_game_node = args.arena.alloc(RefCell::new(GameNode::new(
+        let new_child_game_node = args.arena.alloc(RefCell::new(GameNode::from_nodes(
             self, // Parent is the current GameNode
             next_general_node_ref, // The child selected from current general_node
             next_board_node_refs_for_new_game_node, // The children selected from current board_nodes

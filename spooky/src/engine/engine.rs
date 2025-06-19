@@ -1,4 +1,4 @@
-use crate::core::{GameConfig, GameState, GameAction, Spell, Side, Turn};
+use crate::core::{GameConfig, GameState, GameAction, Spell, Side, GameTurn};
 use crate::ai::Eval;
 
 use super::options::EngineOptions;
@@ -11,7 +11,7 @@ pub struct Engine {
     pub config: GameConfig,
     pub state: GameState,
     pub options: EngineOptions,
-    pub turn: Option<Turn>,
+    pub turn: Option<GameTurn>,
 }
 
 impl Engine {
@@ -46,7 +46,7 @@ impl Engine {
             self.config.num_boards + 1
         ]);
 
-        self.turn = Some(Turn::new(spells, self.config.num_boards));
+        self.turn = Some(GameTurn::new(spells, self.config.num_boards));
     }
 
     pub fn do_action(&mut self, action: GameAction) -> Result<()> {
@@ -60,7 +60,7 @@ impl Engine {
         self.take_turn(turn)
     }
 
-    pub fn take_turn(&mut self, turn: Turn) -> Result<Option<Side>> {
+    pub fn take_turn(&mut self, turn: GameTurn) -> Result<Option<Side>> {
         self.state.take_turn(turn, &self.config)
     }
 

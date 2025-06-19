@@ -1,9 +1,9 @@
 //! MCTS Node representing the state of a single board and its turn processing (attack + spawn).
 
 use std::cell::RefCell;
-use std::vec::Vec as StdVec;
+// use std::vec::Vec as StdVec;
 
-use bumpalo::{Bump, collections::Vec as BumpVec};
+use bumpalo::{Bump, collections::Vec};
 use rand::prelude::*;
 
 use crate::core::{Board, Side, GameConfig, action::BoardAction, map::Map, tech::TechState, SideArray};
@@ -24,7 +24,7 @@ pub struct BoardNode<'a> {
     pub side_to_move: Side,
     pub delta_money: SideArray<i32>, // Money changes resulting from actions on this board in one step
     pub delta_points: SideArray<i32>,// Point changes resulting from actions on this board in one step
-    pub children: StdVec<&'a RefCell<BoardNode<'a>>>,
+    pub children: Vec<'a, &'a RefCell<BoardNode<'a>>>,
     // Arena for allocating children, if BoardNode manages its own children directly
     // However, typically the main MCTS search/GameNode's arena would be used.
     // For now, assuming children are allocated by the caller of make_child (e.g. GameNode's MCTS loop)
@@ -41,7 +41,7 @@ impl<'a> BoardNode<'a> {
             side_to_move,
             delta_money: SideArray::new(0, 0),
             delta_points: SideArray::new(0, 0),
-            children: StdVec::new(),
+            children: Vec::new_in(_arena),
         }
     }
 
@@ -93,7 +93,7 @@ impl<'a> MCTSNode<'a> for BoardNode<'a> {
         &self.stats
     }
 
-    fn children(&self) -> &StdVec<&'a RefCell<Self>> {
+    fn children(&self) -> &Vec<'a, &'a RefCell<Self>> {
         &self.children
     }
 

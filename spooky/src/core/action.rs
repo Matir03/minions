@@ -143,7 +143,7 @@ impl GameAction {
 
 /// Represents a complete turn in the game
 #[derive(Debug, Clone)]
-pub struct Turn {
+pub struct GameTurn {
     // pub num_spells_bought: usize,
     pub spells: HashBag<Spell>,
     pub spell_assignment: Vec<Spell>,  // board -> spell index
@@ -151,7 +151,7 @@ pub struct Turn {
     pub board_actions: Vec<Vec<BoardAction>>,
 }
 
-impl Turn {
+impl GameTurn {
     /// Create a new turn with the given number of boards
     pub fn new(spells: Vec<Spell>, num_boards: usize) -> Self {
         assert!(spells.len() == num_boards + 1, "Invalid number of spells");
@@ -216,7 +216,7 @@ impl Display for BoardAction {
     }
 }
 
-impl Display for Turn {
+impl Display for GameTurn {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         writeln!(f, "turn")?;
 

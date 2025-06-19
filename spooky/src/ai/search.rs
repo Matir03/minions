@@ -1,6 +1,6 @@
 //! Search for the best move
 
-use crate::core::{GameConfig, GameState, Turn};
+use crate::core::{GameConfig, GameState, GameTurn};
 
 use super::{
     mcts::MCTSNode,
@@ -13,7 +13,7 @@ use bumpalo::Bump;
 use rand::prelude::*;
 
 pub struct SearchResult {
-    pub best_turn: Turn,
+    pub best_turn: GameTurn,
     pub eval: Eval,
 }
 
@@ -47,7 +47,7 @@ impl<'a> Search<'a> {
         self.root.explore(&self.args, &mut self.rng);
     }
 
-    pub fn best_turn(&self) -> Turn {
+    pub fn best_turn(&self) -> GameTurn {
         self.root.best_turn()
     }
 

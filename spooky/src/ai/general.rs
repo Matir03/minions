@@ -57,8 +57,8 @@ impl<'a> MCTSNode<'a> for GeneralNode<'a> {
         &self.stats
     }
 
-    fn children(&self) -> &StdVec<&'a RefCell<Self>> {
-        unsafe { std::mem::transmute(&self.children) }
+    fn children(&self) -> &Vec<'a, &'a RefCell<Self>> {
+        &self.children
     }
 
     fn make_child(&mut self, args: &SearchArgs<'a>, rng: &mut impl Rng, money: i32) -> (bool, usize) {
@@ -76,7 +76,7 @@ impl<'a> MCTSNode<'a> for GeneralNode<'a> {
 
             let max_spells = (money / spell_cost) as usize;
             let cur_index = self.tech_state.unlock_index[self.side];
-            let max_reach = cur_index + max_spells - 1;
+            let max_reach = cur_index + max_spells;
 
             let dist = Bernoulli::new(P).unwrap();
 

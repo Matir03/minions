@@ -15,7 +15,7 @@ pub mod units;
 
 pub use game::{GameConfig, GameState, parse_fen};
 pub use board::Board;
-pub use action::{Turn, BoardAction, GameAction};
+pub use action::{GameTurn, BoardAction, GameAction};
 pub use tech::{Tech, Techline, TechStatus};
 pub use units::{UnitStats, Unit, Attack};
 pub use map::{MapSpec, Map, TileType, HexGrid};

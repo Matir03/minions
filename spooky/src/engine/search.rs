@@ -1,4 +1,4 @@
-use crate::core::{GameConfig, GameState, Turn, Spell};
+use crate::core::{GameConfig, GameState, GameTurn, Spell};
 use crate::ai::{Search, SearchResult};
 
 use anyhow::{bail, Context};
