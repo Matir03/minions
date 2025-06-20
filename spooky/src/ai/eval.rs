@@ -2,7 +2,7 @@
 
 use crate::core::{GameState, GameConfig, Side, ToIndex};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct Eval {
     /// winprob in [0, 1] for current player
     pub winprob: f32,

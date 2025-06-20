@@ -1,5 +1,5 @@
 use crate::core::{GameConfig, GameState, GameTurn, Spell};
-use crate::ai::{Search, SearchResult};
+use crate::ai::{SearchTree, SearchResult};
 
 use anyhow::{bail, Context};
 use bumpalo::Bump;
@@ -70,7 +70,7 @@ pub fn search_no_spells<'a>(config: &GameConfig, state: &GameState, search_optio
     let start_time = Instant::now();
     let arena = Bump::new();
 
-    let mut search = Search::new(config, state.clone(), &arena);
+    let mut search = SearchTree::new(config, state.clone(), &arena);
 
     for _ in 0..search_options.nodes {
         search.explore();

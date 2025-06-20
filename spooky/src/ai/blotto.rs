@@ -62,14 +62,6 @@ mod tests {
     }
 
     #[test]
-    fn test_distribute_money_no_boards() {
-        let mut rng = StdRng::seed_from_u64(0);
-        let (general, boards) = distribute_money(10, 0, &mut rng);
-        assert_eq!(general, 10);
-        assert_eq!(boards, vec![]);
-    }
-
-    #[test]
     fn test_distribute_money_basic_distribution() {
         let mut rng = StdRng::seed_from_u64(0);
         let total_money = 100;

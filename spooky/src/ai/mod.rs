@@ -12,7 +12,6 @@ pub mod rng;
 pub mod search;
 pub mod spawn; // Will be refactored/removed
 
-pub use board_node::{BoardNode, BoardNodeRef};
 
-pub use search::{Search, SearchResult};
+pub use search::{SearchTree, SearchResult};
 pub use eval::Eval;

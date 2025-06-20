@@ -1,4 +1,4 @@
-use super::{eval::Eval, mcts::{MCTSNode, NodeStats, Stage}, search::SearchArgs};
+use super::{eval::Eval, mcts::{MCTSNode, NodeStats}, search::SearchArgs};
 use crate::core::{Board, SideArray, Side, units::Unit, action::BoardAction};
 
 use std::cell::RefCell;

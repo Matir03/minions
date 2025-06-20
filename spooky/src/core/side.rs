@@ -99,6 +99,20 @@ impl<T> IndexMut<Side> for SideArray<T> {
     }
 }
 
+impl<T: std::ops::AddAssign + Copy> std::ops::AddAssign for SideArray<T> {
+    fn add_assign(&mut self, rhs: Self) {
+        self.values[0] += rhs.values[0];
+        self.values[1] += rhs.values[1];
+    }
+}
+
+impl<T: std::ops::AddAssign + Copy> std::ops::AddAssign<&Self> for SideArray<T> {
+    fn add_assign(&mut self, rhs: &Self) {
+        self.values[0] += rhs.values[0];
+        self.values[1] += rhs.values[1];
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

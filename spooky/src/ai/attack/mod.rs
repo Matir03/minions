@@ -8,7 +8,7 @@ use std::cell::RefCell;
 use crate::core::{Board, Side, action::BoardAction, SideArray};
 use super::{
     eval::Eval,
-    mcts::{MCTSNode, NodeStats, Stage},
+    mcts::{MCTSNode, NodeStats},
     search::SearchArgs,
 };
 use combat::CombatGraph;
