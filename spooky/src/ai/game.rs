@@ -9,7 +9,7 @@ use crate::core::{GameConfig, GameState, Side, SideArray, GameTurn, board::Board
 use hashbag::HashBag;
 use crate::ai::mcts::{MCTSNode, NodeState, NodeStats, MCTSEdge};
 use crate::ai::general::{GeneralNodeState, GeneralNode, GeneralNodeRef}; 
-use crate::ai::board_node::{BoardNodeState, BoardTurn, BoardNode, BoardNodeRef}; 
+use crate::ai::board::{BoardNodeState, BoardTurn, BoardNode, BoardNodeRef}; 
 use crate::ai::eval::Eval;
 use crate::ai::blotto;
 use crate::ai::search::SearchArgs;
@@ -20,10 +20,11 @@ use rand::prelude::*;
 use bumpalo::{Bump, collections::Vec as BumpVec};
 use std::vec::Vec as StdVec;
 
+#[derive(Debug)]
 pub struct GameNodeState<'a> {
     pub game_state: GameState,
-    pub general_mcts_node: GeneralNodeRef<'a>,
-    pub board_mcts_nodes: BumpVec<'a, BoardNodeRef<'a>>,
+    pub general_node: GeneralNodeRef<'a>,
+    pub board_nodes: BumpVec<'a, BoardNodeRef<'a>>,
 }
 
 impl<'a> GameNodeState<'a> {
@@ -38,8 +39,8 @@ impl<'a> GameNodeState<'a> {
         
         Self {
             game_state,
-            general_mcts_node,
-            board_mcts_nodes,
+            general_node: general_mcts_node,
+            board_nodes: board_mcts_nodes,
         }
     }
 }
@@ -51,7 +52,7 @@ impl<'a> NodeState<GameTurn> for GameNodeState<'a> {
         let (search_args, arena) = args_tuple;
         let current_side = self.game_state.side_to_move;
 
-        let mut general_mcts_node_borrowed = self.general_mcts_node.borrow_mut();
+        let mut general_mcts_node_borrowed = self.general_node.borrow_mut();
         
         let total_money_current_side = self.game_state.money[current_side];
         let (money_for_general, money_for_boards) = distribute_money(total_money_current_side, self.game_state.boards.len(), rng);
@@ -65,14 +66,14 @@ impl<'a> NodeState<GameTurn> for GameNodeState<'a> {
         let tech_state = self.game_state.tech_state.clone();
         let general_delta_money = next_general_node_state_snapshot.delta_money[current_side];
 
-        let mut board_turns = StdVec::with_capacity(self.board_mcts_nodes.len());
-        let mut next_board_states_for_gamestate = StdVec::with_capacity(self.board_mcts_nodes.len());
-        let mut next_board_mcts_node_refs_for_new_gns = BumpVec::new_in(arena); 
+        let mut board_turns = StdVec::with_capacity(self.board_nodes.len());
+        let mut next_board_states_for_gamestate = StdVec::with_capacity(self.board_nodes.len());
+        let mut next_board_mcts_node_refs = BumpVec::new_in(arena); 
 
         let mut total_board_delta_money = SideArray::new(0,0);
         let mut total_board_delta_points = SideArray::new(0,0);
 
-        for (i, board_mcts_node_ref) in self.board_mcts_nodes.iter().enumerate() {
+        for (i, board_mcts_node_ref) in self.board_nodes.iter().enumerate() {
             let mut board_mcts_node_borrowed = board_mcts_node_ref.borrow_mut();
             let board_money = *money_for_boards.get(i).unwrap();
 
@@ -88,7 +89,7 @@ impl<'a> NodeState<GameTurn> for GameNodeState<'a> {
             total_board_delta_money.add_assign(&next_board_node_state_snapshot.delta_money);
             total_board_delta_points.add_assign(&next_board_node_state_snapshot.delta_points);
             
-            next_board_mcts_node_refs_for_new_gns.push(next_board_state_ref); 
+            next_board_mcts_node_refs.push(next_board_state_ref); 
         }
 
         let mut next_money = self.game_state.money.clone();
@@ -119,8 +120,8 @@ impl<'a> NodeState<GameTurn> for GameNodeState<'a> {
 
         let next_game_node_state = GameNodeState {
             game_state: next_game_state,
-            general_mcts_node: next_general_state_ref, 
-            board_mcts_nodes: next_board_mcts_node_refs_for_new_gns, 
+            general_node: next_general_state_ref, 
+            board_nodes: next_board_mcts_node_refs, 
         };
 
         (game_turn, next_game_node_state)

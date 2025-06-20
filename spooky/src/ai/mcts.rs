@@ -57,11 +57,13 @@ pub trait NodeState<Turn> {
     fn propose_move(&self, rng: &mut impl Rng, args: &Self::Args) -> (Turn, Self);
 }
 
+#[derive(Debug)]
 pub struct MCTSEdge<'a, Node, Turn> {
     pub turn: Turn,
     pub child: &'a RefCell<Node>,
 }
 
+#[derive(Debug)]
 pub struct MCTSNode<'a, State: NodeState<Turn>, Turn> {
     pub stats: NodeStats,
     pub edges: Vec<'a, MCTSEdge<'a, Self, Turn>>,
@@ -89,8 +91,8 @@ impl<'a, State: NodeState<Turn>, Turn> MCTSNode<'a, State, Turn> {
 
         // If no children exist, always create a new one
         if self.edges.is_empty() {
-            let (is_new, child_index) = self.make_child(search_args, rng, args);
-            return (is_new, child_index);
+            let child_index = self.make_child(search_args, rng, args);
+            return (true, child_index);
         }
 
         let mut best_child_index = 0;
@@ -124,11 +126,9 @@ impl<'a, State: NodeState<Turn>, Turn> MCTSNode<'a, State, Turn> {
         let phantom_uct = phantom_stats.uct(ln_n, rng);
 
         if best_uct <= phantom_uct {
-            let (is_new, child_index) = self.make_child(search_args, rng, args);
+            let child_index = self.make_child(search_args, rng, args);
 
-            if is_new {
-                return (true, child_index);
-            }
+            return (true, child_index);
         }
 
         (false, best_child_index)
@@ -140,11 +140,7 @@ impl<'a, State: NodeState<Turn>, Turn> MCTSNode<'a, State, Turn> {
 
         // Ensure we have at least one child
         if self.edges.is_empty() {
-            let (is_new, index) = self.make_child(search_args, rng, args);
-            if !is_new {
-                // If make_child failed, create a dummy child or panic
-                panic!("Failed to create child node");
-            }
+            let index = self.make_child(search_args, rng, args);
             return (index, self.edges[index].child);
         }
 
@@ -162,24 +158,26 @@ impl<'a, State: NodeState<Turn>, Turn> MCTSNode<'a, State, Turn> {
         self.stats.update(eval);
     }
 
-    pub fn make_child(&mut self, search_args: &SearchArgs<'a>, rng: &mut impl Rng, args: State::Args) -> (bool, usize)
+    pub fn make_child(&mut self, search_args: &SearchArgs<'a>, rng: &mut impl Rng, args: State::Args) -> usize
         where Self: 'a
     {
-        let (turn, next_state_val) = self.state.propose_move(rng, &args); // Args might need to be Clone
+        let (turn, new_node_state) = self.state.propose_move(rng, &args); // Args might need to be Clone
 
         // TODO: Check if this turn/state already exists as a child to avoid duplicates?
         // For now, always create a new one.
 
-        let new_node_state = next_state_val;
         let new_mcts_node = MCTSNode::new(new_node_state, search_args.arena); 
         let new_mcts_node_ref = search_args.arena.alloc(RefCell::new(new_mcts_node));
+        let new_mcts_node_ref_ptr = new_mcts_node_ref.as_ptr() as usize;
 
         let edge = MCTSEdge {
             turn,
             child: new_mcts_node_ref,
         };
+
         self.edges.push(edge);
-        (true, self.edges.len() - 1)
+
+        self.edges.len() - 1
     }
 
     pub fn best_turn(&self) -> Turn where Turn: Clone {
@@ -187,5 +185,14 @@ impl<'a, State: NodeState<Turn>, Turn> MCTSNode<'a, State, Turn> {
             .max_by_key(|edge| edge.child.borrow().stats.visits)
             .expect("No children to select best turn from")
             .turn.clone()
+    }
+
+    pub fn print_tree(&self, indent: usize) -> String {
+        let mut tree = String::new();
+        tree.push_str(&format!("{:indent$}{:?}\n", "", self.stats));
+        for edge in &self.edges {
+            tree.push_str(&edge.child.borrow().print_tree(indent + 2));
+        }
+        tree
     }
 }

@@ -24,7 +24,7 @@ pub struct BoardTurn {
     pub spawn_actions: StdVec<BoardAction>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct BoardNodeState {
     pub board: Board,
     pub side_to_move: Side,

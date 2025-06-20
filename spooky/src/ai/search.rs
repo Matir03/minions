@@ -45,7 +45,7 @@ impl<'a> SearchTree<'a> {
     }
 
     pub fn explore(&mut self) {
-        let current_mcts_node = &mut self.root;
+        let mut current_mcts_node = self.root;
         let mut explored_nodes = StdVec::<GameNodeRef<'a>>::new();
 
         loop {
@@ -57,8 +57,7 @@ impl<'a> SearchTree<'a> {
 
             if is_new { break; }
 
-            let current_mcts_node = 
-                &mut current_mcts_node.borrow_mut().edges[child_idx].child;
+            current_mcts_node = current_mcts_node.borrow().edges[child_idx].child;
         }
 
         let leaf_eval = Eval::static_eval(self.args.config, &current_mcts_node.borrow().state.game_state);
@@ -66,10 +65,10 @@ impl<'a> SearchTree<'a> {
         for node in explored_nodes {
             let mut node_borrowed = node.borrow_mut();
             node_borrowed.update(&leaf_eval);
-            node_borrowed.state.board_mcts_nodes.iter().for_each(|board_mcts_node| {
-                board_mcts_node.borrow_mut().update(&leaf_eval);
+            node_borrowed.state.board_nodes.iter().for_each(|board_node| {
+                board_node.borrow_mut().update(&leaf_eval);
             });
-            node_borrowed.state.general_mcts_node.borrow_mut().update(&leaf_eval); 
+            node_borrowed.state.general_node.borrow_mut().update(&leaf_eval); 
         }
     }
 

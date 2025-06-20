@@ -3,7 +3,7 @@
 
 pub mod attack;
 pub mod blotto;
-pub mod board_node; // New
+pub mod board; // New
 pub mod eval;
 pub mod game;
 pub mod general;

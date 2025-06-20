@@ -72,7 +72,7 @@ pub fn search_no_spells<'a>(config: &GameConfig, state: &GameState, search_optio
 
     let mut search = SearchTree::new(config, state.clone(), &arena);
 
-    for _ in 0..search_options.nodes {
+    for i in 0..search_options.nodes {
         search.explore();
 
         if start_time.elapsed().as_millis() > search_options.move_time.into() {

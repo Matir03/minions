@@ -37,9 +37,9 @@ impl AttackStage {
         // Build combat graph
         let graph = board.combat_graph();
 
-        println!("[DEBUG] Board has {} pieces:", board.pieces.len());
+        // println!("[DEBUG] Board has {} pieces:", board.pieces.len());
         for (loc, piece) in &board.pieces {
-            println!("[DEBUG] Piece at {:?}: {:?}", loc, piece.unit);
+            // println!("[DEBUG] Piece at {:?}: {:?}", loc, piece.unit);
         }
 
         for i in 0..num_candidates {
@@ -62,11 +62,11 @@ impl AttackStage {
         }
 
         if candidates.is_empty() {
-            println!("[DEBUG] No candidate moves found, generating dummy null move");
+            // println!("[DEBUG] No candidate moves found, generating dummy null move");
             candidates.push(vec![BoardAction::EndPhase]);
         }
 
-        println!("[DEBUG] AttackStage: generated {} candidate moves", candidates.len());
+        // println!("[DEBUG] AttackStage: generated {} candidate moves", candidates.len());
         self.generated_moves = candidates.clone();
         candidates
     }
