@@ -1,23 +1,37 @@
-//! MCTS Node representing the state of a single board and its turn processing (attack + spawn).
+pub mod combat;
+pub mod reposition;
+pub mod spawn;
 
+/// MCTS Node representing the state of a single board and its turn processing (attack + spawn).
 use std::cell::RefCell;
 use std::vec::Vec as StdVec;
 use std::ops::AddAssign;
 
-
-
 use bumpalo::{Bump, collections::Vec};
 use rand::prelude::*;
 
-use crate::core::{Board, Side, GameConfig, action::BoardAction, map::Map, tech::TechState, SideArray};
-use crate::ai::mcts::{NodeState, NodeStats, MCTSNode};
-use crate::ai::search::SearchArgs;
-use crate::ai::eval::Eval;
+use crate::{
+    core::{
+        action::BoardAction,
+        board::Board,
+        game::GameConfig,
+        side::Side,
+        tech::TechState,
+        map::Map,
+        SideArray,
+    },
+    ai::{eval::Eval, mcts::{MCTSNode, NodeState, NodeStats}},
+};
 
-use crate::ai::combat::CombatStage;
-use crate::ai::combat::solver::{block_solution, generate_move_from_model};
-use crate::ai::reposition::RepositioningStage;
-use crate::ai::spawn::generate_heuristic_spawn_actions;
+use self::{
+    combat::{
+        solver::{block_solution, generate_move_from_model},
+        CombatStage,
+    },
+    reposition::RepositioningStage,
+    spawn::generate_heuristic_spawn_actions,
+};
+
 use z3::{Config, Context, Optimize, SatResult};
 
 /// Represents the actions taken during a single board's turn phase.
@@ -77,7 +91,7 @@ impl BoardNodeState {
 impl NodeState<BoardTurn> for BoardNodeState {
     type Args = (i32, TechState, GameConfig, usize); // Added usize for current_board_idx
 
-    fn propose_move(&self, _rng: &mut impl Rng, args: &Self::Args) -> (BoardTurn, Self) {
+    fn propose_move(&self, _rng: &mut impl Rng, args: &<Self as NodeState<BoardTurn>>::Args) -> (BoardTurn, Self) {
         let (money_allocation, tech_state, config, current_board_idx) = args;
 
         let z3_cfg = Config::new();

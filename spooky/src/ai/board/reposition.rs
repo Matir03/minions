@@ -4,7 +4,7 @@ use z3::{
 };
 
 use crate::{
-    ai::combat::{combat::CombatGraph, constraints::Variables},
+    ai::board::combat::{combat::CombatGraph, constraints::Variables},
     core::{board::Board, side::Side},
 };
 

@@ -2,10 +2,10 @@
 
 use crate::core::{GameConfig, GameState, GameTurn};
 
-use super::{
-    game::{GameNode, GameNodeState, GameNodeRef},
-    rng::make_rng,
+use crate::ai::{
     eval::Eval,
+    game::{GameNode, GameNodeRef, GameNodeState},
+    rng::make_rng,
 };
 
 use bumpalo::Bump;

@@ -62,19 +62,14 @@ Perform a search on the current position.
 `spells` should be specified if spells are enabled
 
 #### Response
-Output current evaluation in the format `info eval <score>`.
+The engine will output the current evaluation in the format `info eval <score>` and other search-related information.
 
-### `play`
-Play a turn from the current position.
+Following the info lines, the engine will respond with the line `turn`, followed by a sequence of actions representing its turn, and finally the line `endturn`.
 
-#### Format
-`play [movetime <time in ms>] [nodes <nodes>] [spells <spells>]`
-
-#### Response 
-The engine should respond with the line `turn`, followed by a sequence of actions representing its turn, followed by the line `endturn`, possibly along with search info. Every action should follow the format `action <actiontype> [actionparams...]`, and everyone information string should follow the format `info <infostring>`. Actions and info strings should be separated by newlines. Possible actions are
+Every action should follow the format `action <actiontype> [actionparams...]`. Actions and info strings should be separated by newlines. Possible actions are:
 
 - `buyspell`
-    -- the GUI should respond with a chosen spell in the format `spell <spellname>`
+    - The GUI should respond with a chosen spell in the format `spell <spellname>`.
 - `advancetech <numtechs>`
 - `acquiretech <techindex>`
 - `givespell <boardindex> <spellname>`
@@ -90,8 +85,6 @@ The engine should respond with the line `turn`, followed by a sequence of action
     - `endphase`
     - `resign`
     - `saveunit <unit>`
-
-After the last action, a final line `endturn` will signal the end of the turn.
 
 ### `turn`
 Perform a turn on the current position.
