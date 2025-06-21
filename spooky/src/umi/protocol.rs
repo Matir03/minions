@@ -67,21 +67,23 @@ pub fn handle_command(cmd: &str, engine: &mut Engine) -> Result<()> {
             let args = parts[1..].join(" ");
             let search_options = args.parse::<SearchOptions>()?;
 
-            let eval = engine.go(&search_options);
+            let (eval, turn) = engine.go(&search_options);
             let winprob = eval.winprob();
 
             println!("info eval winprob {}", winprob);
-        }
-        "play" => {
-            let args = parts[1..].join(" ");
-            let search_options = args.parse::<SearchOptions>()?;
 
-            let turn_response = engine.play(&search_options, || {
-                todo!("implement spell buying communication");
-            });
-
-            println!("{}", turn_response);
+            println!("{}", turn);
         }
+        // "play" => {
+        //     let args = parts[1..].join(" ");
+        //     let search_options = args.parse::<SearchOptions>()?;
+
+        //     let turn_response = engine.play(&search_options, || {
+        //         todo!("implement spell buying communication");
+        //     });
+
+        //     println!("{}", turn_response);
+        // }
         "turn" => {
             let spells = if parts.len() >= 2 {
                 ensure!(parts[1] == "spells", "invalid turn arguments");

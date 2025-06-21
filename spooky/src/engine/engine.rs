@@ -64,37 +64,37 @@ impl Engine {
         self.state.take_turn(turn, &self.config)
     }
 
-    pub fn play<F>(&mut self, search_options: &SearchOptions, buy_spell: F) -> String
-    where
-        F: FnMut() -> Spell
-    {
-        if self.options.spells_enabled {
-            todo!("implement spells");
-        }
+    // pub fn play<F>(&mut self, search_options: &SearchOptions, buy_spell: F) -> String
+    // where
+    //     F: FnMut() -> Spell
+    // {
+    //     if self.options.spells_enabled {
+    //         todo!("implement spells");
+    //     }
 
-        let result = search_no_spells(&self.config, &self.state, search_options);
+    //     let result = search_no_spells(&self.config, &self.state, search_options);
 
-        // Convert the best turn to UMI format
-        let turn = result.best_turn;
-        let mut umi_actions = Vec::new();
+    //     // Convert the best turn to UMI format
+    //     let turn = result.best_turn;
+    //     let mut umi_actions = Vec::new();
 
-        // For now, generate a simple move action as an example
-        // In a full implementation, this would parse the actual turn and convert it
-        umi_actions.push("action boardaction 0 move 1,2 3,4".to_string());
-        umi_actions.push("action endturn".to_string());
+    //     // For now, generate a simple move action as an example
+    //     // In a full implementation, this would parse the actual turn and convert it
+    //     umi_actions.push("action boardaction 0 move 1,2 3,4".to_string());
+    //     umi_actions.push("action endturn".to_string());
 
-        umi_actions.join("\n")
-    }
+    //     umi_actions.join("\n")
+    // }
 
     /// Start a search with the given options and return the evaluation
-    pub fn go(&self, search_options: &SearchOptions) -> Eval {
+    pub fn go(&self, search_options: &SearchOptions) -> (Eval, GameTurn) {
         if self.options.spells_enabled {
             todo!("implement spells");
         }
 
         let result = search_no_spells(&self.config, &self.state, search_options);
 
-        result.eval
+        (result.eval, result.best_turn)
     }
 
     pub fn display(&self) {
