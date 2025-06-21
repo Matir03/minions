@@ -27,8 +27,8 @@ Move generation within a `GameNode` involves a coordinated process:
 4.  **`BoardNode` Decisions**:
     *   Each `BoardNode` (one per game board) receives its share of allocated money and the tech decisions from the `GeneralNode`.
     *   It then performs its own internal search or decision-making process to determine optimal actions for its specific board. This includes:
-        *   **Combat Actions (formerly Attack Stage)**: Resolving attacks, movement, and unit engagements. Constraint satisfaction and prophecy generation might be used here internally.
-        *   **Unit Spawning (formerly Spawn Stage)**: Deciding which units to spawn and where to place them.
+        *   **Combat and Repositioning**: The `CombatStage` and `RepositioningStage` use the Z3 constraint solver to determine optimal attacks and movements for all friendly units.
+        *   **Unit Spawning**: The `SpawnStage` uses a purely heuristic-based approach to purchase and place new units. This was changed from a Z3-based model to resolve performance bottlenecks.
 
 5.  **Child `GameNode` Creation**:
     *   The collective decisions and outcomes (delta money, delta points) from the `GeneralNode` and all `BoardNode`s are aggregated.
@@ -48,8 +48,8 @@ Move generation within a `GameNode` involves a coordinated process:
 - Efficient incremental updates for small position changes
 
 ### Constraint Satisfaction
-- Robust constraint graph system for combat resolution
-- Efficient SAT solver integration
+- Robust constraint graph system for combat and repositioning resolution
+- Efficient SAT solver integration for the combat and repositioning stages
 - Handling of complex game rules and interactions
 
 ## Implementation Notes

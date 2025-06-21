@@ -4,6 +4,8 @@ use std::cell::RefCell;
 use std::vec::Vec as StdVec;
 use std::ops::AddAssign;
 
+
+
 use bumpalo::{Bump, collections::Vec};
 use rand::prelude::*;
 
@@ -12,16 +14,16 @@ use crate::ai::mcts::{NodeState, NodeStats, MCTSNode};
 use crate::ai::search::SearchArgs;
 use crate::ai::eval::Eval;
 
-// Placeholder for AttackStage logic
-use crate::ai::attack::AttackStage;
-// Placeholder for SpawnStage logic
-use crate::ai::spawn::SpawnStage;
-use z3::{Config, Context};
+use crate::ai::combat::CombatStage;
+use crate::ai::combat::solver::{block_solution, generate_move_from_model};
+use crate::ai::reposition::RepositioningStage;
+use crate::ai::spawn::generate_heuristic_spawn_actions;
+use z3::{Config, Context, Optimize, SatResult};
 
 /// Represents the actions taken during a single board's turn phase.
 #[derive(Clone, Debug)]
 pub struct BoardTurn {
-    pub attack_actions: StdVec<BoardAction>,
+    pub combat_actions: StdVec<BoardAction>,
     pub spawn_actions: StdVec<BoardAction>,
 }
 
@@ -75,61 +77,95 @@ impl BoardNodeState {
 impl NodeState<BoardTurn> for BoardNodeState {
     type Args = (i32, TechState, GameConfig, usize); // Added usize for current_board_idx
 
-    fn propose_move(&self, rng: &mut impl Rng, args: &Self::Args) -> (BoardTurn, Self) {
-        let (money_allocation, tech_state, config, current_board_idx) = args; // Added current_board_idx
-
-        let mut proposed_turn_delta_money = SideArray::new(0, 0);
-        let mut proposed_turn_delta_points = SideArray::new(0, 0);
+    fn propose_move(&self, _rng: &mut impl Rng, args: &Self::Args) -> (BoardTurn, Self) {
+        let (money_allocation, tech_state, config, current_board_idx) = args;
 
         let z3_cfg = Config::new();
         let ctx = Context::new(&z3_cfg);
-        let mut attack_stage = AttackStage::new(&ctx);
-        let num_attack_candidates = 3;
-        let attack_action_candidates = attack_stage.generate_candidates(&self.board, self.side_to_move, num_attack_candidates);
+        let optimizer = Optimize::new(&ctx);
 
-        let selected_attack_actions = if attack_action_candidates.is_empty() {
-            StdVec::new()
-        } else {
-            attack_action_candidates[rng.gen_range(0..attack_action_candidates.len())].clone()
-        };
+        // --- Combat Stage ---
+        let combat_stage = CombatStage::new(&ctx, &optimizer);
+        let combat_solver = combat_stage.add_constraints(&self.board, self.side_to_move);
 
-        let (board_after_attack, attack_delta_money, attack_delta_points) = Self::apply_actions_to_board(
+        // --- Repositioning Stage ---
+        let reposition_stage = RepositioningStage::new(&ctx, &optimizer);
+        reposition_stage.add_constraints(
             &self.board,
-            &selected_attack_actions,
             self.side_to_move,
-            config,
-            &tech_state,
-            *current_board_idx // Added current_board_idx
+            &combat_solver.graph,
+            &combat_solver.variables,
         );
-        proposed_turn_delta_money.add_assign(&attack_delta_money);
-        proposed_turn_delta_points.add_assign(&attack_delta_points);
 
-        let spawn_actions = SpawnStage::generate_spawns(&board_after_attack, self.side_to_move, *money_allocation, rng);
 
-        let (final_board_state, spawn_delta_money, spawn_delta_points) = Self::apply_actions_to_board(
-            &board_after_attack,
-            &spawn_actions,
-            self.side_to_move,
-            config,
-            &tech_state,
-            *current_board_idx // Added current_board_idx
-        );
-        proposed_turn_delta_money.add_assign(&spawn_delta_money);
-        proposed_turn_delta_points.add_assign(&spawn_delta_points);
+        // --- Solve and generate actions ---
+        match optimizer.check(&[]) {
+            SatResult::Sat => {
+                let model = optimizer.get_model().unwrap();
+                let combat_actions =
+                    generate_move_from_model(&model, &combat_solver.graph, &combat_solver.variables);
 
-        let turn_taken = BoardTurn {
-            attack_actions: selected_attack_actions,
-            spawn_actions,
-        };
 
-        let next_board_node_state = BoardNodeState {
-            board: final_board_state,
-            side_to_move: self.side_to_move,
-            delta_money: proposed_turn_delta_money,
-            delta_points: proposed_turn_delta_points,
-        };
+                let mut proposed_turn_delta_money = SideArray::new(0, 0);
+                let mut proposed_turn_delta_points = SideArray::new(0, 0);
 
-        (turn_taken, next_board_node_state)
+                // Apply combat actions and generate spawn actions based on the new state
+                let (board_after_combat, combat_delta_money, combat_delta_points) =
+                    Self::apply_actions_to_board(
+                        &self.board,
+                        &combat_actions,
+                        self.side_to_move,
+                        config,
+                        &tech_state,
+                        *current_board_idx,
+                    );
+                proposed_turn_delta_money.add_assign(&combat_delta_money);
+                proposed_turn_delta_points.add_assign(&combat_delta_points);
+
+                // Heuristically determine and apply spawn actions
+                let spawn_actions = generate_heuristic_spawn_actions(
+                    &board_after_combat,
+                    self.side_to_move,
+                    &tech_state,
+                    *money_allocation - combat_delta_money[self.side_to_move],
+                );
+
+                let (final_board_state, spawn_delta_money, spawn_delta_points) =
+                    Self::apply_actions_to_board(
+                        &board_after_combat,
+                        &spawn_actions,
+                        self.side_to_move,
+                        config,
+                        &tech_state,
+                        *current_board_idx,
+                    );
+                proposed_turn_delta_money.add_assign(&spawn_delta_money);
+                proposed_turn_delta_points.add_assign(&spawn_delta_points);
+
+                let turn_taken = BoardTurn {
+                    combat_actions,
+                    spawn_actions,
+                };
+
+                let new_state = Self {
+                    board: final_board_state,
+                    side_to_move: self.side_to_move,
+                    delta_money: proposed_turn_delta_money,
+                    delta_points: proposed_turn_delta_points,
+                };
+
+                (turn_taken, new_state)
+            }
+            SatResult::Unsat | SatResult::Unknown => {
+                // If no solution, return empty actions
+                let turn = BoardTurn {
+                    combat_actions: StdVec::new(),
+                    spawn_actions: StdVec::new(),
+                };
+                // Return the same state
+                (turn, self.clone())
+            }
+        }
     }
 }
 

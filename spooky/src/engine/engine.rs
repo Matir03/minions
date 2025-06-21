@@ -87,14 +87,14 @@ impl Engine {
     // }
 
     /// Start a search with the given options and return the evaluation
-    pub fn go(&self, search_options: &SearchOptions) -> (Eval, GameTurn) {
+    pub fn go(&self, search_options: &SearchOptions) -> (Eval, GameTurn, u32, f64) {
         if self.options.spells_enabled {
             todo!("implement spells");
         }
 
-        let result = search_no_spells(&self.config, &self.state, search_options);
+        let (result, time) = search_no_spells(&self.config, &self.state, search_options);
 
-        (result.eval, result.best_turn)
+        (result.eval, result.best_turn, result.nodes_explored, time)
     }
 
     pub fn display(&self) {

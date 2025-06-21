@@ -67,10 +67,12 @@ pub fn handle_command(cmd: &str, engine: &mut Engine) -> Result<()> {
             let args = parts[1..].join(" ");
             let search_options = args.parse::<SearchOptions>()?;
 
-            let (eval, turn) = engine.go(&search_options);
+            let (eval, turn, nodes_explored, time) = engine.go(&search_options);
             let winprob = eval.winprob();
+            let nps = nodes_explored as f64 / time;
 
             println!("info eval winprob {}", winprob);
+            println!("info nps {} nodes {} time {}", nps, nodes_explored, time);
 
             println!("{}", turn);
         }

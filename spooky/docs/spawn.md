@@ -1,27 +1,35 @@
-# Spawn Placement Logic for BoardNode
+# Heuristic-Based Spawn Logic
 
-This document details a constraint satisfaction system intended for optimizing unit placement (both for newly spawned units and existing units that need repositioning). This logic is designed to be encapsulated within `BoardNode`s, which manage actions on individual game boards as part of the overall `GameNode` MCTS expansion. Decisions here would use the money allocated to the board by the blotto distribution.
+This document details the heuristic-based system for purchasing and spawning new units. This logic is executed after the Combat and Repositioning stages, using the money remaining after any combat actions.
+
+Originally, this stage used the Z3 constraint solver to find optimal spawn locations. However, this approach proved to be a significant performance bottleneck, especially when a large amount of money was available to purchase multiple units. To resolve this, the spawn stage was refactored to be purely heuristic-driven, removing the dependency on Z3 entirely.
 
 ## Overview
 
-This approach uses a constraint satisfaction system to determine the optimal placement of units on the board. It can be used for positioning newly spawned units (after purchase) and for repositioning other friendly units that did not engage in attacks. The goal is to optimize unit placement based on the current board state and available units.
+The spawning process is broken down into two main heuristic-driven steps:
 
-For each piece, use a heuristic to compute the value of the piece at every hex it can legally move to. Then, use a constraint solver to find the best placement for each piece.
+1.  **Unit Purchasing**: Decides which units to buy based on available money and technology.
+2.  **Unit Placement**: Places the purchased units onto valid, empty hexes in the spawn zone.
 
-## Variables
+This logic is implemented in the `generate_heuristic_spawn_actions` function.
 
-For each piece `x` that did not attack (possibly floating because it was displaced) and hex `s` it can move to:
-- $m_{xs}$ (bool): whether `x` moves to `s`
-- $v_x$ (int): value of `x` after moving
+### 1. Purchase Heuristic
 
-## Constraints
+The purchasing logic follows a simple, greedy algorithm:
 
-1. Each piece `x` must move somewhere:
-    - $$exactlyOne_s(m_{xs})$$
-2. Each hex `s` can have at most one piece:
-    - $$atMostOne_x(m_{xs})$$
-3. Value is computed based on the hex moved to:
-    - $$v_x = \sum m_{xs} * value(x, s)$$
+-   A list of all units that can be purchased (based on the current tech unlocks) is created.
+-   This list is sorted by unit cost in ascending order.
+-   The AI repeatedly buys the cheapest available unit until it can no longer afford it.
 
-## Objective Function
-$$\sum_x v_x$$
+This ensures that the AI spends its money as efficiently as possible to maximize the number of units on the board.
+
+### 2. Placement Heuristic
+
+Once the units to be spawned are determined, they are placed on the board according to the following heuristic:
+
+-   The list of purchased units is sorted by cost in *descending* order. This prioritizes placing the most valuable and expensive units first.
+-   A list of all valid, empty spawn locations is generated.
+-   To provide a consistent and strategically sound placement order, the list of available spawn locations is sorted by their proximity to the center of the board.
+-   The AI iterates through the sorted list of units and places each one in the next available spawn location.
+
+This approach ensures that the most powerful units get the most central and presumably advantageous positions in the spawn zone.

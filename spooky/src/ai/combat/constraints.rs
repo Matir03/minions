@@ -17,7 +17,6 @@ pub struct Variables<'ctx> {
     pub unsummoned: HashMap<Loc, Bool<'ctx>>,
 
     // Attacker variables
-    pub passive: HashMap<Loc, Bool<'ctx>>,
     pub attack_time: HashMap<Loc, Int<'ctx>>,
     pub attack_hex: HashMap<Loc, Int<'ctx>>,
 
@@ -33,7 +32,6 @@ impl<'ctx> Variables<'ctx> {
             removal_time: HashMap::new(),
             killed: HashMap::new(),
             unsummoned: HashMap::new(),
-            passive: HashMap::new(),
             attack_time: HashMap::new(),
             attack_hex: HashMap::new(),
             attacks: HashMap::new(),
@@ -47,8 +45,7 @@ impl<'ctx> Variables<'ctx> {
             vars.unsummoned.insert(*defender, Bool::new_const(ctx, format!("unsummoned_{}", loc_to_i64(defender))));
         }
 
-        for attacker in &graph.attackers {
-            vars.passive.insert(*attacker, Bool::new_const(ctx, format!("passive_{}", loc_to_i64(attacker))));
+        for attacker in &graph.friendlies {
             vars.attack_time.insert(*attacker, Int::new_const(ctx, format!("attack_time_{}", loc_to_i64(attacker))));
             vars.attack_hex.insert(*attacker, Int::new_const(ctx, format!("attack_hex_{}", loc_to_i64(attacker))));
         }
@@ -97,7 +94,7 @@ pub fn add_all_constraints<'ctx, S: Asserter<'ctx>>(
     // --- Hex constraints ---
     for hex in &graph.hexes {
         let hex_val = Int::from_i64(ctx, loc_to_i64(hex));
-        let occupants: Vec<_> = graph.attackers.iter()
+        let occupants: Vec<_> = graph.friendlies.iter()
             .map(|attacker| variables.attack_hex[attacker].clone()._eq(&hex_val).ite(&Int::from_i64(ctx, 1), &Int::from_i64(ctx, 0)))
             .collect();
         if !occupants.is_empty() {
@@ -107,29 +104,32 @@ pub fn add_all_constraints<'ctx, S: Asserter<'ctx>>(
     }
 
     // --- Attacker constraints ---
-    for attacker in &graph.attackers {
+    for attacker in &graph.friendlies {
         if let Some(attacker_piece) = board.get_piece(attacker) {
             let attacker_stats = attacker_piece.unit.stats();
 
-            // ExactlyOneAction: passive OR move to exactly one hex
-            let is_passive = &variables.passive[attacker];
-            let no_hex_val = Int::from_i64(ctx, -1);
-            let has_hex = &variables.attack_hex[attacker]._eq(&no_hex_val).not();
-            solver.assert(&is_passive.xor(has_hex));
+            // Each attacker must move to a valid hex within its movement range.
+            let possible_hexes: Vec<_> = graph.friendly_move_hexes[attacker]
+                .iter()
+                .map(|hex| variables.attack_hex[attacker]._eq(&Int::from_i64(ctx, loc_to_i64(hex))))
+                .collect();
 
-            if let Some(possible_hexes) = graph.attack_hexes.get(attacker) {
-                let possible_hex_assertions: Vec<_> = possible_hexes.iter()
-                    .map(|h| variables.attack_hex[attacker]._eq(&Int::from_i64(ctx, loc_to_i64(h))))
-                    .collect();
-                let assertion_refs: Vec<_> = possible_hex_assertions.iter().collect();
-                solver.assert(&has_hex.implies(&Bool::or(ctx, &assertion_refs)));
+            if !possible_hexes.is_empty() {
+                solver.assert(&Bool::or(ctx, &possible_hexes.iter().collect::<Vec<_>>()));
             } else {
-                solver.assert(is_passive);
+                // If there are no possible move hexes, it must stay put.
+                let attacker_loc_val = Int::from_i64(ctx, loc_to_i64(attacker));
+                solver.assert(&variables.attack_hex[attacker]._eq(&attacker_loc_val));
             }
 
+            // Lumbering units cannot move and attack in the same turn.
             if attacker_stats.lumbering {
-                let moved = variables.attack_hex[attacker]._eq(&Int::from_i64(ctx, loc_to_i64(attacker))).not();
-                let attacks_by_this_attacker: Vec<_> = graph.pairs.iter()
+                let moved = variables.attack_hex[attacker]
+                    ._eq(&Int::from_i64(ctx, loc_to_i64(attacker)))
+                    .not();
+                let attacks_by_this_attacker: Vec<_> = graph
+                    .pairs
+                    .iter()
                     .filter(|p| p.attacker_pos == *attacker)
                     .map(|p| &variables.attacks[&(p.attacker_pos, p.defender_pos)])
                     .collect();
@@ -139,13 +139,23 @@ pub fn add_all_constraints<'ctx, S: Asserter<'ctx>>(
                 }
             }
 
-            let attack_count: Vec<_> = graph.pairs.iter()
+            // Units cannot exceed their number of attacks.
+            let attack_count: Vec<_> = graph
+                .pairs
+                .iter()
                 .filter(|p| p.attacker_pos == *attacker)
-                .map(|p| variables.attacks[&(p.attacker_pos, p.defender_pos)].clone().ite(&Int::from_i64(ctx, 1), &Int::from_i64(ctx, 0)))
+                .map(|p| {
+                    variables.attacks[&(p.attacker_pos, p.defender_pos)]
+                        .clone()
+                        .ite(&Int::from_i64(ctx, 1), &Int::from_i64(ctx, 0))
+                })
                 .collect();
             if !attack_count.is_empty() {
                 let attack_count_refs: Vec<_> = attack_count.iter().collect();
-                solver.assert(&Int::add(ctx, &attack_count_refs).le(&Int::from_i64(ctx, attacker_stats.num_attacks as i64)));
+                solver.assert(
+                    &Int::add(ctx, &attack_count_refs)
+                        .le(&Int::from_i64(ctx, attacker_stats.num_attacks as i64)),
+                );
             }
         }
     }
@@ -154,32 +164,61 @@ pub fn add_all_constraints<'ctx, S: Asserter<'ctx>>(
     for pair in &graph.pairs {
         let attacker = pair.attacker_pos;
         let defender = pair.defender_pos;
-        if let (Some(attacker_piece), Some(defender_piece)) = (board.get_piece(&attacker), board.get_piece(&defender)) {
+        if let (Some(attacker_piece), Some(defender_piece)) =
+            (board.get_piece(&attacker), board.get_piece(&defender))
+        {
             let attacker_stats = attacker_piece.unit.stats();
             let defender_stats = defender_piece.unit.stats();
             let is_attacking = &variables.attacks[&(attacker, defender)];
 
-            solver.assert(&is_attacking.implies(&variables.passive[&attacker].not()));
-
+            // An attack can only happen if the attacker moves to a hex that is in range of the defender.
             if let Some(possible_hexes) = graph.attack_hexes.get(&attacker) {
-                 for hex in possible_hexes {
-                     let hex_val = Int::from_i64(ctx, loc_to_i64(hex));
-                     let attacker_at_hex = variables.attack_hex[&attacker]._eq(&hex_val);
-                     let in_range = hex.dist(&defender) <= attacker_stats.range;
-                     let combined_assertion = Bool::and(ctx, &[is_attacking, &attacker_at_hex]);
-                     solver.assert(&combined_assertion.implies(&Bool::from_bool(ctx, in_range)));
-                 }
+                let can_attack_from_any_hex = possible_hexes.iter().any(|h| h.dist(&defender) <= attacker_stats.range);
+                if can_attack_from_any_hex {
+                    let mut attack_is_possible = Bool::from_bool(ctx, false);
+                    for hex in possible_hexes {
+                        if hex.dist(&defender) <= attacker_stats.range {
+                            let attacker_at_hex = variables.attack_hex[&attacker]._eq(&Int::from_i64(ctx, loc_to_i64(hex)));
+                            attack_is_possible = Bool::or(ctx, &[&attack_is_possible, &attacker_at_hex]);
+                        }
+                    }
+                    solver.assert(&is_attacking.implies(&attack_is_possible));
+                } else {
+                    // This attack is impossible, so assert it doesn't happen.
+                     solver.assert(&is_attacking.not());
+                }
+            } else {
+                // No hexes to attack from, so this attack is impossible.
+                solver.assert(&is_attacking.not());
             }
 
-            solver.assert(&is_attacking.implies(&variables.attack_time[&attacker].le(&variables.removal_time[&defender])));
+            // An attacker must exist at the time of attack.
+            solver.assert(
+                &is_attacking.implies(&variables.attack_time[&attacker].le(&variables.removal_time[&defender])),
+            );
 
+            // Set damage based on attack type.
             let expected_damage = match attacker_stats.attack {
                 Attack::Damage(d) => d,
-                Attack::Deathtouch => if defender_stats.necromancer { 0 } else { defender_stats.defense },
-                Attack::Unsummon => if defender_stats.persistent { 1 } else { 0 },
+                Attack::Deathtouch => {
+                    if defender_stats.necromancer {
+                        0
+                    } else {
+                        defender_stats.defense
+                    }
+                }
+                Attack::Unsummon => {
+                    if defender_stats.persistent {
+                        1
+                    } else {
+                        0
+                    }
+                }
             };
             let damage_var = &variables.damage[&(attacker, defender)];
-            solver.assert(&damage_var._eq(&is_attacking.ite(&Int::from_i64(ctx, expected_damage as i64), &Int::from_i64(ctx, 0))));
+            solver.assert(&damage_var._eq(
+                &is_attacking.ite(&Int::from_i64(ctx, expected_damage as i64), &Int::from_i64(ctx, 0)),
+            ));
         }
     }
 

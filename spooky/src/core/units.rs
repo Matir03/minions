@@ -187,7 +187,7 @@ impl ToIndex for Unit {
     }
 }
 
-const NUM_UNITS: usize = 33;
+pub const NUM_UNITS: usize = 33;
 
 const UNIT_STATS: [UnitStats; NUM_UNITS] = [
     // Zombie

@@ -66,7 +66,7 @@ impl Default for SearchOptions {
     }
 }
 
-pub fn search_no_spells<'a>(config: &GameConfig, state: &GameState, search_options: &SearchOptions) -> SearchResult {
+pub fn search_no_spells<'a>(config: &GameConfig, state: &GameState, search_options: &SearchOptions) -> (SearchResult, f64) {
     let start_time = Instant::now();
     let arena = Bump::new();
 
@@ -80,5 +80,5 @@ pub fn search_no_spells<'a>(config: &GameConfig, state: &GameState, search_optio
         }
     }
 
-    search.result()
+    (search.result(), start_time.elapsed().as_secs_f64())
 }

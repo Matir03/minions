@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::core::{Board, Loc, Side};
 use crate::core::board::Piece;
@@ -11,7 +11,26 @@ pub struct CombatPair {
 }
 
 impl Board {
-    pub fn identify_combat_pairs(&self) -> Vec<CombatPair> {
+    pub fn get_valid_move_hexes(&self, piece_loc: Loc) -> Vec<Loc> {
+        let mut valid_hexes = Vec::new();
+        if let Some(piece) = self.get_piece(&piece_loc) {
+            let stats = piece.unit.stats();
+            for y in 0..10 {
+                for x in 0..10 {
+                    let target_loc = Loc::new(x, y);
+                    if piece_loc.dist(&target_loc) <= stats.speed {
+                        // Can't move to a hex occupied by another unit.
+                        if !self.pieces.contains_key(&target_loc) || target_loc == piece_loc {
+                            valid_hexes.push(target_loc);
+                        }
+                    }
+                }
+            }
+        }
+        valid_hexes
+    }
+
+    pub fn identify_combat_pairs(&self, side_to_move: Side) -> Vec<CombatPair> {
         let mut pairs = Vec::new();
 
         // Get all pieces by side
@@ -19,7 +38,7 @@ impl Board {
         let mut enemy_pieces = Vec::new();
 
         for (loc, piece) in &self.pieces {
-            if piece.side == Side::S0 {
+            if piece.side == side_to_move {
                 friendly_pieces.push((*loc, piece));
             } else {
                 enemy_pieces.push((*loc, piece));
@@ -90,63 +109,53 @@ impl Board {
         attack_hexes
     }
 
-    pub fn combat_graph(&self) -> CombatGraph {
-        let pairs = self.identify_combat_pairs();
-        CombatGraph::new(pairs)
+    pub fn combat_graph(&self, side: Side) -> CombatGraph {
+        let pairs = self.identify_combat_pairs(side);
+        let friendlies: Vec<Loc> = self.pieces
+            .iter()
+            .filter(|(_, p)| p.side == side)
+            .map(|(loc, _)| *loc)
+            .collect();
+        CombatGraph::new(pairs, friendlies, self)
     }
 }
 
 #[derive(Clone)]
 pub struct CombatGraph {
     pub pairs: Vec<CombatPair>,
-    pub hexes: Vec<Loc>,
-    pub attackers: Vec<Loc>,
-    pub attack_hexes: HashMap<Loc, Vec<Loc>>,
-    pub hex_attackers: HashMap<Loc, Vec<Loc>>,
+    pub friendlies: Vec<Loc>,
     pub defenders: Vec<Loc>,
+    pub hexes: HashSet<Loc>,
+    pub attack_hexes: HashMap<Loc, Vec<Loc>>,
+    pub friendly_move_hexes: HashMap<Loc, Vec<Loc>>,
 }
 
 impl CombatGraph {
-    pub fn new(pairs: Vec<CombatPair>) -> Self {
-        let mut hexes = Vec::new();
-        let mut attackers = Vec::new();
-        let mut defenders = Vec::new();
+    pub fn new(pairs: Vec<CombatPair>, friendlies: Vec<Loc>, board: &Board) -> Self {
+        let mut friendly_move_hexes = HashMap::new();
+        for friendly_loc in &friendlies {
+            friendly_move_hexes.insert(*friendly_loc, board.get_valid_move_hexes(*friendly_loc));
+        }
+
+        let mut defenders = HashSet::new();
+        let mut hexes = HashSet::new();
         let mut attack_hexes: HashMap<Loc, Vec<Loc>> = HashMap::new();
-        let mut hex_attackers: HashMap<Loc, Vec<Loc>> = HashMap::new();
 
-        // Collect all unique positions
         for pair in &pairs {
-            if !attackers.contains(&pair.attacker_pos) {
-                attackers.push(pair.attacker_pos);
-            }
-            if !defenders.contains(&pair.defender_pos) {
-                defenders.push(pair.defender_pos);
-            }
-
+            defenders.insert(pair.defender_pos);
             for hex in &pair.attack_hexes {
-                if !hexes.contains(hex) {
-                    hexes.push(*hex);
-                }
-
-                // Build attack_hexes mapping (attacker -> attack hexes)
-                attack_hexes.entry(pair.attacker_pos)
-                    .or_insert_with(Vec::new)
-                    .push(*hex);
-
-                // Build hex_attackers mapping (hex -> attackers)
-                hex_attackers.entry(*hex)
-                    .or_insert_with(Vec::new)
-                    .push(pair.attacker_pos);
+                hexes.insert(*hex);
             }
+            attack_hexes.entry(pair.attacker_pos).or_default().extend(pair.attack_hexes.clone());
         }
 
         Self {
             pairs,
+            friendlies,
+            defenders: defenders.into_iter().collect(),
             hexes,
-            attackers,
             attack_hexes,
-            hex_attackers,
-            defenders,
+            friendly_move_hexes,
         }
     }
 }

@@ -14,8 +14,9 @@ use std::vec::Vec as StdVec;
 use std::cell::RefCell;
 
 pub struct SearchResult {
-    pub best_turn: GameTurn,
     pub eval: Eval,
+    pub best_turn: GameTurn,
+    pub nodes_explored: u32,
 }
 
 #[derive(Debug, Clone)]
@@ -84,6 +85,7 @@ impl<'a> SearchTree<'a> {
         SearchResult {
             best_turn: self.best_turn(),
             eval: self.eval(),
+            nodes_explored: self.root.borrow().stats.visits,
         }
     }
 }

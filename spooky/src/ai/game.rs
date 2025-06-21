@@ -108,7 +108,7 @@ impl<'a> NodeState<GameTurn> for GameNodeState<'a> {
         };
 
         let board_actions: Vec<Vec<BoardAction>> = board_turns.into_iter().map(|bt| {
-            bt.attack_actions.into_iter().chain(bt.spawn_actions.into_iter()).collect()
+            bt.combat_actions.into_iter().chain(bt.spawn_actions.into_iter()).collect()
         }).collect();
 
         let game_turn = GameTurn {
