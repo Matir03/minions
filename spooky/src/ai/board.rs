@@ -16,6 +16,7 @@ use crate::ai::eval::Eval;
 use crate::ai::attack::AttackStage;
 // Placeholder for SpawnStage logic
 use crate::ai::spawn::SpawnStage;
+use z3::{Config, Context};
 
 /// Represents the actions taken during a single board's turn phase.
 #[derive(Clone, Debug)]
@@ -80,7 +81,9 @@ impl NodeState<BoardTurn> for BoardNodeState {
         let mut proposed_turn_delta_money = SideArray::new(0, 0);
         let mut proposed_turn_delta_points = SideArray::new(0, 0);
 
-        let mut attack_stage = AttackStage::new();
+        let z3_cfg = Config::new();
+        let ctx = Context::new(&z3_cfg);
+        let mut attack_stage = AttackStage::new(&ctx);
         let num_attack_candidates = 3;
         let attack_action_candidates = attack_stage.generate_candidates(&self.board, self.side_to_move, num_attack_candidates);
 

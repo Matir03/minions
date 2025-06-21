@@ -1,210 +1,237 @@
-use std::collections::{HashMap, HashSet};
-use crate::core::{Loc, Side, units::Attack};
-use super::{combat::CombatGraph, prophecy::Prophecy};
+use std::collections::HashMap;
 
-/// Represents the state of a piece in combat
-#[derive(Debug, Clone)]
-pub struct CombatState {
-    pub passive: bool,
-    pub removed: bool,
-    pub attack_hex: Option<Loc>,
-    pub targets: Vec<Loc>,
-    pub damage_dealt: i32,
+use crate::core::{action::BoardAction, board::Board, loc::Loc};
+use z3::{
+    ast::{Ast, Bool, Int},
+    Context, Model, Optimize, SatResult,
+};
+
+use super::combat::CombatGraph;
+use super::constraints::{add_all_constraints, Variables};
+
+// A helper to convert Loc to a unique i64 for Z3.
+fn loc_to_i64(loc: &Loc) -> i64 {
+    (loc.x as i64) << 32 | (loc.y as i64 & 0xFFFFFFFF)
 }
 
-impl CombatState {
-    pub fn new() -> Self {
-        Self {
-            passive: false,
-            removed: false,
-            attack_hex: None,
-            targets: Vec::new(),
-            damage_dealt: 0,
+// A helper to convert i64 from Z3 back to Loc.
+fn i64_to_loc(val: i64) -> Loc {
+    Loc::new((val >> 32) as i32, (val & 0xFFFFFFFF) as i32)
+}
+
+/// Z3-based constraint solver for combat resolution.
+pub struct CombatSolver<'ctx> {
+    ctx: &'ctx Context,
+    optimizer: Optimize<'ctx>,
+    variables: Variables<'ctx>,
+    graph: CombatGraph,
+}
+
+impl<'ctx> CombatSolver<'ctx> {
+    pub fn new(ctx: &'ctx Context, graph: CombatGraph, board: &Board) -> Self {
+        let optimizer = Optimize::new(ctx);
+        // Note: The z3::Optimize object does not have a `set_params` method like z3::Solver.
+        // A timeout can be passed to `check_with_assumptions_and_params` if needed, but for now
+        // we rely on the default behavior.
+
+        let variables = Variables::new(ctx, &graph);
+        add_all_constraints(&optimizer, ctx, &variables, &graph, board);
+
+        // Optimization:
+        // 1. Maximize the number of attacks.
+        // 2. Minimize the number of moves.
+        let mut num_attacks = Int::from_i64(ctx, 0);
+        for attack_var in variables.attacks.values() {
+            let is_attacking = attack_var.ite(&Int::from_i64(ctx, 1), &Int::from_i64(ctx, 0));
+            num_attacks = Int::add(ctx, &[&num_attacks, &is_attacking]);
         }
-    }
-}
+        optimizer.maximize(&num_attacks);
 
-/// Basic constraint solver for combat resolution
-pub struct CombatSolver {
-    pub graph: CombatGraph,
-    pub prophecy: Prophecy,
-    pub attacker_states: HashMap<Loc, CombatState>,
-    pub defender_states: HashMap<Loc, CombatState>,
-    pub hex_assignments: HashMap<Loc, Loc>, // hex -> attacker
-    pub threshold: f32,
-}
-
-impl CombatSolver {
-    pub fn new(graph: CombatGraph, prophecy: Prophecy) -> Self {
-        let mut attacker_states = HashMap::new();
-        let mut defender_states = HashMap::new();
-
-        // Initialize states
+        let mut num_moves = Int::from_i64(ctx, 0);
+        let no_hex_val = Int::from_i64(ctx, -1);
         for attacker in &graph.attackers {
-            attacker_states.insert(*attacker, CombatState::new());
+            let attacker_hex_var = &variables.attack_hex[attacker];
+            let attacker_loc_val = Int::from_i64(ctx, loc_to_i64(attacker));
+
+            let is_not_passive = attacker_hex_var._eq(&no_hex_val).not();
+            let is_not_stationary = attacker_hex_var._eq(&attacker_loc_val).not();
+
+            let has_moved = Bool::and(ctx, &[&is_not_passive, &is_not_stationary]);
+            num_moves = Int::add(
+                ctx,
+                &[&num_moves, &has_moved.ite(&Int::from_i64(ctx, 1), &Int::from_i64(ctx, 0))],
+            );
         }
-        for defender in &graph.defenders {
-            defender_states.insert(*defender, CombatState::new());
-        }
+        optimizer.minimize(&num_moves);
 
         Self {
+            ctx,
+            optimizer,
+            variables,
             graph,
-            prophecy,
-            attacker_states,
-            defender_states,
-            hex_assignments: HashMap::new(),
-            threshold: 0.5,
         }
     }
 
-    /// Solve the combat constraints based on the prophecy
-    pub fn solve(&mut self) -> bool {
-        // Sort pieces by probability
-        let mut sorted_attackers: Vec<_> = self.graph.attackers.iter()
-            .filter_map(|loc| {
-                self.prophecy.passive_probabilities.get(loc)
-                    .map(|prob| (*loc, *prob))
-            })
-            .collect();
-        sorted_attackers.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
-
-        let mut sorted_defenders: Vec<_> = self.graph.defenders.iter()
-            .filter_map(|loc| {
-                self.prophecy.removal_probabilities.get(loc)
-                    .map(|prob| (*loc, *prob))
-            })
-            .collect();
-        sorted_defenders.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
-
-        // Apply constraints in probability order
-        for (attacker_loc, prob) in sorted_attackers {
-            if prob > self.threshold {
-                if !self.try_make_passive(attacker_loc) {
-                    // If we can't make it passive, try to make it active
-                    if !self.try_make_active(attacker_loc) {
-                        return false; // UNSAT
-                    }
-                }
-            }
+    /// Check if the current constraints are satisfiable and return a model if so.
+    pub fn solve(&self) -> Option<Model<'ctx>> {
+        match self.optimizer.check(&[]) {
+            SatResult::Sat => Some(self.optimizer.get_model().unwrap()),
+            _ => None,
         }
+    }
 
-        for (defender_loc, prob) in sorted_defenders {
-            if prob > self.threshold {
-                if !self.try_remove_defender(defender_loc) {
-                    // If we can't remove it, leave it
-                    if !self.try_keep_defender(defender_loc) {
-                        return false; // UNSAT
-                    }
-                }
-            }
+    /// Add constraints to the optimizer to exclude the solution represented by the given model.
+    pub fn block_solution(&self, model: &Model<'ctx>) {
+        let mut conjuncts: Vec<Bool<'ctx>> = Vec::new();
+        for var in self.variables.passive.values() {
+            let model_val = model.eval(var, true).unwrap();
+            conjuncts.push(var._eq(&model_val));
         }
-
-        true // SAT
-    }
-
-    fn try_make_passive(&mut self, attacker_loc: Loc) -> bool {
-        let state = self.attacker_states.get_mut(&attacker_loc).unwrap();
-        state.passive = true;
-        true
-    }
-
-    fn try_make_active(&mut self, attacker_loc: Loc) -> bool {
-        let state = self.attacker_states.get_mut(&attacker_loc).unwrap();
-        state.passive = false;
-
-        // Find a valid attack hex
-        if let Some(attack_hexes) = self.graph.attack_hexes.get(&attacker_loc) {
-            for hex in attack_hexes {
-                if !self.hex_assignments.contains_key(hex) {
-                    self.hex_assignments.insert(*hex, attacker_loc);
-                    state.attack_hex = Some(*hex);
-
-                    // Find targets from this hex
-                    for pair in &self.graph.pairs {
-                        if pair.attacker_pos == attacker_loc && pair.attack_hexes.contains(hex) {
-                            state.targets.push(pair.defender_pos);
-                        }
-                    }
-                    return true;
-                }
-            }
+        for var in self.variables.attack_hex.values() {
+            let model_val = model.eval(var, true).unwrap();
+            conjuncts.push(var._eq(&model_val));
         }
-
-        false
+        for var in self.variables.attacks.values() {
+            let model_val = model.eval(var, true).unwrap();
+            conjuncts.push(var._eq(&model_val));
+        }
+        let conjuncts_refs: Vec<&Bool> = conjuncts.iter().collect();
+        let model_constraint = Bool::and(self.ctx, &conjuncts_refs);
+        self.optimizer.assert(&model_constraint.not());
     }
 
-    fn try_remove_defender(&mut self, defender_loc: Loc) -> bool {
-        let state = self.defender_states.get_mut(&defender_loc).unwrap();
-        state.removed = true;
-        true
-    }
-
-    fn try_keep_defender(&mut self, defender_loc: Loc) -> bool {
-        let state = self.defender_states.get_mut(&defender_loc).unwrap();
-        state.removed = false;
-        true
-    }
-
-    /// Generate a move from the solved state
-    pub fn generate_move(&self, board: &crate::core::Board, side: Side) -> Vec<crate::core::action::BoardAction> {
+    /// Generate a sequence of BoardActions from a satisfying Z3 model.
+    pub fn generate_move_from_model(&self, model: &Model<'ctx>) -> Vec<BoardAction> {
         let mut actions = Vec::new();
+        let mut attacker_new_positions = HashMap::new();
 
-        // Generate movement actions
-        for (attacker_loc, state) in &self.attacker_states {
-            if !state.passive {
-                if let Some(attack_hex) = state.attack_hex {
-                    if *attacker_loc != attack_hex {
-                        actions.push(crate::core::action::BoardAction::Move {
-                            from_loc: *attacker_loc,
-                            to_loc: attack_hex,
+        // First, determine the new position of each attacker.
+        for attacker in &self.graph.attackers {
+            let z3_hex_var = &self.variables.attack_hex[attacker];
+            if let Some(val) = model.eval(z3_hex_var, true).unwrap().as_i64() {
+                if val != -1 {
+                    // -1 indicates the attacker is passive and doesn't move.
+                    let to_loc = i64_to_loc(val);
+                    if *attacker != to_loc {
+                        actions.push(BoardAction::Move {
+                            from_loc: *attacker,
+                            to_loc,
                         });
                     }
+                    attacker_new_positions.insert(*attacker, to_loc);
                 }
             }
         }
 
-        // Generate attack actions
-        for (attacker_loc, state) in &self.attacker_states {
-            if !state.passive {
-                for target in &state.targets {
-                    if let Some(attack_hex) = state.attack_hex {
-                        actions.push(crate::core::action::BoardAction::Attack {
-                            attacker_loc: attack_hex,
-                            target_loc: *target,
-                        });
-                    }
-                }
+        // Next, generate attack actions from the attackers' new positions.
+        for ((attacker, defender), is_attacking_var) in &self.variables.attacks {
+            if model
+                .eval(is_attacking_var, true)
+                .unwrap()
+                .as_bool()
+                .unwrap_or(false)
+            {
+                let attacker_pos = attacker_new_positions.get(attacker).unwrap_or(attacker);
+                actions.push(BoardAction::Attack {
+                    attacker_loc: *attacker_pos,
+                    target_loc: *defender,
+                });
             }
         }
 
         actions
     }
+}
 
-    /// Check if the generated move is valid
-    pub fn is_valid_move(&self, board: &crate::core::Board, side: Side) -> bool {
-        // Basic validation - check that all pieces exist and are on the correct side
-        for (attacker_loc, state) in &self.attacker_states {
-            if !state.passive {
-                if let Some(piece) = board.get_piece(attacker_loc) {
-                    if piece.side != side {
-                        return false;
-                    }
-                } else {
-                    return false;
-                }
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::core::board::{Modifiers, Piece, PieceState};
+    use crate::core::side::Side;
+    use crate::core::units::Unit;
+    use std::cell::RefCell;
+    use z3::Config;
 
-                for target in &state.targets {
-                    if let Some(piece) = board.get_piece(target) {
-                        if piece.side == side {
-                            return false; // Can't attack own piece
-                        }
-                    } else {
-                        return false;
-                    }
-                }
-            }
+    fn create_board_with_pieces(pieces: Vec<(Unit, Side, Loc)>) -> Board {
+        let mut board = Board::new();
+        for (unit, side, loc) in pieces {
+            let piece = Piece {
+                unit,
+                side,
+                loc,
+                modifiers: Modifiers::default(),
+                state: RefCell::new(PieceState::default()),
+            };
+            board.add_piece(piece);
         }
+        board
+    }
 
-        true
+    #[test]
+    fn test_simple_attack_can_reach() {
+        // Attacker Rat at (2,0), Defender Rat at (0,0).
+        // Rat has move=1, range=1. It can move to (1,0) and then attack (0,0).
+        let board = create_board_with_pieces(vec![
+            (Unit::Rat, Side::S0, Loc::new(2, 0)),
+            (Unit::Rat, Side::S1, Loc::new(0, 0)),
+        ]);
+
+        let z3_cfg = Config::new();
+        let ctx = Context::new(&z3_cfg);
+        let graph = board.combat_graph();
+
+        assert_eq!(graph.attackers.len(), 1);
+        assert_eq!(graph.defenders.len(), 1);
+
+        let solver = CombatSolver::new(&ctx, graph, &board);
+        let model = solver.solve().expect("Should find a solution");
+
+        let actions = solver.generate_move_from_model(&model);
+
+        // Expected action: Rat at (2,0) moves to (1,0) and attacks rat at (0,0).
+        let expected_move = BoardAction::Move {
+            from_loc: Loc::new(2, 0),
+            to_loc: Loc::new(1, 0),
+        };
+        let expected_attack = BoardAction::Attack {
+            attacker_loc: Loc::new(1, 0),
+            target_loc: Loc::new(0, 0),
+        };
+
+        assert_eq!(actions.len(), 2, "Expected 2 actions, move and attack");
+        assert!(
+            actions.contains(&expected_move),
+            "Missing expected move action"
+        );
+        assert!(
+            actions.contains(&expected_attack),
+            "Missing expected attack action"
+        );
+    }
+
+    #[test]
+    fn test_simple_attack_no_move_needed() {
+        // Attacker Rat at (1,0), Defender Rat at (0,0).
+        // Distance is 1, which is within range. No move needed.
+        let board = create_board_with_pieces(vec![
+            (Unit::Rat, Side::S0, Loc::new(1, 0)),
+            (Unit::Rat, Side::S1, Loc::new(0, 0)),
+        ]);
+
+        let z3_cfg = Config::new();
+        let ctx = Context::new(&z3_cfg);
+        let graph = board.combat_graph();
+        let solver = CombatSolver::new(&ctx, graph, &board);
+        let model = solver.solve().expect("Should find a solution");
+        let actions = solver.generate_move_from_model(&model);
+
+        // Expected action: Rat at (1,0) attacks rat at (0,0). No move.
+        let expected_attack = BoardAction::Attack {
+            attacker_loc: Loc::new(1, 0),
+            target_loc: Loc::new(0, 0),
+        };
+
+        assert_eq!(actions.len(), 1, "Expected 1 action, just attack");
+        assert_eq!(actions[0], expected_attack, "Action should be an attack");
     }
 }

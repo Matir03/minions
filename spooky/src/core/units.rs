@@ -16,6 +16,16 @@ pub enum Attack {
     Deathtouch,
 }
 
+impl Attack {
+    pub fn damage_value(&self) -> i32 {
+        match self {
+            Attack::Damage(d) => *d,
+            Attack::Unsummon => 0,
+            Attack::Deathtouch => 0,
+        }
+    }
+}
+
 /// Represents a unit type in the game
 #[derive(Debug, Clone)]
 pub struct UnitStats {
