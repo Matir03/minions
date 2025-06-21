@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::core::{Board, Loc, Side};
+use crate::core::{bitboards::{Bitboard, BitboardOps}, Board, Loc, Side};
 use crate::core::board::Piece;
 
 #[derive(Debug, Clone)]
@@ -12,22 +12,50 @@ pub struct CombatPair {
 
 impl Board {
     pub fn get_valid_move_hexes(&self, piece_loc: Loc) -> Vec<Loc> {
-        let mut valid_hexes = Vec::new();
         if let Some(piece) = self.get_piece(&piece_loc) {
             let stats = piece.unit.stats();
+
+            // Start with all hexes being potentially passable
+            let mut passable_hexes = u128::MAX;
+
+            // Flying units ignore all terrain
+            if !stats.flying {
+                // Ground units are blocked by certain terrain based on their stats
+                passable_hexes &= !self.bitboards.water; // All non-flying are blocked by water
+                if !stats.persistent {
+                    passable_hexes &= !self.bitboards.whirlwind;
+                }
+                if stats.defense < 4 {
+                    passable_hexes &= !self.bitboards.firestorm;
+                }
+                if stats.speed < 2 {
+                    passable_hexes &= !self.bitboards.earthquake;
+                }
+            }
+
+            let mut start_pos_bb = Bitboard::new();
+            start_pos_bb.set(piece_loc, true);
+
+            // Units can't move through hexes occupied by other pieces, but can move from their own hex.
+            let prop_mask = (passable_hexes & !self.bitboards.all_pieces) | start_pos_bb;
+            // Units can land on any unoccupied hex they can reach, or their start hex.
+            let dest_mask = prop_mask;
+
+            let reachable_hexes = start_pos_bb.all_movements(stats.speed, prop_mask, dest_mask);
+
+            // Convert bitboard to Vec<Loc>
+            let mut valid_hexes = Vec::new();
             for y in 0..10 {
                 for x in 0..10 {
-                    let target_loc = Loc::new(x, y);
-                    if piece_loc.dist(&target_loc) <= stats.speed {
-                        // Can't move to a hex occupied by another unit.
-                        if !self.pieces.contains_key(&target_loc) || target_loc == piece_loc {
-                            valid_hexes.push(target_loc);
-                        }
+                    let loc = Loc::new(x, y);
+                    if reachable_hexes.get(loc) {
+                        valid_hexes.push(loc);
                     }
                 }
             }
+            return valid_hexes;
         }
-        valid_hexes
+        Vec::new()
     }
 
     pub fn identify_combat_pairs(&self, side_to_move: Side) -> Vec<CombatPair> {
@@ -73,36 +101,11 @@ impl Board {
 
     fn get_attack_hexes(&self, attacker_pos: Loc, defender_pos: Loc, attacker_stats: &crate::core::units::UnitStats) -> Vec<Loc> {
         let mut attack_hexes = Vec::new();
+        let valid_move_hexes = self.get_valid_move_hexes(attacker_pos);
 
-        // If attacker is lumbering and has moved, they can only attack from their current position
-        let can_move = !attacker_stats.lumbering || !self.pieces[&attacker_pos].state.borrow().moved;
-
-        if can_move {
-            // Check all positions within movement range
-            for y in 0..10 {
-                for x in 0..10 {
-                    let candidate_pos = Loc::new(x, y);
-
-                    // Check if this position is within movement range
-                    if attacker_pos.dist(&candidate_pos) <= attacker_stats.speed {
-                        // Check if this position can attack the defender
-                        if candidate_pos.dist(&defender_pos) <= attacker_stats.range {
-                            // Check if the path is blocked (simplified - just check if position is occupied by enemy)
-                            let is_blocked = self.pieces.get(&candidate_pos)
-                                .map(|piece| piece.side != Side::S0)
-                                .unwrap_or(false);
-
-                            if !is_blocked {
-                                attack_hexes.push(candidate_pos);
-                            }
-                        }
-                    }
-                }
-            }
-        } else {
-            // Can only attack from current position
-            if attacker_pos.dist(&defender_pos) <= attacker_stats.range {
-                attack_hexes.push(attacker_pos);
+        for candidate_pos in valid_move_hexes {
+            if candidate_pos.dist(&defender_pos) <= attacker_stats.range {
+                attack_hexes.push(candidate_pos);
             }
         }
 

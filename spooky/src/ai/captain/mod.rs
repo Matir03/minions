@@ -68,7 +68,6 @@ impl BoardNodeState {
         current_board_idx: usize,
     ) -> (Board, SideArray<i32>, SideArray<i32>) {
         let mut new_board = original_board.clone();
-        let map: &Map = &config.maps.get(current_board_idx).unwrap_or_else(|| &config.maps[0]);
         let mut turn_delta_money = SideArray::new(0, 0);
         let mut turn_delta_points = SideArray::new(0, 0);
 
@@ -78,7 +77,6 @@ impl BoardNodeState {
                 &mut turn_delta_money,
                 &mut turn_delta_points,
                 tech_state,
-                map,
                 side_to_move,
             ) {
                 eprintln!("[BoardNodeState] Error applying action {:?}: {}", action, e);
@@ -171,13 +169,7 @@ impl NodeState<BoardTurn> for BoardNodeState {
                 (turn_taken, new_state)
             }
             SatResult::Unsat | SatResult::Unknown => {
-                // If no solution, return empty actions
-                let turn = BoardTurn {
-                    attack_actions: StdVec::new(),
-                    spawn_actions: StdVec::new(),
-                };
-                // Return the same state
-                (turn, self.clone())
+                panic!("there should always be a legal solution")
             }
         }
     }

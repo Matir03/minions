@@ -108,19 +108,16 @@ pub fn add_all_constraints<'ctx, S: Asserter<'ctx>>(
         if let Some(attacker_piece) = board.get_piece(attacker) {
             let attacker_stats = attacker_piece.unit.stats();
 
-            // Each attacker must move to a valid hex within its movement range.
-            let possible_hexes: Vec<_> = graph.friendly_move_hexes[attacker]
+            // Each attacker must move to a valid hex within its movement range, or stay put.
+            let mut possible_hexes: Vec<_> = graph.friendly_move_hexes[attacker]
                 .iter()
                 .map(|hex| variables.attack_hex[attacker]._eq(&Int::from_i64(ctx, loc_to_i64(hex))))
                 .collect();
 
-            if !possible_hexes.is_empty() {
-                solver.assert(&Bool::or(ctx, &possible_hexes.iter().collect::<Vec<_>>()));
-            } else {
-                // If there are no possible move hexes, it must stay put.
-                let attacker_loc_val = Int::from_i64(ctx, loc_to_i64(attacker));
-                solver.assert(&variables.attack_hex[attacker]._eq(&attacker_loc_val));
-            }
+            let attacker_loc_val = Int::from_i64(ctx, loc_to_i64(attacker));
+            possible_hexes.push(variables.attack_hex[attacker]._eq(&attacker_loc_val));
+
+            solver.assert(&Bool::or(ctx, &possible_hexes.iter().collect::<Vec<_>>()));
 
             // Lumbering units cannot move and attack in the same turn.
             if attacker_stats.lumbering {

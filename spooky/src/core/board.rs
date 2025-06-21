@@ -9,14 +9,14 @@ use anyhow::{Result, anyhow, bail, ensure};
 use crate::core::side;
 
 use super::{
-    // bitboards::{Bitboard, BitboardOps},
+    bitboards::{Bitboard, BitboardOps, Bitboards},
     side::{Side, SideArray},
     units::{Unit, Attack},
     loc::{Loc, PATH_MAPS},
     action::BoardAction,
     spells::Spell,
     tech::TechState,
-    map::{Map, Terrain},
+    map::{Map, MapSpec, Terrain},
 };
 
 /// Status modifiers that can be applied to pieces
@@ -81,12 +81,14 @@ pub struct Piece {
 /// Represents a single Minions board
 #[derive(Debug, Clone)]
 pub struct Board {
+    pub map: Map,
     pub phase: Phase,
     pub pieces: HashMap<Loc, Piece>,
     pub reinforcements: SideArray<HashBag<Unit>>,
     pub spells: SideArray<HashBag<Spell>>,
     pub winner: Option<Side>,
     pub resetting: bool,
+    pub bitboards: Bitboards,
 }
 
 const GRAVEYARDS_TO_WIN: i32 = 8;
@@ -95,14 +97,16 @@ impl Board {
     const START_FEN: &str = "0/2ZZ6/1ZNZ6/1ZZ7/0/0/7zz1/6znz1/6zz2/0";
 
     /// Create a new empty board
-    pub fn new() -> Self {
+    pub fn new(map: Map) -> Self {
         Self {
+            map,
             phase: Phase::Attack,
             pieces: HashMap::new(),
             reinforcements: SideArray::new(HashBag::new(), HashBag::new()),
             spells: SideArray::new(HashBag::new(), HashBag::new()),
             winner: None,
             resetting: false,
+            bitboards: Bitboards::new(map.spec()),
         }
     }
 
@@ -121,12 +125,18 @@ impl Board {
     /// Add a piece to the board
     pub fn add_piece(&mut self, piece: Piece) {
         debug_assert!(!self.pieces.contains_key(&piece.loc));
+        self.bitboards.set_piece(&piece.loc, piece.side, true);
         self.pieces.insert(piece.loc, piece);
     }
 
     /// Remove a piece from the board
     pub fn remove_piece(&mut self, loc: &Loc) -> Option<Piece> {
-        self.pieces.remove(loc)
+        if let Some(piece) = self.pieces.remove(loc) {
+            self.bitboards.set_piece(loc, piece.side, false);
+            Some(piece)
+        } else {
+            None
+        }
     }
 
     pub fn bounce_piece(&mut self, piece: Piece) {
@@ -137,7 +147,7 @@ impl Board {
         self.reinforcements[side].insert(unit);
     }
 
-    pub fn can_move(&self, from_loc: &Loc, to_loc: &Loc, map: &Map, side_to_move: Side) -> Result<()> {
+    pub fn can_move(&self, from_loc: &Loc, to_loc: &Loc, side_to_move: Side) -> Result<()> {
         // if let Some(piece) = self.get(to_loc) {
         //     ensure!(piece.side == side_to_move, "Cannot move to occupied square");            
         // }
@@ -172,7 +182,7 @@ impl Board {
                     }
                 };
 
-                if let Some(terrain) = map.get_terrain(&loc) {
+                if let Some(terrain) = self.map.get_terrain(&loc) {
                     if !terrain.allows(&piece.unit) { continue 'outer; }
                 }
             }            
@@ -249,8 +259,8 @@ impl Board {
         Ok((remove, bounce))
     }
 
-    pub fn units_on_graveyards(&self, side: Side, map: &Map) -> i32 {
-        map.spec().graveyards.iter()
+    pub fn units_on_graveyards(&self, side: Side) -> i32 {
+        self.map.spec().graveyards.iter()
             .filter(|loc| 
                 self.get_piece(loc)
                     .map(|piece| piece.side == side)
@@ -263,7 +273,6 @@ impl Board {
             money: &mut SideArray<i32>, 
             board_points: &mut SideArray<i32>, 
             tech_state: &TechState, 
-            map: &Map,
             side_to_move: Side
         ) -> Result<()> {
 
@@ -300,7 +309,7 @@ impl Board {
                 ensure!(self.phase.is_attack(), "Cannot move in spawn phase");
                 ensure!(self.get_piece(&to_loc).is_none(), "Cannot move to occupied square");
 
-                self.can_move(&from_loc, &to_loc, map, side_to_move)?;
+                self.can_move(&from_loc, &to_loc, side_to_move)?;
 
                 let piece = self.remove_piece(&from_loc).unwrap();
                 self.move_piece(piece, &to_loc);
@@ -315,7 +324,7 @@ impl Board {
                 for i in 0..num_locs {
                     let from_loc = &locs[i];
                     let to_loc = &locs[(i + 1) % num_locs];
-                    self.can_move(from_loc, to_loc, map, side_to_move)?;
+                    self.can_move(from_loc, to_loc, side_to_move)?;
                 }
 
                 // Store first piece
@@ -382,7 +391,7 @@ impl Board {
 
                 ensure!(self.get_piece(&spawn_loc).is_none(), "Can't spawn on occupied square");
 
-                if let Some(terrain) = map.get_terrain(&spawn_loc) {
+                if let Some(terrain) = self.map.get_terrain(&spawn_loc) {
                     ensure!(terrain.allows(&unit), "Terrain does not allow spawn");
                 }
 
@@ -434,16 +443,15 @@ impl Board {
 
     pub fn end_turn(&mut self, 
             money: &mut SideArray<i32>,
-            map: &Map,
             board_points: &mut SideArray<i32>,
             side_to_move: Side, 
         ) -> Result<()> {
 
-        let income = self.units_on_graveyards(side_to_move, map) + 3;
+        let income = self.units_on_graveyards(side_to_move) + 3;
         money[side_to_move] += income;
 
         if self.winner.is_none() {
-            let enemies_on_graveyards = self.units_on_graveyards(!side_to_move, map);
+            let enemies_on_graveyards = self.units_on_graveyards(!side_to_move);
 
             if enemies_on_graveyards >= GRAVEYARDS_TO_WIN  {
                 self.lose(side_to_move, board_points);
@@ -551,8 +559,8 @@ impl Board {
     }
 
     /// Create a board from FEN notation
-    pub fn from_fen(fen: &str) -> Result<Self> {
-        let mut board = Board::new();
+    pub fn from_fen(fen: &str, map: Map) -> Result<Self> {
+        let mut board = Board::new(map);
         let mut y = 0;
         let mut x = 0;
 
@@ -605,7 +613,7 @@ impl Board {
 
 impl Default for Board {
     fn default() -> Self {
-        Board::from_fen(Self::START_FEN).unwrap()
+        Board::from_fen(Self::START_FEN, Map::BlackenedShores).unwrap()
     }
 }
 
@@ -615,7 +623,7 @@ mod tests {
 
     #[test]
     fn test_board_pieces() {
-        let mut board = Board::new();
+        let mut board = Board::new(Map::BlackenedShores);
         let piece = Piece {
             loc: Loc { y: 0, x: 0 },
             side: Side::S0,
@@ -631,7 +639,7 @@ mod tests {
 
     #[test]
     fn test_board_fen_conversion() {
-        let mut board = Board::new();
+        let mut board = Board::new(Map::BlackenedShores);
         
         // Add a zombie at (0,0) for Side 0
         board.add_piece(Piece {
@@ -653,16 +661,16 @@ mod tests {
 
         assert_eq!(board.to_fen(), "Z8i/0/0/0/0/0/0/0/0/0");
 
-        let board2 = Board::from_fen(&board.to_fen()).unwrap();
+        let board2 = Board::from_fen(&board.to_fen(), board.map).unwrap();
         assert_eq!(board2.to_fen(), board.to_fen());
     }
 
     #[test]
     fn test_fen_empty_board() {
-        let board = Board::new();
+        let board = Board::new(Map::BlackenedShores);
         assert_eq!(board.to_fen(), "0/0/0/0/0/0/0/0/0/0");
 
-        let board2 = Board::from_fen("0/0/0/0/0/0/0/0/0/0").unwrap();
+        let board2 = Board::from_fen("0/0/0/0/0/0/0/0/0/0", Map::BlackenedShores).unwrap();
         assert_eq!(board2.to_fen(), "0/0/0/0/0/0/0/0/0/0");
     }
 
@@ -675,12 +683,12 @@ mod tests {
     #[test]
     fn test_invalid_fen() {
         // Test invalid piece character
-        assert!(Board::from_fen("X9/0/0/0/0/0/0/0/0/0").is_err());
+        assert!(Board::from_fen("X9/0/0/0/0/0/0/0/0/0", Map::BlackenedShores).is_err());
 
         // Test wrong number of ys
-        assert!(Board::from_fen("0/0/0/0/0/0/0/0/0").is_err());
+        assert!(Board::from_fen("0/0/0/0/0/0/0/0/0", Map::BlackenedShores).is_err());
 
         // Test wrong number of squares in y
-        assert!(Board::from_fen("Z8/0/0/0/0/0/0/0/0/0").is_err());
+        assert!(Board::from_fen("Z8/0/0/0/0/0/0/0/0/0", Map::BlackenedShores).is_err());
     }
 }

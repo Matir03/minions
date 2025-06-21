@@ -36,7 +36,7 @@ impl Loc {
     }
 
     pub fn index(&self) -> usize {
-        (self.x as usize) * GRID_LEN + (self.y as usize)
+        (self.y as usize) * GRID_LEN + (self.x as usize)
     }
 }
 

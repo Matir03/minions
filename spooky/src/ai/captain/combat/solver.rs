@@ -141,10 +141,11 @@ mod tests {
     use crate::core::side::Side;
     use crate::core::units::Unit;
     use std::cell::RefCell;
+    use crate::core::map::Map;
     use z3::{Config, SatResult};
 
     fn create_board_with_pieces(pieces: Vec<(Unit, Side, Loc)>) -> Board {
-        let mut board = Board::new();
+        let mut board = Board::new(Map::BlackenedShores);
         for (unit, side, loc) in pieces {
             let piece = Piece {
                 unit,

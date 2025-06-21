@@ -1,8 +1,7 @@
 //! Bitboards
-use super::loc::Loc;
+use super::{loc::Loc, map::{MapSpec, TileType, Terrain}, side::Side};
 
 pub type Bitboard = u128;
-
 
 #[derive(Copy, Clone)]
 struct Dir {
@@ -17,28 +16,23 @@ impl Dir {
 
     const fn make_mask(&self) -> Bitboard {
         let mut mask: Bitboard = 0;
-        let mut idx = -1;
+        let mut idx = 0;
 
-        loop {
-            idx += 1;
-
-            if idx >= 100 {
-                break;
-            }
-
+        while idx < 100 {
             let loc: Loc = Loc { 
-                y: idx / 10 + self.dx, 
-                x: idx % 10 + self.dy 
+                y: (idx / 10) + self.dy, 
+                x: (idx % 10) + self.dx 
             };
 
-            if !loc.in_bounds() { continue; }
-
-            let shift = self.shift();
-            let new_idx = idx + shift;
-
-            if 0 <= new_idx && new_idx < 128 {
-                mask |= 1 << new_idx;
-            }   
+            if loc.in_bounds() {
+                let shift = self.shift();
+                let new_idx = idx + shift;
+    
+                if new_idx >= 0 && new_idx < 100 {
+                    mask |= 1 << new_idx;
+                }
+            }
+            idx += 1;
         }
 
         mask
@@ -122,3 +116,60 @@ impl BitboardOps for Bitboard {
         }
     }
 }
+
+#[derive(Debug, Clone)]
+pub struct Bitboards {
+    pub s0_pieces: Bitboard,
+    pub s1_pieces: Bitboard,
+    pub all_pieces: Bitboard,
+
+    // Terrain bitboards
+    pub water: Bitboard,
+    pub earthquake: Bitboard,
+    pub whirlwind: Bitboard,
+    pub firestorm: Bitboard,
+}
+
+impl Bitboards {
+    pub fn new(map_spec: &MapSpec) -> Self {
+        let mut water = Bitboard::new();
+        let mut earthquake = Bitboard::new();
+        let mut whirlwind = Bitboard::new();
+        let mut firestorm = Bitboard::new();
+
+        for y in 0..10 {
+            for x in 0..10 {
+                let loc = Loc::new(x, y);
+                if let Some(tile) = map_spec.tiles.get(&loc) {
+                    if let TileType::NativeTerrain(terrain) = tile {
+                        match terrain {
+                            Terrain::Flood => water.set(loc, true),
+                            Terrain::Earthquake => earthquake.set(loc, true),
+                            Terrain::Whirlwind => whirlwind.set(loc, true),
+                            Terrain::Firestorm => firestorm.set(loc, true),
+                        }
+                    }
+                }
+            }
+        }
+
+        Self {
+            s0_pieces: Bitboard::new(),
+            s1_pieces: Bitboard::new(),
+            all_pieces: Bitboard::new(),
+            water,
+            earthquake,
+            whirlwind,
+            firestorm,
+        }
+    }
+
+    pub fn set_piece(&mut self, loc: &Loc, side: Side, value: bool) {
+        match side {
+            Side::S0 => self.s0_pieces.set(*loc, value),
+            Side::S1 => self.s1_pieces.set(*loc, value),
+        };
+        self.all_pieces.set(*loc, value);
+    }
+}
+    

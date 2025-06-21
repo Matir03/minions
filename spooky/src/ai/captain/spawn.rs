@@ -97,6 +97,7 @@ fn get_spawn_locs(board: &Board, side: Side) -> Vec<Loc> {
 mod tests {
     use super::*;
     use crate::core::board::{Board, Piece};
+    use crate::core::map::Map;
     use crate::core::loc::Loc;
     use crate::core::side::Side;
     use crate::core::tech::{Tech, TechAssignment, TechState, Techline};
@@ -181,7 +182,7 @@ mod tests {
 
     #[test]
     fn test_get_spawn_locs_s0() {
-        let board = Board::new();
+        let board = Board::new(Map::BlackenedShores);
         let locs = get_spawn_locs(&board, Side::S0);
         assert_eq!(locs.len(), 30); // 3 rows of 10
         assert!(locs.iter().all(|loc| loc.y <= 2));
@@ -189,7 +190,7 @@ mod tests {
 
     #[test]
     fn test_get_spawn_locs_s1() {
-        let board = Board::new();
+        let board = Board::new(Map::BlackenedShores);
         let locs = get_spawn_locs(&board, Side::S1);
         assert_eq!(locs.len(), 30); // 3 rows of 10
         assert!(locs.iter().all(|loc| loc.y >= 7));
@@ -197,7 +198,7 @@ mod tests {
 
     #[test]
     fn test_get_spawn_locs_blocked() {
-        let mut board = Board::new();
+        let mut board = Board::new(Map::BlackenedShores);
         let loc = Loc::new(0, 0);
         let piece = Piece {
             loc,
@@ -214,7 +215,7 @@ mod tests {
 
     #[test]
     fn test_generate_heuristic_spawn_actions_full() {
-        let board = Board::new();
+        let board = Board::new(Map::BlackenedShores);
         let tech_state = new_all_unlocked_tech_state();
         // With 4 money, it should buy 2 Initiates (cost 2 each)
         let money = 4;
@@ -243,7 +244,7 @@ mod tests {
 
     #[test]
     fn test_get_spawn_locs_is_deterministic() {
-        let board = Board::new();
+        let board = Board::new(Map::BlackenedShores);
         let locs_s0 = get_spawn_locs(&board, Side::S0);
         // The most central locations should be at the end.
         // The two most central are (4, 2) and (5, 2).

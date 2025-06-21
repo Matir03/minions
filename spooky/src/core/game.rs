@@ -135,9 +135,10 @@ pub struct GameState {
 
 impl Default for GameState {
     fn default() -> Self {
+        let default_map = Map::BlackenedShores;
         Self {
             side_to_move: Side::S0,
-            boards: vec![Board::default(), Board::default()],
+            boards: vec![Board::new(default_map), Board::new(default_map)],
             board_points: SideArray::new(0, 0),
             tech_state: TechState::new(),
             money: SideArray::new(0, 12),
@@ -195,8 +196,8 @@ impl GameState {
             .split('|');
             
         let mut boards = Vec::new();
-        for board_fen in board_fens {
-            boards.push(Board::from_fen(board_fen)?);
+        for (board_fen, &map) in board_fens.zip(&config.maps) {
+            boards.push(Board::from_fen(board_fen, map)?);
         }
         
         ensure!(boards.len() == config.num_boards, "Invalid number of boards");
@@ -267,22 +268,19 @@ impl GameState {
         for (board_idx, actions) 
         in turn.board_actions.into_iter().enumerate() {
             let board = &mut self.boards[board_idx];
-            let map = &config.maps[board_idx];
-            
+
             // Execute each action in sequence
             for action in actions {
                 board.do_action(action, 
                     &mut self.money, 
                     &mut self.board_points,
                     &self.tech_state, 
-                    map, 
                     self.side_to_move
                 )?;
             }
 
             board.end_turn(
                 &mut self.money, 
-                map, 
                 &mut self.board_points,
                 self.side_to_move
             )?;
