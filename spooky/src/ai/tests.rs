@@ -29,6 +29,6 @@ fn test_propose_move_integration() {
     let (turn, new_state) = node_state.propose_move(&mut rng, &args);
 
     // Basic sanity checks
-    assert!(!turn.combat_actions.is_empty() || !turn.spawn_actions.is_empty());
+    assert!(!turn.attack_actions.is_empty() || !turn.spawn_actions.is_empty());
     assert_eq!(new_state.side_to_move, side);
 }

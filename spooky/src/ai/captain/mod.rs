@@ -37,7 +37,7 @@ use z3::{Config, Context, Optimize, SatResult};
 /// Represents the actions taken during a single board's turn phase.
 #[derive(Clone, Debug)]
 pub struct BoardTurn {
-    pub combat_actions: StdVec<BoardAction>,
+    pub attack_actions: StdVec<BoardAction>,
     pub spawn_actions: StdVec<BoardAction>,
 }
 
@@ -157,7 +157,7 @@ impl NodeState<BoardTurn> for BoardNodeState {
                 proposed_turn_delta_points.add_assign(&spawn_delta_points);
 
                 let turn_taken = BoardTurn {
-                    combat_actions,
+                    attack_actions: combat_actions,
                     spawn_actions,
                 };
 
@@ -173,7 +173,7 @@ impl NodeState<BoardTurn> for BoardNodeState {
             SatResult::Unsat | SatResult::Unknown => {
                 // If no solution, return empty actions
                 let turn = BoardTurn {
-                    combat_actions: StdVec::new(),
+                    attack_actions: StdVec::new(),
                     spawn_actions: StdVec::new(),
                 };
                 // Return the same state
