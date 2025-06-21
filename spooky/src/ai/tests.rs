@@ -1,5 +1,5 @@
 use crate::{
-    ai::board::BoardNodeState,
+    ai::captain::BoardNodeState,
     core::{
         board::Board,
         game::GameConfig,

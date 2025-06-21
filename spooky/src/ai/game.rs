@@ -9,7 +9,7 @@ use crate::core::{GameConfig, GameState, Side, SideArray, GameTurn, board::Board
 use hashbag::HashBag;
 use crate::ai::mcts::{MCTSNode, NodeState, NodeStats, MCTSEdge};
 use crate::ai::general::{GeneralNodeState, GeneralNode, GeneralNodeRef}; 
-use crate::ai::board::{BoardNodeState, BoardTurn, BoardNode, BoardNodeRef}; 
+use crate::ai::captain::{BoardNodeState, BoardTurn, BoardNode, BoardNodeRef}; 
 use crate::ai::eval::Eval;
 use crate::ai::blotto;
 use crate::ai::search::SearchArgs;

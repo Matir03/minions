@@ -1,6 +1,6 @@
 //! Strategic and tactical logic for the full game
 pub mod blotto;
-pub mod board;
+pub mod captain;
 pub mod eval;
 pub mod game;
 pub mod general;
