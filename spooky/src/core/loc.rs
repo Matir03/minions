@@ -24,6 +24,13 @@ impl Loc {
         self.y >= 0 && self.y < GRID_LEN as i32 
     }
 
+    pub fn from_index(index: i32) -> Self {
+        Self {
+            x: index % GRID_LEN as i32,
+            y: index / GRID_LEN as i32,
+        }
+    }
+
     pub fn neighbors(&self) -> Vec<Loc> {
         DIRS.into_iter()
             .map(|dir| self + &dir.into())

@@ -14,10 +14,10 @@ use crate::{
     core::{
         action::BoardAction,
         board::Board,
-        game::GameConfig,
+        game::{GameConfig, GameState},
+        map::Map,
         side::Side,
         tech::TechState,
-        map::Map,
         SideArray,
     },
     ai::{eval::Eval, mcts::{MCTSNode, NodeState, NodeStats}},
@@ -177,3 +177,28 @@ impl NodeState<BoardTurn> for BoardNodeState {
 
 pub type BoardNode<'a> = MCTSNode<'a, BoardNodeState, BoardTurn>;
 pub type BoardNodeRef<'a> = &'a RefCell<BoardNode<'a>>;
+
+#[cfg(test)]
+mod tests {
+    use crate::ai::mcts::NodeState;
+    use crate::core::{action::BoardAction, board::Board, game::GameConfig, map::Map, side::Side, tech::TechState};
+    use super::BoardNodeState;
+    use rand::thread_rng;
+
+    #[test]
+    fn test_ai_proposes_non_trivial_opening_move() {
+        let board = Board::from_fen(Board::START_FEN, Map::BlackenedShores).unwrap();
+        let mut rng = thread_rng();
+        let tech_state = TechState::new();
+        let config = GameConfig::default();
+        let node_state = BoardNodeState::new(board, Side::S0);
+
+        let (turn, _new_state) = node_state.propose_move(&mut rng, &(12, tech_state, config, 0));
+
+        let has_move = turn.attack_actions.iter().any(|a|
+            matches!(a, BoardAction::Move {..} | BoardAction::MoveCyclic {..} | BoardAction::Attack {..})
+        );
+
+        assert!(has_move, "AI should propose a move or attack on the opening turn. Got: {:?}", turn.attack_actions);
+    }
+}

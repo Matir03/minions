@@ -94,7 +94,7 @@ pub struct Board {
 const GRAVEYARDS_TO_WIN: i32 = 8;
 
 impl Board {
-    const START_FEN: &str = "0/2ZZ6/1ZNZ6/1ZZ7/0/0/7zz1/6znz1/6zz2/0";
+    pub const START_FEN: &str = "0/2ZZ6/1ZNZ6/1ZZ7/0/0/7zz1/6znz1/6zz2/0";
 
     /// Create a new empty board
     pub fn new(map: Map) -> Self {
@@ -148,49 +148,21 @@ impl Board {
     }
 
     pub fn can_move(&self, from_loc: &Loc, to_loc: &Loc, side_to_move: Side) -> Result<()> {
-        // if let Some(piece) = self.get(to_loc) {
-        //     ensure!(piece.side == side_to_move, "Cannot move to occupied square");            
-        // }
-
         let piece = self.get_piece(from_loc)
-            .ok_or(anyhow!("No piece to move from {from_loc}"))?;
+            .ok_or_else(|| anyhow!("No piece to move from {}", from_loc))?;
 
         ensure!(piece.side == side_to_move, "Cannot move opponent's piece");
         ensure!(!piece.state.borrow().moved, "Cannot move piece twice");
 
-        let delta = to_loc - from_loc;
-        let stats = piece.unit.stats();
-        let speed = stats.speed;
+        let valid_moves = self.get_valid_move_hexes(*from_loc);
+        ensure!(
+            valid_moves.contains(to_loc),
+            "No valid path from {} to {}",
+            from_loc,
+            to_loc
+        );
 
-        ensure!(delta.length() <= speed, "Piece cannot move that far");
-
-        if stats.flying { 
-            return Ok(());
-        }
-
-        let paths = &PATH_MAPS[speed as usize][&delta];
-
-        'outer: for path in paths {
-            for delta in path {
-                let loc = from_loc + delta;
-                
-                if !loc.in_bounds() { continue 'outer; }
-
-                if let Some(piece) = self.get_piece(&loc) {
-                    if piece.side != side_to_move { 
-                        continue 'outer; 
-                    }
-                };
-
-                if let Some(terrain) = self.map.get_terrain(&loc) {
-                    if !terrain.allows(&piece.unit) { continue 'outer; }
-                }
-            }            
-
-            return Ok(());
-        }
-
-        Err(anyhow!("No valid path from {from_loc} to {to_loc}"))
+        Ok(())
     }
 
     fn move_piece(&mut self, mut piece: Piece, to_loc: &Loc) {
@@ -560,54 +532,59 @@ impl Board {
 
     /// Create a board from FEN notation
     pub fn from_fen(fen: &str, map: Map) -> Result<Self> {
-        let mut board = Board::new(map);
-        let mut y = 0;
-        let mut x = 0;
+        let mut board = Self::new(map);
+        let parts: Vec<&str> = fen.split('/').collect();
 
-        for c in fen.chars() {
-            match c {
-                '/' => {
-                    if x != 10 {
-                        bail!("Invalid FEN: wrong number of squares in y {}", y);
-                    }
-                    y += 1;
-                    x = 0;
-                }
-                '0'..='9' => {
-                    let empty = if c == '0' { 10 } else { c.to_digit(10).unwrap() as usize };
-                    x += empty;
-                }
-                'A'..='Z' | 'a'..='z' => {
-                    if x >= 10 || y >= 10 {
-                        bail!("Invalid FEN: piece position out of bounds");
-                    }
+        ensure!(parts.len() == 10, "Invalid FEN: must have 10 rows");
 
-                    let side = if c.is_uppercase() { Side::S0 } else { Side::S1 };
-                    if let Some(unit) = Unit::from_fen_char(c.to_ascii_uppercase()) {
+        for (y, row_str) in parts.iter().enumerate() {
+            let mut x = 0;
+            if *row_str == "0" {
+                x = 10;
+            } else {
+                for c in row_str.chars() {
+                    if let Some(digit) = c.to_digit(10) {
+                        ensure!(digit != 0, "FEN digit cannot be 0 unless it's the only char in the row");
+                        x += digit as i32;
+                    } else {
+                        let side = if c.is_uppercase() { Side::S0 } else { Side::S1 };
+                        let unit_char = c.to_ascii_lowercase();
+                        let unit = Unit::from_fen_char(unit_char)
+                            .ok_or_else(|| anyhow!("Invalid unit char: {}", unit_char))?;
+
+                        let loc = Loc::new(x, y as i32);
                         board.add_piece(Piece {
-                            loc: Loc { 
-                                y: y as i32, 
-                                x: x as i32 
-                            },
+                            loc,
                             side,
                             unit,
                             modifiers: Modifiers::default(),
-                            state: PieceState::default().into(),
+                            state: RefCell::new(PieceState::default()),
                         });
                         x += 1;
-                    } else {
-                        bail!("Invalid FEN: unknown piece '{}'", c);
                     }
                 }
-                _ => bail!("Invalid FEN character: '{}'", c),
             }
-        }
-
-        if y != 9 || x != 10 {
-            bail!("Invalid FEN: wrong number of ys or xumns");
+            ensure!(x == 10, "Invalid FEN: row {} does not sum to 10, got {}", y, x);
         }
 
         Ok(board)
+    }
+
+    pub fn get_valid_move_hexes(&self, piece_loc: Loc) -> Vec<Loc> {
+        let piece = self.get_piece(&piece_loc).unwrap();
+        let stats = piece.unit.stats();
+        self.bitboards.get_valid_move_hexes(
+            &piece_loc,
+            piece.side,
+            stats.speed,
+            stats.flying,
+        )
+    }
+
+    pub fn get_valid_moves(&self, piece_loc: Loc) -> Bitboard {
+        let piece = self.get_piece(&piece_loc).unwrap();
+        let stats = piece.unit.stats();
+        self.bitboards.get_valid_moves(&piece_loc, piece.side, stats.speed, stats.flying)
     }
 }
 

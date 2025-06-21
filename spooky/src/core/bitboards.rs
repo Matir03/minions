@@ -1,6 +1,17 @@
 //! Bitboards
 use super::{loc::Loc, map::{MapSpec, TileType, Terrain}, side::Side};
 
+// Helper function to convert a bitboard to a Vec<Loc>
+pub fn bitboard_to_locs(bb: Bitboard) -> Vec<Loc> {
+    let mut locs = Vec::new();
+    for i in 0..100 {
+        if (bb >> i) & 1 != 0 {
+            locs.push(Loc::from_index(i));
+        }
+    }
+    locs
+}
+
 pub type Bitboard = u128;
 
 #[derive(Copy, Clone)]
@@ -170,6 +181,31 @@ impl Bitboards {
             Side::S1 => self.s1_pieces.set(*loc, value),
         };
         self.all_pieces.set(*loc, value);
+    }
+
+    pub fn get_valid_moves(&self, loc: &Loc, side: Side, range: i32, is_flying: bool) -> Bitboard {
+        let mut prop_mask = !self.all_pieces;
+        prop_mask.set(*loc, true);
+
+        let dest_mask = if side == Side::S0 {
+            !self.s0_pieces
+        } else {
+            !self.s1_pieces
+        };
+
+        if !is_flying {
+            prop_mask &= !self.water;
+        }
+
+        let mut start = Bitboard::new();
+        start.set(*loc, true);
+
+        start.all_movements(range, prop_mask, dest_mask)
+    }
+
+    pub fn get_valid_move_hexes(&self, loc: &Loc, side: Side, range: i32, is_flying: bool) -> Vec<Loc> {
+        let moves_bb = self.get_valid_moves(loc, side, range, is_flying);
+        bitboard_to_locs(moves_bb)
     }
 }
     

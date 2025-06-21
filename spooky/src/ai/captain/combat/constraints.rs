@@ -61,26 +61,9 @@ impl<'ctx> Variables<'ctx> {
 }
 
 
-pub trait Asserter<'ctx> {
-    fn assert(&self, ast: &Bool<'ctx>);
-}
-
-impl<'ctx> Asserter<'ctx> for z3::Solver<'ctx> {
-    fn assert(&self, ast: &Bool<'ctx>) {
-        z3::Solver::assert(self, ast);
-    }
-}
-
-impl<'ctx> Asserter<'ctx> for z3::Optimize<'ctx> {
-    fn assert(&self, ast: &Bool<'ctx>) {
-        z3::Optimize::assert(self, ast);
-    }
-}
-
-
 /// Adds all constraints for the combat graph to the Z3 solver
-pub fn add_all_constraints<'ctx, S: Asserter<'ctx>>(
-    solver: &S,
+pub fn add_all_constraints<'ctx>(
+    solver: &z3::Optimize<'ctx>,
     ctx: &'ctx z3::Context,
     variables: &Variables<'ctx>,
     graph: &CombatGraph,
@@ -117,7 +100,33 @@ pub fn add_all_constraints<'ctx, S: Asserter<'ctx>>(
             let attacker_loc_val = Int::from_i64(ctx, loc_to_i64(attacker));
             possible_hexes.push(variables.attack_hex[attacker]._eq(&attacker_loc_val));
 
-            solver.assert(&Bool::or(ctx, &possible_hexes.iter().collect::<Vec<_>>()));
+            let one = Int::from_i64(ctx, 1);
+            let zero = Int::from_i64(ctx, 0);
+            let terms: Vec<_> = possible_hexes.iter().map(|p| p.ite(&one, &zero)).collect();
+            let term_refs: Vec<_> = terms.iter().collect();
+            let sum = Int::add(ctx, &term_refs);
+            let equals_one = sum._eq(&one);
+            solver.assert(&equals_one);
+
+            // Add a soft constraint to encourage movement for non-attacking units.
+            let moved = variables.attack_hex[attacker]
+                ._eq(&attacker_loc_val)
+                .not();
+
+            let attacks_by_this_attacker: Vec<_> = graph
+                .pairs
+                .iter()
+                .filter(|p| p.attacker_pos == *attacker)
+                .map(|p| &variables.attacks[&(p.attacker_pos, p.defender_pos)])
+                .collect();
+
+            let is_not_attacking = if attacks_by_this_attacker.is_empty() {
+                Bool::from_bool(ctx, true)
+            } else {
+                Bool::or(ctx, &attacks_by_this_attacker).not()
+            };
+
+            solver.assert_soft(&is_not_attacking.implies(&moved), 1, Some("encourage_movement".into()));
 
             // Lumbering units cannot move and attack in the same turn.
             if attacker_stats.lumbering {
