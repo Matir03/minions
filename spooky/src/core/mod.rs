@@ -1,7 +1,6 @@
 //! Core game representations and rules
 
 pub mod action;
-pub mod bitboards;
 pub mod board;
 pub mod convert;
 pub mod display;
@@ -16,7 +15,7 @@ pub mod units;
 
 pub use game::{GameConfig, GameState, parse_fen};
 pub use board::Board;
-pub use action::{GameTurn, BoardAction, GameAction};
+pub use action::{GameTurn, GameAction};
 pub use tech::{Tech, Techline, TechStatus};
 pub use units::{UnitStats, Unit, Attack};
 pub use map::{MapSpec, Map, TileType, HexGrid};

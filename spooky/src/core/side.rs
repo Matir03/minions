@@ -22,6 +22,13 @@ impl Side {
             Side::S1 => -1,
         }
     }
+
+    pub fn opponent(self) -> Self {
+        match self {
+            Side::S0 => Side::S1,
+            Side::S1 => Side::S0,
+        }
+    }
 }
 
 impl FromIndex for Side {

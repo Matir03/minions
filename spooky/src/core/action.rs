@@ -1,154 +1,33 @@
 //! Game actions and moves
 
 use super::{
-    loc::Loc,
-    units::Unit,
+    board::actions::{AttackAction, BoardTurn, SetupAction, SpawnAction},
     spells::{Spell, SpellCast},
-    tech::TechAssignment
+    tech::TechAssignment,
 };
 
-use anyhow::{ensure, Result, bail};
+use anyhow::{bail, ensure, Result};
 use hashbag::HashBag;
-use std::{fmt::Display, ops::{Range, RangeBounds}};
+use std::fmt::Display;
 
-/// Represents a legal move in the game
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum BoardAction {
-    Move {
-        from_loc: Loc,
-        to_loc: Loc,
-    },
-    MoveCyclic {
-        locs: Vec<Loc>,
-    },
-    Attack {
-        attacker_loc: Loc,
-        target_loc: Loc,
-    },
-    Blink {
-        blink_loc: Loc,
-    },
-    Buy {
-        unit: Unit,
-    },
-    Spawn {
-        spawn_loc: Loc,
-        unit: Unit,
-    },
-    Cast {
-        spell_cast: SpellCast,
-    },
-    Discard {
-        spell: Spell,
-    },
-    EndPhase,
-    Resign,
-    SaveUnit {
-        unit: Option<Unit>,
-    }
-}
-
-impl BoardAction {
-    pub fn from_args(name: &str, args: &[&str]) -> Result<BoardAction> {
-        let expected_numargs = match name {
-            "move" => 2..=2,
-            "movecyclic" => 1..=100,
-            "attack" => 2..=2,
-            "blink" => 1..=1,
-            "buy" => 1..=1,
-            "spawn" => 2..=2,
-            "cast" => 1..=10,
-            "discard" => 1..=1,
-            "endphase" => 0..=0,
-            "resign" => 0..=0,
-            "saveunit" => 0..=1,
-            _ => bail!("Invalid board action name"),
-        };
-
-        let num_args = args.len();
-        ensure!(expected_numargs.contains(&num_args), "Invalid number of arguments");
-
-        let action = match name {
-            "move" => BoardAction::Move {
-                from_loc: args[0].parse()?, 
-                to_loc: args[1].parse()?
-            },
-            "movecyclic" => BoardAction::MoveCyclic {
-                locs: args.iter().map(|s| s.parse()).collect::<Result<Vec<_>>>()?,
-            },
-            "attack" => BoardAction::Attack {
-                attacker_loc: args[0].parse()?, 
-                target_loc: args[1].parse()?
-            },
-            "blink" => BoardAction::Blink {
-                blink_loc: args[0].parse()?,
-            },
-            "buy" => BoardAction::Buy {
-                unit: args[0].parse()?,
-            },
-            "spawn" => BoardAction::Spawn {
-                spawn_loc: args[0].parse()?, 
-                unit: args[1].parse()?
-            },
-            "cast" => todo!("spells not implemented yet"),
-            "discard" => BoardAction::Discard {
-                spell: args[0].parse()?,
-            },
-            "endphase" => BoardAction::EndPhase,
-            "resign" => BoardAction::Resign,
-            "saveunit" => BoardAction::SaveUnit {
-                unit: args.get(0).map(|s| s.parse()).transpose()?,
-            },
-            _ => unreachable!(),
-        };
-
-        Ok(action)
-    }
-}
 pub enum GameAction {
     BuySpell(Spell),
     AdvanceTech(usize),
     AcquireTech(usize),
     GiveSpell(usize, Spell),
-    BoardAction(usize, BoardAction),
-}
-
-impl GameAction {
-    pub fn from_args(name: &str, args: &[&str]) -> Result<GameAction> {
-        let expected_numargs = match name {
-            "buyspell" => 1..=1,
-            "advancetech" => 1..=1,
-            "acquiretech" => 1..=1,
-            "givespell" => 2..=2,
-            "boardaction" => 2..=100,
-            _ => bail!("Invalid board action name"),
-        };
-
-        let num_args = args.len();
-        ensure!(expected_numargs.contains(&num_args), "Invalid number of arguments");
-
-        let action = match name {
-            "buyspell" => GameAction::BuySpell(args[0].parse()?),
-            "advancetech" => GameAction::AdvanceTech(args[0].parse()?),
-            "acquiretech" => GameAction::AcquireTech(args[0].parse()?),
-            "givespell" => GameAction::GiveSpell(args[0].parse()?, args[1].parse()?),
-            "boardaction" => GameAction::BoardAction(args[0].parse()?, 
-                BoardAction::from_args(args[1], &args[2..])?),
-            _ => unreachable!(),
-        };
-
-        Ok(action)
-    }
+    BoardSetupAction(usize, SetupAction),
+    BoardAttackAction(usize, AttackAction),
+    BoardSpawnAction(usize, SpawnAction),
 }
 
 /// Represents a complete turn in the game
 #[derive(Debug, Clone)]
 pub struct GameTurn {
-    // pub num_spells_bought: usize,
     pub spells: HashBag<Spell>,
-    pub spell_assignment: Vec<Spell>,  // board -> spell index
+    pub spell_assignment: Vec<Spell>, // board -> spell index
     pub tech_assignment: TechAssignment,
-    pub board_actions: Vec<Vec<BoardAction>>,
+    pub board_turns: Vec<BoardTurn>,
 }
 
 impl GameTurn {
@@ -157,11 +36,10 @@ impl GameTurn {
         assert!(spells.len() == num_boards + 1, "Invalid number of spells");
 
         Self {
-            // num_spells_bought: 0,
             spells: spells.into_iter().collect(),
             spell_assignment: vec![Spell::Blank; num_boards],
             tech_assignment: TechAssignment::default(),
-            board_actions: vec![Vec::new(); num_boards],
+            board_turns: vec![BoardTurn::default(); num_boards],
         }
     }
 
@@ -178,57 +56,114 @@ impl GameTurn {
             }
             GameAction::GiveSpell(board_index, spell) => {
                 let k = self.spells.remove(&spell);
-                ensure!(k > 0, "Cannot give non-drawn spell");
+                if k == 0 {
+                    return Err(anyhow::anyhow!("Cannot give non-drawn spell"));
+                }
                 self.spell_assignment[board_index] = spell;
             }
-            GameAction::BoardAction(board_index, action) => {
-                self.add_action(board_index, action);
-            }        
+            GameAction::BoardSetupAction(board_index, action) => {
+                self.board_turns[board_index].setup_actions.push(action);
+            }
+            GameAction::BoardAttackAction(board_index, action) => {
+                self.board_turns[board_index].attack_actions.push(action);
+            }
+            GameAction::BoardSpawnAction(board_index, action) => {
+                self.board_turns[board_index].spawn_actions.push(action);
+            }
         }
 
         Ok(())
-    }
-
-    /// Add an action to a specific board
-    pub fn add_action(&mut self, board_index: usize, action: BoardAction) {
-        if board_index < self.board_actions.len() {
-            self.board_actions[board_index].push(action);
-        }
-    }
-}
-
-impl Display for BoardAction {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            BoardAction::Move { from_loc, to_loc } => write!(f, "move {} {}", from_loc, to_loc),
-            BoardAction::MoveCyclic { locs } => write!(f, "movecyclic {}", locs.iter().map(|l| l.to_string()).collect::<Vec<String>>().join(" ")),
-            BoardAction::Attack { attacker_loc, target_loc } => write!(f, "attack {} {}", attacker_loc, target_loc),
-            BoardAction::Blink { blink_loc } => write!(f, "blink {}", blink_loc),
-            BoardAction::Buy { unit } => write!(f, "buy {}", unit),
-            BoardAction::Spawn { spawn_loc, unit } => write!(f, "spawn {} {}", spawn_loc, unit),
-            BoardAction::Cast { spell_cast } => todo!("spells not implemented yet"),
-            BoardAction::Discard { spell } => write!(f, "discard {}", spell),
-            BoardAction::EndPhase => write!(f, "endphase"),
-            BoardAction::Resign => write!(f, "resign"),
-            BoardAction::SaveUnit { unit: Some(unit) } => write!(f, "saveunit {}", unit),
-            BoardAction::SaveUnit { unit: None } => write!(f, "saveunit"),
-        }
     }
 }
 
 impl Display for GameTurn {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "turn")?;
+        let mut out = String::new();
 
-        for (board_idx, board_actions) in self.board_actions.iter().enumerate() {
-            for action in board_actions {
-                writeln!(f, "action {} {}", board_idx, action)?;
+        // Spells
+        out.push_str("turn spells");
+        for spell in self.spells.iter() {
+            out.push_str(&format!(" {}", spell));
+        }
+        out.push('\n');
+
+        // Tech
+        if self.tech_assignment.advance_by > 0 {
+            out.push_str(&format!("action adv_tech {}\n", self.tech_assignment.advance_by));
+        }
+        for &tech_idx in &self.tech_assignment.acquire {
+            out.push_str(&format!("action acq_tech {}\n", tech_idx));
+        }
+
+        // Spell assignment
+        for (i, &spell) in self.spell_assignment.iter().enumerate() {
+            if spell != Spell::Blank {
+                out.push_str(&format!("action give_spell {} {}\n", i, spell));
             }
         }
 
-        writeln!(f, "endturn")
+        // Board turns
+        for (i, board_turn) in self.board_turns.iter().enumerate() {
+            for action in &board_turn.setup_actions {
+                out.push_str(&format!("action b_setup {} {}\n", i, action));
+            }
+            for action in &board_turn.attack_actions {
+                out.push_str(&format!("action b_attack {} {}\n", i, action));
+            }
+            for action in &board_turn.spawn_actions {
+                out.push_str(&format!("action b_spawn {} {}\n", i, action));
+            }
+        }
+
+        out.push_str("endturn");
+        write!(f, "{}", out.trim_end())
     }
 }
 
-#[cfg(test)]
-mod tests { }
+impl GameAction {
+    pub fn from_args(action_name: &str, args: &[&str]) -> Result<Self> {
+        match action_name {
+            "buy_spell" => {
+                ensure!(args.len() == 1, "buy_spell requires 1 argument");
+                let spell = args[0].parse()?;
+                Ok(GameAction::BuySpell(spell))
+            }
+            "adv_tech" => {
+                ensure!(args.len() == 1, "adv_tech requires 1 argument");
+                let num_techs = args[0].parse()?;
+                Ok(GameAction::AdvanceTech(num_techs))
+            }
+            "acq_tech" => {
+                ensure!(args.len() == 1, "acq_tech requires 1 argument");
+                let tech_index = args[0].parse()?;
+                Ok(GameAction::AcquireTech(tech_index))
+            }
+            "give_spell" => {
+                ensure!(args.len() == 2, "give_spell requires 2 arguments");
+                let board_index = args[0].parse()?;
+                let spell = args[1].parse()?;
+                Ok(GameAction::GiveSpell(board_index, spell))
+            }
+            "b_setup" => {
+                ensure!(args.len() >= 2, "board setup action requires at least 2 arguments");
+                let board_index = args[0].parse()?;
+                let action = SetupAction::from_args(args[1], &args[2..])?;
+                Ok(GameAction::BoardSetupAction(board_index, action))
+            }
+            "b_attack" => {
+                ensure!(args.len() >= 2, "board attack action requires at least 2 arguments");
+                let board_index = args[0].parse()?;
+                let action = AttackAction::from_args(args[1], &args[2..])?;
+                Ok(GameAction::BoardAttackAction(board_index, action))
+            }
+            "b_spawn" => {
+                ensure!(args.len() >= 2, "board spawn action requires at least 2 arguments");
+                let board_index = args[0].parse()?;
+                let action = SpawnAction::from_args(args[1], &args[2..])?;
+                Ok(GameAction::BoardSpawnAction(board_index, action))
+            }
+            _ => bail!("Unknown game action: {}", action_name),
+        }
+    }
+}
+

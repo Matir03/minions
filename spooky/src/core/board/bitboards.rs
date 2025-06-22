@@ -1,9 +1,6 @@
 //! Bitboards
-use super::{
-    loc::Loc,
-    map::{MapSpec, TileType, Terrain},
-    side::{Side, SideArray},
-    board::Piece,
+use crate::core::{
+    board::Piece, loc::Loc, map::{MapSpec, Terrain, TileType}, side::{Side, SideArray}, Board
 };
 
 pub type Bitboard = u128;
@@ -254,6 +251,35 @@ impl Bitboards {
         }
         println!("hexes: {}", hexes.to_locs().len());
         hexes
+    }
+}
+
+impl Board {
+    pub fn units_on_graveyards(&self, side: Side) -> i32 {
+        self.bitboards.occupied_graveyards(side).count_ones() as i32
+    }
+
+    pub fn unoccupied_graveyards(&self, side: Side) -> Vec<Loc> {
+        self.bitboards.unoccupied_graveyards(side).to_locs()
+    }
+
+    pub fn get_valid_move_hexes(&self, piece_loc: Loc) -> Vec<Loc> {
+        let piece = self.get_piece(&piece_loc).unwrap();
+        let speed = piece.unit.stats().speed;
+        let is_flying = piece.unit.stats().flying;
+        self.bitboards.get_valid_moves(&piece_loc, piece.side, speed, is_flying).to_locs()
+    }
+
+    pub fn get_valid_moves(&self, piece_loc: Loc) -> Bitboard {
+        let piece = self.get_piece(&piece_loc).unwrap();
+        let speed = piece.unit.stats().speed;
+        let is_flying = piece.unit.stats().flying;
+        self.bitboards.get_valid_moves(&piece_loc, piece.side, speed, is_flying)
+    }
+
+    /// Returns a list of valid, empty locations where the given side can spawn units.
+    pub fn get_spawn_locs(&self, side: Side, flying: bool) -> Vec<Loc> {
+        self.bitboards.get_spawn_locs(side, flying).to_locs()
     }
 }
     

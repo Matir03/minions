@@ -5,13 +5,14 @@ use std::{
 };
 
 use crate::core::tech::{TechAssignment, Techline};
-use crate::core::{GameConfig, GameState, Side, SideArray, GameTurn, board::Board, tech::TechState, action::BoardAction};
+use crate::core::{GameConfig, GameState, Side, SideArray, GameTurn, board::Board, tech::TechState};
 use hashbag::HashBag;
 use crate::ai::mcts::{MCTSNode, NodeState, NodeStats, MCTSEdge};
 use crate::ai::general::{GeneralNodeState, GeneralNode, GeneralNodeRef}; 
-use crate::ai::captain::{BoardNodeState, BoardTurn, BoardNode, BoardNodeRef}; 
+use crate::ai::captain::{BoardNodeState, BoardNode, BoardNodeRef};
+use crate::core::board::actions::BoardTurn; 
 use crate::ai::eval::Eval;
-use crate::ai::blotto;
+
 use crate::ai::search::SearchArgs;
 use crate::ai::blotto::distribute_money;
 
@@ -77,7 +78,7 @@ impl<'a> NodeState<GameTurn> for GameNodeState<'a> {
             let mut board_mcts_node_borrowed = board_mcts_node_ref.borrow_mut();
             let board_money = *money_for_boards.get(i).unwrap();
 
-            let board_args = (board_money, tech_state.clone(), search_args.config.clone(), i, self.game_state.turn_num);
+            let board_args = (board_money, tech_state.clone(), search_args.config.clone(), i, self.game_state.ply);
             let (_b_is_new, b_child_idx) = board_mcts_node_borrowed.poll(&search_args, rng, board_args);
             
             let board_turn = board_mcts_node_borrowed.edges[b_child_idx].turn.clone();
@@ -105,17 +106,13 @@ impl<'a> NodeState<GameTurn> for GameNodeState<'a> {
             boards: next_board_states_for_gamestate,
             board_points: next_board_points,
             money: next_money,
-            turn_num: self.game_state.turn_num,
+            ply: self.game_state.ply,
             winner: self.game_state.winner,
         };
 
-        let board_actions: Vec<Vec<BoardAction>> = board_turns.into_iter().map(|bt| {
-            bt.attack_actions.into_iter().chain(bt.spawn_actions.into_iter()).collect()
-        }).collect();
-
         let game_turn = GameTurn {
             tech_assignment,
-            board_actions,
+            board_turns,
             spells: HashBag::new(),
             spell_assignment: Vec::new(),
         };

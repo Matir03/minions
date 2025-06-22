@@ -133,7 +133,7 @@ impl GameConfig {
 pub struct GameState {
     pub boards: Vec<Board>,
     pub side_to_move: Side,
-    pub turn_num: i32,
+    pub ply: i32,
     pub board_points: SideArray<i32>,
     pub tech_state: TechState,
     pub money: SideArray<i32>,
@@ -147,7 +147,7 @@ impl Default for GameState {
 
         Self {
             side_to_move: Side::S0,
-            turn_num: 1,
+            ply: 1,
             boards,
             board_points: SideArray::new(0, 0),
             tech_state: TechState::new(),
@@ -161,7 +161,7 @@ impl GameState {
     pub fn new(side_to_move: Side, turn_num: i32, boards: Vec<Board>, tech_state: TechState, money: SideArray<i32>) -> Self {
         Self {
             side_to_move,
-            turn_num,
+            ply: turn_num,
             boards,
             board_points: SideArray::new(0, 0),
             tech_state,
@@ -187,7 +187,7 @@ impl GameState {
 
         // Turn number
         fen.push(' ');
-        fen.push_str(&self.turn_num.to_string());
+        fen.push_str(&self.ply.to_string());
 
         // Winner
         fen.push(' ');
@@ -271,7 +271,7 @@ impl GameState {
 
         Ok(Self {
             side_to_move,
-            turn_num,
+            ply: turn_num,
             boards,
             board_points: SideArray::new(0, 0), // Not stored in FEN
             tech_state,
@@ -280,29 +280,22 @@ impl GameState {
         })
     }
 
-    pub fn phase(&self) -> Phase {
-        if self.turn_num == 1 {
-            return Phase::Attack;
-        }
-        match self.side_to_move {
-            Side::S0 => Phase::Attack,
-            Side::S1 => Phase::Spawn,
-        }
-    }
-
-    pub fn end_turn(&mut self) -> Result<()> {
+    pub fn end_turn(&mut self, config: &GameConfig) -> Result<()> {
         if self.winner.is_some() {
             return Ok(());
         }
 
         // End turn on all boards
         for board in &mut self.boards {
-            board.end_turn(&mut self.money, &mut self.board_points, self.side_to_move)?;
+            let (income, winner) = board.end_turn(self.side_to_move)?;
+            self.money[self.side_to_move] += income;
+            
+            if let Some(board_winner) = winner {
+                self.board_points[board_winner] += 1;
+            }
         }
 
-        // Check for game win
-        // w(n) = n - floor(n/4)
-        let points_to_win = self.turn_num - (self.turn_num / 4);
+        let points_to_win = config.points_to_win;
         if self.board_points[self.side_to_move] >= points_to_win {
             self.winner = Some(self.side_to_move);
         } else if self.board_points[!self.side_to_move] >= points_to_win {
@@ -315,16 +308,12 @@ impl GameState {
 
         // Advance turn
         self.side_to_move = !self.side_to_move;
-        if self.side_to_move == Side::S0 {
-            self.turn_num += 1;
-        }
+        self.ply += 1;
 
         Ok(())
     }
 
     pub fn take_turn(&mut self, turn: GameTurn, config: &GameConfig) -> Result<()> {
-        let phase = self.phase();
-
         // Process tech assignments
         let spells_bought = turn.tech_assignment.num_spells() - 1;
         ensure!(spells_bought >= 0, "Must assign all techs");
@@ -349,23 +338,19 @@ impl GameState {
         }
 
         // Process board actions for each board
-        ensure!(turn.board_actions.len() == self.boards.len(),
-            "Invalid board_actions length");
+        ensure!(turn.board_turns.len() == self.boards.len(),
+            "Invalid board_turns length");
 
-        for (board_idx, actions)
-        in turn.board_actions.into_iter().enumerate() {
+        for (board_idx, board_turn) in turn.board_turns.into_iter().enumerate() {
             let board = &mut self.boards[board_idx];
-
-            // Execute each action in sequence
-            for action in actions {
-                board.do_action(
-                    action,
-                    &mut self.money,
-                    &mut self.board_points,
-                    &self.tech_state,
-                    self.side_to_move,
-                    phase,
-                )?;
+            for action in board_turn.setup_actions {
+                board.do_setup_action(self.side_to_move, action)?;
+            }
+            for action in board_turn.attack_actions {
+                board.do_attack_action(self.side_to_move, action)?;
+            }
+            for action in board_turn.spawn_actions {
+                board.do_spawn_action(self.side_to_move, &mut self.money[self.side_to_move], action)?;
             }
         }
 
@@ -411,7 +396,7 @@ mod tests {
         assert_eq!(config.maps.len(), 1);
         assert_eq!(config.techline.techs.len(), 4);
         assert_eq!(state.side_to_move, Side::S0);
-        assert_eq!(state.turn_num, 1);
+        assert_eq!(state.ply, 1);
         assert_eq!(state.winner, None);
         assert_eq!(state.money[Side::S0], 10);
         assert_eq!(state.money[Side::S1], 5);
@@ -453,10 +438,10 @@ mod tests {
     #[test]
     fn test_win_condition() {
         let mut state = GameState::default();
-        state.turn_num = 5;
-        state.board_points[Side::S0] = 4;
+        let config = GameConfig::default();
+        state.board_points[Side::S0] = config.points_to_win;
 
-        state.end_turn().unwrap();
+        state.end_turn(&config).unwrap();
 
         assert_eq!(state.winner(), Some(Side::S0));
     }

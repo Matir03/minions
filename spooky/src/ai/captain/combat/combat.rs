@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::core::{bitboards::{Bitboard, BitboardOps}, Board, Loc, Side};
+use crate::core::{Board, Loc, Side};
 use crate::core::board::Piece;
 
 impl Board {
@@ -75,8 +75,6 @@ pub struct CombatPair {
     pub defender_pos: Loc,
     pub attack_hexes: Vec<Loc>,
 }
-
-
 
 #[derive(Clone)]
 pub struct CombatGraph {

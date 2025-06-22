@@ -83,6 +83,7 @@ pub enum Unit {
 }
 
 impl Unit {
+    pub const NUM_UNITS: usize = 33;
     /// Convert a unit label to its FEN character representation
     pub fn to_fen_char(self) -> char {
         match self {
@@ -187,9 +188,8 @@ impl ToIndex for Unit {
     }
 }
 
-pub const NUM_UNITS: usize = 33;
 
-const UNIT_STATS: [UnitStats; NUM_UNITS] = [
+const UNIT_STATS: [UnitStats; Unit::NUM_UNITS] = [
     // Zombie
     UnitStats {
         attack: Attack::Damage(1),

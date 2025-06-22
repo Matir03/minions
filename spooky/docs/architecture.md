@@ -10,6 +10,16 @@ The Spooky engine is built around a sophisticated Monte Carlo Tree Search (MCTS)
 - Neural network evaluation (NNUE) for position assessment
 - Backpropagation of feedback through all stages
 
+### Module Organization
+The engine's `core` module is organized to separate concerns:
+- **`board`**: A dedicated module representing the game board. It is further divided into sub-modules for handling specific responsibilities:
+    - `actions.rs`: Defines the phase-specific actions (`SetupAction`, `AttackAction`, `SpawnAction`).
+    - `fen.rs`: Handles FEN string parsing and generation.
+    - Other files manage pieces, locations, and the board state itself.
+- **`game`**: Manages the overall game state and rules.
+- **`units`**, **`tech`**, **`spells`**: Define the core game elements.
+- **`action`**: Defines `GameTurn` and `GameAction`, which orchestrate the high-level actions for a full turn.
+
 ### Move Generation and Decision Structure
 Move generation within a `GameNode` involves a coordinated process:
 
@@ -26,9 +36,10 @@ Move generation within a `GameNode` involves a coordinated process:
 
 4.  **`BoardNode` Decisions**:
     *   Each `BoardNode` (one per game board) receives its share of allocated money and the tech decisions from the `GeneralNode`.
-    *   It then performs its own internal search or decision-making process to determine the best set of actions for its board. This includes:
-        *   **Combat Actions**: Managing unit movements, attacks, and resolving engagements. The Z3 constraint solver is used to determine optimal attacks and movements.
-        *   **Unit Spawning**: Deciding which units to create and where to place them using a heuristic-based approach.
+    *   It then performs its own internal search or decision-making process to determine the best set of actions for its board, structured by game phase:
+        *   **Combat Actions**: Managing unit movements and attacks, defined in the `AttackAction` enum. The Z3 constraint solver is used to determine optimal attacks and movements.
+        *   **Unit Spawning**: Deciding which units to create and where to place them, defined in the `SpawnAction` enum and guided by a heuristic-based approach.
+        *   **Setup Actions**: Handling board setup after a reset, defined in the `SetupAction` enum.
 
 5.  **Child `GameNode` Creation**:
     *   The collective decisions and outcomes (delta money, delta points) from the `GeneralNode` and all `BoardNode`s are aggregated.

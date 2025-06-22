@@ -4,7 +4,7 @@ use super::{
     units::Unit,
     loc::Loc,
 };
-use anyhow::anyhow;
+use anyhow::{anyhow, ensure};
 use std::{fmt::Display, str::FromStr};
 
 /// Types of spells that can be cast
@@ -58,6 +58,41 @@ use anyhow::Result;
 impl SpellCast {
     pub fn cast(&self, board: &mut Board, caster: Side) -> Result<()> {
         todo!();
+    }
+}
+
+impl Display for SpellCast {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SpellCast::CastShield { target } => write!(f, "shield {}", target),
+            SpellCast::CastReposition { from_sq, to_sq } => {
+                write!(f, "reposition {} {}", from_sq, to_sq)
+            }
+        }
+    }
+}
+
+impl FromStr for SpellCast {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let parts: Vec<&str> = s.split_whitespace().collect();
+        ensure!(!parts.is_empty(), "Empty spell cast string");
+
+        match parts[0] {
+            "shield" => {
+                ensure!(parts.len() == 2, "shield cast requires 1 argument");
+                let target = parts[1].parse()?;
+                Ok(SpellCast::CastShield { target })
+            }
+            "reposition" => {
+                ensure!(parts.len() == 3, "reposition cast requires 2 arguments");
+                let from_sq = parts[1].parse()?;
+                let to_sq = parts[2].parse()?;
+                Ok(SpellCast::CastReposition { from_sq, to_sq })
+            }
+            _ => Err(anyhow!("Unknown spell cast: {}", parts[0])),
+        }
     }
 }
 

@@ -56,7 +56,7 @@ impl Engine {
     }
 
     pub fn end_turn(&mut self) -> Result<()> {
-        self.state.end_turn()
+        self.state.end_turn(&self.config)
     }
 
     pub fn take_turn(&mut self, turn: GameTurn) -> Result<Option<Side>> {

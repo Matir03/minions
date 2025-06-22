@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
-use crate::core::{action::BoardAction, board::Board, loc::Loc};
+use crate::core::{board::Board, loc::Loc, side::Side, units::{Unit, Attack}, board::actions::{AttackAction, SpawnAction}};
+
 use z3::{
     ast::{Ast, Bool, Int},
     Context, Model, Optimize, SatResult,
@@ -91,12 +92,12 @@ pub fn block_solution<'ctx>(
     optimizer.assert(&model_constraint.not());
 }
 
-/// Generate a sequence of BoardActions from a satisfying Z3 model.
+/// Generate a sequence of AttackActions from a satisfying Z3 model.
 pub fn generate_move_from_model<'ctx>(
     model: &Model<'ctx>,
     graph: &CombatGraph,
     variables: &Variables<'ctx>,
-) -> Vec<BoardAction> {
+) -> Vec<AttackAction> {
     let mut actions = Vec::new();
     let mut attacker_new_positions = HashMap::new();
 
@@ -106,7 +107,7 @@ pub fn generate_move_from_model<'ctx>(
         if let Some(val) = model.eval(z3_hex_var, true).unwrap().as_i64() {
             let to_loc = i64_to_loc(val);
             if *attacker != to_loc {
-                actions.push(BoardAction::Move {
+                actions.push(AttackAction::Move {
                     from_loc: *attacker,
                     to_loc,
                 });
@@ -124,7 +125,7 @@ pub fn generate_move_from_model<'ctx>(
             .unwrap_or(false)
         {
             let attacker_pos = attacker_new_positions.get(attacker).unwrap_or(attacker);
-            actions.push(BoardAction::Attack {
+            actions.push(AttackAction::Attack {
                 attacker_loc: *attacker_pos,
                 target_loc: *defender,
             });
@@ -186,11 +187,11 @@ mod tests {
         let actions = generate_move_from_model(&model, &solver.graph, &solver.variables);
 
         // Expected action: Rat at (2,0) moves to (1,0) and attacks rat at (0,0).
-        let expected_move = BoardAction::Move {
+        let expected_move = AttackAction::Move {
             from_loc: Loc::new(2, 0),
             to_loc: Loc::new(1, 0),
         };
-        let expected_attack = BoardAction::Attack {
+        let expected_attack = AttackAction::Attack {
             attacker_loc: Loc::new(1, 0),
             target_loc: Loc::new(0, 0),
         };
@@ -228,7 +229,7 @@ mod tests {
         let actions = generate_move_from_model(&model, &solver.graph, &solver.variables);
 
         // Expected action: Rat at (1,0) attacks rat at (0,0). No move.
-        let expected_attack = BoardAction::Attack {
+        let expected_attack = AttackAction::Attack {
             attacker_loc: Loc::new(1, 0),
             target_loc: Loc::new(0, 0),
         };

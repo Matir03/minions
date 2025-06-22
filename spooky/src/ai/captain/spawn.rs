@@ -1,5 +1,11 @@
-use crate::core::{
-    action::BoardAction, bitboards::BitboardOps as _, board::Board, convert::FromIndex, loc::Loc, side::Side, tech::TechState, units::{Unit, NUM_UNITS}
+use crate::core::{  
+    board::{Board, BitboardOps}, 
+    loc::Loc, 
+    side::Side, 
+    tech::TechState, 
+    units::Unit, 
+    convert::FromIndex,
+    board::actions::SpawnAction
 };
 
 /// Given the current board state and available money, this function decides which units to
@@ -8,14 +14,16 @@ pub fn generate_heuristic_spawn_actions(
     board: &Board,
     side: Side,
     tech_state: &TechState,
-    money: i32,
-) -> Vec<BoardAction> {
-    let mut actions = Vec::new();
+    money: &mut i32,
+    actions: &mut Vec<SpawnAction>,
+) {
+
 
     // Part 1: Decide what to buy and create `Buy` actions
-    let units_to_buy = purchase_heuristic(side, tech_state, money);
+    let units_to_buy = purchase_heuristic(side, tech_state, *money);
     for &unit in &units_to_buy {
-        actions.push(BoardAction::Buy { unit });
+        *money -= unit.stats().cost;
+        actions.push(SpawnAction::Buy { unit });
     }
 
     // Part 2: Decide what to spawn from all available reinforcements (original + newly bought)
@@ -38,7 +46,7 @@ pub fn generate_heuristic_spawn_actions(
     for unit in sorted_units {
         if unit.stats().flying {
             if let Some(loc) = all_spawn_locs.pop() {
-                actions.push(BoardAction::Spawn { spawn_loc: loc, unit });
+                actions.push(SpawnAction::Spawn { spawn_loc: loc, unit });
                 land_spawn_locs.set(loc, false);
             } else {
                 // no more spawn locations
@@ -47,20 +55,19 @@ pub fn generate_heuristic_spawn_actions(
         } else {
             // land units
             if let Some(loc) = land_spawn_locs.pop() {
-                actions.push(BoardAction::Spawn { spawn_loc: loc, unit });
+                actions.push(SpawnAction::Spawn { spawn_loc: loc, unit });
                 all_spawn_locs.set(loc, false);
             } 
         }
     }
 
-    actions
 }
 
 /// Decides which units to buy based on available money and technology.
 /// A simple greedy approach: keep buying the cheapest available unit.
 fn purchase_heuristic(side: Side, tech_state: &TechState, mut money: i32) -> Vec<Unit> {
     let mut units_to_spawn = Vec::new();
-    let mut available_units: Vec<_> = (0..NUM_UNITS)
+    let mut available_units: Vec<_> = (0..Unit::NUM_UNITS)
         .map(|i| Unit::from_index(i).unwrap())
         .filter(|u| tech_state.can_buy(side, *u))
         .collect();
@@ -214,9 +221,9 @@ mod tests {
         board.add_piece(Piece::new(Unit::BasicNecromancer, Side::S0, Loc::new(4, 1)));
 
         let tech_state = new_all_unlocked_tech_state();
-        // With 4 money, it should buy 2 Initiates (cost 2 each)
-        let money = 4;
-        let actions = generate_heuristic_spawn_actions(&board, Side::S0, &tech_state, money);
+        let mut money = 4;
+        let mut actions = Vec::new();
+        generate_heuristic_spawn_actions(&board, Side::S0, &tech_state, &mut money, &mut actions);
 
         // It should generate 2 Buy actions and 2 Spawn actions.
         assert_eq!(actions.len(), 4);
@@ -225,11 +232,11 @@ mod tests {
         let mut spawn_count = 0;
         for action in &actions {
             match action {
-                BoardAction::Buy { unit } => {
+                SpawnAction::Buy { unit } => {
                     assert_eq!(*unit, Unit::Initiate);
                     buy_count += 1;
                 }
-                BoardAction::Spawn { unit, .. } => {
+                SpawnAction::Spawn { unit, .. } => {
                     assert_eq!(*unit, Unit::Initiate);
                     spawn_count += 1;
                 }

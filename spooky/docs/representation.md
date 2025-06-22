@@ -87,17 +87,32 @@ One of:
 ## Game Actions
 
 ### GameTurn
-- `num_spells_bought`: int
-- `board_spells`: int[num_boards]  // board -> spell index
-- `tech_spells`: Vector<int>  // techline indices
-- `board_actions`: Vector<BoardAction>[num_boards]
+Represents a complete turn for one player.
+- `board_turn`: BoardTurn
+- `tech_assignment`: TechAssignment
+- `spell_casts`: Vec<SpellCast>
 
-### BoardAction
-One of:
-- Move
-  - `from_sq`: Loc
-  - `to_sq`: Loc
-- Attack
+### BoardTurn
+A collection of actions for a single board, organized by phase.
+- `setup`: Vec<SetupAction>
+- `attack`: Vec<AttackAction>
+- `spawn`: Vec<SpawnAction>
+
+### SetupAction
+Actions for setting up the board state.
+- `Add { piece, loc }`: Add a piece to the board.
+- `Remove { loc }`: Remove a piece from the board.
+- `Reset`: Reset the board to its initial state.
+
+### AttackAction
+Actions performed during the attack phase.
+- `Move { from, to }`: Move a unit.
+- `Attack { attacker_loc, target_loc }`: An attack by one unit on another.
+
+### SpawnAction
+Actions performed during the spawn phase.
+- `Buy { unit }`: Purchase a unit.
+- `Spawn { unit, spawn_loc }`: Spawn a unit at a specific location.
   - `from_sq`: Loc
   - `to_sq`: Loc
 - Spawn
