@@ -388,7 +388,7 @@ mod tests {
 
     #[test]
     fn test_basic_fen_conversion() {
-        let fen = "1 2 0 4 1,2,3,4 Z8i/10/10/10/10/10/10/10/10/10 0 1 _ LLLU|LLLL 10|5";
+        let fen = "1 2 0 4 1,2,3,4 Z8i/0/0/0/0/0/0/0/0/0 0 1 _ LLLU|LLLL 10|5";
         let (config, state) = parse_fen(fen).unwrap();
 
         assert_eq!(config.num_boards, 1);
@@ -404,7 +404,7 @@ mod tests {
 
     #[test]
     fn test_empty_spaces_fen() {
-        let fen = "2 10 0,1 4 1,2,3,4 10/10/10/10/10/10/10/10/10/10|10/10/10/10/10/10/10/10/10/10 1 1 _ LLLU|LLLL 10|5";
+        let fen = "2 10 0,1 4 1,2,3,4 0/0/0/0/0/0/0/0/0/0|0/0/0/0/0/0/0/0/0/0 1 1 _ LLLU|LLLL 10|5";
         let (config, state) = parse_fen(fen).unwrap();
 
         assert_eq!(config.num_boards, 2);

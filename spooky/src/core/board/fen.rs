@@ -5,6 +5,7 @@ use crate::core::{
     map::Map,
     side::Side,
     units::Unit,
+    board::{Modifiers, PieceState, RefCell},
 };
 
 use super::{Board, Piece};
@@ -13,14 +14,23 @@ impl Board {
     /// Convert board state to FEN notation
     pub fn to_fen(&self) -> String {
         let mut fen = String::new();
-        for y in 0..GRID_LEN as i32 {
-            let mut empty_squares = 0;
-            for x in 0..GRID_LEN as i32 {
-                let loc = Loc::new(x, y);
+        let mut empty_count = 0;
+        
+        for y in 0..10 {
+            if y > 0 {
+                fen.push('/');
+            }
+            
+            for x in 0..10 {
+                let loc = Loc { y, x };
                 if let Some(piece) = self.get_piece(&loc) {
-                    if empty_squares > 0 {
-                        fen.push_str(&empty_squares.to_string());
-                        empty_squares = 0;
+                    if empty_count > 0 {
+                        if empty_count == 10 {
+                            fen.push('0');
+                        } else {
+                            fen.push(char::from_digit(empty_count as u32, 10).unwrap());
+                        }
+                        empty_count = 0;
                     }
                     let mut c = piece.unit.to_fen_char();
                     if piece.side == Side::S1 {
@@ -28,44 +38,60 @@ impl Board {
                     }
                     fen.push(c);
                 } else {
-                    empty_squares += 1;
+                    empty_count += 1;
                 }
             }
-            if empty_squares > 0 {
-                fen.push_str(&empty_squares.to_string());
-            }
-            if y < (GRID_LEN - 1) as i32 {
-                fen.push('/');
+            
+            if empty_count > 0 {
+                if empty_count == 10 {
+                    fen.push('0');
+                } else {
+                    fen.push(char::from_digit(empty_count as u32, 10).unwrap());
+                }
+                empty_count = 0;
             }
         }
+        
         fen
     }
 
     /// Create a board from FEN notation
     pub fn from_fen(fen: &str, map: Map) -> Result<Self> {
-        let mut board = Board::new(map);
-        let mut y = 0;
-        for row in fen.split('/') {
+        let mut board = Self::new(map);
+        let parts: Vec<&str> = fen.split('/').collect();
+
+        ensure!(parts.len() == 10, "Invalid FEN: must have 10 rows");
+
+        for (y, row_str) in parts.iter().enumerate() {
             let mut x = 0;
-            while x < GRID_LEN as i32 {
-                let c = row.chars().next().unwrap();
-                if let Some(digit) = c.to_digit(10) {
-                    if digit == 0 {
-                        x += 10; 
-                    } else {
+            if *row_str == "0" {
+                x = 10;
+            } else {
+                for c in row_str.chars() {
+                    if let Some(digit) = c.to_digit(10) {
+                        ensure!(digit != 0, "FEN digit cannot be 0 unless it's the only char in the row");
                         x += digit as i32;
+                    } else {
+                        let side = if c.is_uppercase() { Side::S0 } else { Side::S1 };
+                        let unit_char = c.to_ascii_lowercase();
+                        let unit = Unit::from_fen_char(unit_char)
+                            .ok_or_else(|| anyhow!("Invalid unit char: {}", unit_char))?;
+
+                        let loc = Loc::new(x, y as i32);
+                        board.add_piece(Piece {
+                            loc,
+                            side,
+                            unit,
+                            modifiers: Modifiers::default(),
+                            state: RefCell::new(PieceState::default()),
+                        });
+                        x += 1;
                     }
-                } else {
-                    let side = if c.is_uppercase() { Side::S0 } else { Side::S1 };
-                    let unit = Unit::from_fen_char(c)
-                        .with_context(|| format!("Invalid FEN char: {}", c))?;
-                    let loc = Loc::new(x, y);
-                    board.add_piece(Piece::new(unit, side, loc));
-                    x += 1;
                 }
             }
-            y += 1;
+            ensure!(x == 10, "Invalid FEN: row {} does not sum to 10, got {}", y, x);
         }
+
         Ok(board)
     }
 }

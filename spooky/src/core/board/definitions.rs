@@ -96,7 +96,7 @@ pub struct Board {
 }
 
 impl Board {
-    pub const START_FEN: &str = "10/2ZZ6/1ZNZ6/1ZZ7/10/10/7zz1/6znz1/6zz2/10";
+    pub const START_FEN: &str = "0/2ZZ6/1ZNZ6/1ZZ7/0/0/7zz1/6znz1/6zz2/0";
     pub const NECROMANCER_START_LOC: SideArray<Loc> = SideArray {
         values: [
             Loc { x: 2, y: 2 },
