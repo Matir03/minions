@@ -17,7 +17,6 @@ use crate::core::{loc::GRID_LEN, side};
 use super::{
     loc::{Loc, PATH_MAPS},
     map::{Map, MapSpec, Terrain, TileType},
-    phase::Phase,
     side::{Side, SideArray},
     spells::Spell,
     tech::TechState,
