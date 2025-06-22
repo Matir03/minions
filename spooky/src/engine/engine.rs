@@ -55,13 +55,13 @@ impl Engine {
         Ok(())
     }
 
-    pub fn end_turn(&mut self) -> Result<Option<Side>> {
-        let turn = self.turn.take().context("Turn not started")?;
-        self.take_turn(turn)
+    pub fn end_turn(&mut self) -> Result<()> {
+        self.state.end_turn()
     }
 
     pub fn take_turn(&mut self, turn: GameTurn) -> Result<Option<Side>> {
-        self.state.take_turn(turn, &self.config)
+        self.state.take_turn(turn, &self.config)?;
+        Ok(self.state.winner())
     }
 
     // pub fn play<F>(&mut self, search_options: &SearchOptions, buy_spell: F) -> String

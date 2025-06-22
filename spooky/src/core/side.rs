@@ -12,6 +12,10 @@ pub enum Side {
 }
 
 impl Side {
+    pub fn all() -> [Side; 2] {
+        [Side::S0, Side::S1]
+    }
+
     pub fn sign(&self) -> i32 {
         match self {
             Side::S0 => 1,

@@ -5,7 +5,7 @@ The Spooky FEN (Forsyth-Edwards Notation) format is a string representation that
 ## Format
 
 ```
-<num_boards> <map_indices> <num_techs> <tech_indices> <board_states> <side_to_move> <tech_status> <money>
+<num_boards> <points_to_win> <map_indices> <num_techs> <tech_indices> <board_states> <side_to_move> <tech_status> <money>
 ```
 
 ### Static Configuration Section
@@ -70,12 +70,12 @@ The Spooky FEN (Forsyth-Edwards Notation) format is a string representation that
 
 1. Initial position, 2 boards, maps 0 and 1, 4 techs in default order:
    ```
-   2 0,1 4 0,1,2,3 N8z/0/0/0/0/0/0/0/0/0|0/0/0/0/0/0/0/0/0/0 0 LLLUUA|LLLLLA 10|5
+   2 2 0,1 4 1,2,3,4 N8z/0/0/0/0/0/0/0/0/0|0/0/0/0/0/0/0/0/0/0 0 LLLU|LLLL 10|5
    ```
 
 2. Mid-game position with multiple units:
    ```
-   2 0,1 4 0,1,2,3 Z3n2z3/0/2S5s1/0/0/0/G7g1/0/0/0|0/0/V7v1/0/0/0/0/0/0/0 1 LUUAAL|LLLAAU 20|15
+   2 2 0,1 4 1,2,3,4 Z3n2z3/0/2S5s1/0/0/0/G7g1/0/0/0|0/0/V7v1/0/0/0/0/0/0/0 1 LUUA|LLAA 20|15
    ```
 
 ## Parsing Rules

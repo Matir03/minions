@@ -194,6 +194,12 @@ impl ToIndex for Map {
     }
 }
 
+impl Default for Map {
+    fn default() -> Self {
+        Map::BlackenedShores
+    }
+}
+
 const MAP_FENS: [&str; NUM_MAPS] = [
     // BlackenedShores
     "2G3G3/W9/W9/W4G3G/GW4G3/W2WW5/WG2W5/W1W6G/3G1W4/2WWWGWWW1", 

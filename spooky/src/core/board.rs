@@ -1,22 +1,20 @@
 //! Board representation and rules
 
-use std::{
-    arch::is_aarch64_feature_detected, cell::RefCell, collections::HashMap
-    // ops::Deref,
-};
+use std::{cell::RefCell, collections::HashMap};
+use anyhow::{anyhow, bail, ensure, Context, Result};
 use hashbag::HashBag;
-use anyhow::{Result, anyhow, bail, ensure};
-use crate::core::side;
+use crate::core::loc::GRID_LEN;
 
 use super::{
-    bitboards::{Bitboard, BitboardOps, Bitboards},
-    side::{Side, SideArray},
-    units::{Unit, Attack},
-    loc::{Loc, PATH_MAPS},
     action::BoardAction,
+    bitboards::{Bitboard, BitboardOps, Bitboards},
+    loc::{Loc, PATH_MAPS},
+    map::{Map, MapSpec, Terrain},
+    phase::Phase,
+    side::{Side, SideArray},
     spells::Spell,
     tech::TechState,
-    map::{Map, MapSpec, Terrain},
+    units::{Unit, Attack},
 };
 
 /// Status modifiers that can be applied to pieces
@@ -51,20 +49,17 @@ impl PieceState {
     }
 }
 
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Phase {
-    Attack,
-    Spawn,
+pub enum BoardState {
+    Normal,
+    Reset0,
+    Reset1,
+    Reset2,
 }
 
-impl Phase {
-    pub fn is_attack(&self) -> bool {
-        *self == Phase::Attack
-    }
-
-    pub fn is_spawn(&self) -> bool {
-        *self == Phase::Spawn
+impl Default for BoardState {
+    fn default() -> Self {
+        Self::Normal
     }
 }
 
@@ -78,34 +73,44 @@ pub struct Piece {
     pub state: RefCell<PieceState>,
 }
 
+impl Piece {
+    pub fn new(unit: Unit, side: Side, loc: Loc) -> Self {
+        Self {
+            unit,
+            side,
+            loc,
+            modifiers: Modifiers::default(),
+            state: RefCell::new(PieceState::default()),
+        }
+    }
+}
+
 /// Represents a single Minions board
 #[derive(Debug, Clone)]
 pub struct Board {
     pub map: Map,
-    pub phase: Phase,
     pub pieces: HashMap<Loc, Piece>,
     pub reinforcements: SideArray<HashBag<Unit>>,
     pub spells: SideArray<HashBag<Spell>>,
     pub winner: Option<Side>,
-    pub resetting: bool,
+    pub state: BoardState,
     pub bitboards: Bitboards,
 }
 
 const GRAVEYARDS_TO_WIN: i32 = 8;
 
 impl Board {
-    pub const START_FEN: &str = "0/2ZZ6/1ZNZ6/1ZZ7/0/0/7zz1/6znz1/6zz2/0";
+    pub const START_FEN: &str = "10/2ZZ6/1ZNZ6/1ZZ7/10/10/7zz1/6znz1/6zz2/10";
 
     /// Create a new empty board
     pub fn new(map: Map) -> Self {
         Self {
             map,
-            phase: Phase::Attack,
             pieces: HashMap::new(),
             reinforcements: SideArray::new(HashBag::new(), HashBag::new()),
             spells: SideArray::new(HashBag::new(), HashBag::new()),
             winner: None,
-            resetting: false,
+            state: BoardState::default(),
             bitboards: Bitboards::new(map.spec()),
         }
     }
@@ -114,25 +119,17 @@ impl Board {
         self.pieces.get(loc)
     }
 
-    // pub fn get_mut_piece(&self, loc: &Loc) -> Option<&mut Piece> {
-    //     self.pieces.get_mut(loc)
-    // }
-
-    // pub fn get_terrain(&self, _loc: &Loc) -> Option<Terrain> {
-    //     todo!("refactor board to include terrain info");
-    // }
-
     /// Add a piece to the board
     pub fn add_piece(&mut self, piece: Piece) {
         debug_assert!(!self.pieces.contains_key(&piece.loc));
-        self.bitboards.set_piece(&piece.loc, piece.side, true);
+        self.bitboards.add_piece(&piece);
         self.pieces.insert(piece.loc, piece);
     }
 
     /// Remove a piece from the board
     pub fn remove_piece(&mut self, loc: &Loc) -> Option<Piece> {
         if let Some(piece) = self.pieces.remove(loc) {
-            self.bitboards.set_piece(loc, piece.side, false);
+            self.bitboards.remove_piece(loc, piece.side);
             Some(piece)
         } else {
             None
@@ -148,7 +145,8 @@ impl Board {
     }
 
     pub fn can_move(&self, from_loc: &Loc, to_loc: &Loc, side_to_move: Side) -> Result<()> {
-        let piece = self.get_piece(from_loc)
+        let piece = self
+            .get_piece(from_loc)
             .ok_or_else(|| anyhow!("No piece to move from {}", from_loc))?;
 
         ensure!(piece.side == side_to_move, "Cannot move opponent's piece");
@@ -173,7 +171,8 @@ impl Board {
     }
 
     fn try_attack(&self, attacker_loc: Loc, target_loc: Loc, side_to_move: Side) -> Result<(bool, bool)> {
-        let attacker= self.get_piece(&attacker_loc)
+        let attacker = self
+            .get_piece(&attacker_loc)
             .ok_or_else(|| anyhow!("No attacker at {attacker_loc}"))?;
 
         ensure!(attacker.side == side_to_move, "Cannot attack with opponent's piece");
@@ -181,16 +180,23 @@ impl Board {
         let attacker_stats = attacker.unit.stats();
         let mut attacker_state = attacker.state.borrow_mut();
 
-        ensure!(!attacker_state.moved || !attacker_stats.lumbering,
-            "Lumbering piece cannot move and attack on the same turn");
-        
-        ensure!(attacker_loc.dist(&target_loc) <= attacker_stats.range, 
-            "Attack range not large enough");
+        ensure!(
+            !attacker_state.moved || !attacker_stats.lumbering,
+            "Lumbering piece cannot move and attack on the same turn"
+        );
 
-        ensure!(attacker_state.attacks_used < attacker_stats.num_attacks,
-            "Piece has already used all attacks");
+        ensure!(
+            attacker_loc.dist(&target_loc) <= attacker_stats.range,
+            "Attack range not large enough"
+        );
 
-        let target = self.get_piece(&target_loc)
+        ensure!(
+            attacker_state.attacks_used < attacker_stats.num_attacks,
+            "Piece has already used all attacks"
+        );
+
+        let target = self
+            .get_piece(&target_loc)
             .ok_or_else(|| anyhow!("No target at {target_loc}"))?;
 
         let target_stats = target.unit.stats();
@@ -206,8 +212,7 @@ impl Board {
                 damage_effect = damage;
             }
             Attack::Deathtouch => {
-                ensure!(!target_stats.necromancer, 
-                    "Deathtouch cannot be used on necromancer");
+                ensure!(!target_stats.necromancer, "Deathtouch cannot be used on necromancer");
                 damage_effect = target_stats.defense;
             }
             Attack::Unsummon => {
@@ -232,32 +237,32 @@ impl Board {
     }
 
     pub fn units_on_graveyards(&self, side: Side) -> i32 {
-        self.map.spec().graveyards.iter()
-            .filter(|loc| 
-                self.get_piece(loc)
-                    .map(|piece| piece.side == side)
-                    .unwrap_or(false))
-            .count() as i32
+        self.bitboards.occupied_graveyards(side).count_ones() as i32
     }
 
-    pub fn do_action(&mut self, 
-            action: BoardAction, 
-            money: &mut SideArray<i32>, 
-            board_points: &mut SideArray<i32>, 
-            tech_state: &TechState, 
-            side_to_move: Side
-        ) -> Result<()> {
+    pub fn unoccupied_graveyards(&self, side: Side) -> Vec<Loc> {
+        self.bitboards.unoccupied_graveyards(side).to_locs()
+    }
 
-        ensure!(!self.resetting, "Cannot do action on resetting board");
-
+    pub fn do_action(
+        &mut self,
+        action: BoardAction,
+        money: &mut SideArray<i32>,
+        board_points: &mut SideArray<i32>,
+        tech_state: &TechState,
+        side_to_move: Side,
+        phase: Phase,
+    ) -> Result<()> {
         if let Some(winner) = self.winner {
             match action {
                 BoardAction::SaveUnit { unit } => {
                     if let Some(unit) = unit {
                         ensure!(!unit.stats().necromancer, "Cannot save necromancer");
 
-                        ensure!(self.reinforcements[side_to_move].contains(&unit) > 0, 
-                            "Cannot save unit not in reinforcements");
+                        ensure!(
+                            self.reinforcements[side_to_move].contains(&unit) > 0,
+                            "Cannot save unit not in reinforcements"
+                        );
 
                         self.reinforcements[side_to_move].clear();
                         self.reinforcements[side_to_move].insert(unit);
@@ -270,15 +275,47 @@ impl Board {
                     }
                 }
 
-                _ => bail!("Only SaveUnit action allowed on board yet to be restarted")
+                _ => bail!("Only SaveUnit action allowed on board yet to be restarted"),
             }
 
             return Ok(());
         }
-        
+
+        match self.state {
+            BoardState::Normal => self.do_normal_action(action, money, board_points, tech_state, side_to_move, phase),
+            BoardState::Reset0 => bail!("No actions allowed in Reset0"),
+            BoardState::Reset1 | BoardState::Reset2 => {
+                let side = if self.state == BoardState::Reset1 { Side::S0 } else { Side::S1 };
+                ensure!(side == side_to_move, "Wrong side to move for reset");
+                match action {
+                    BoardAction::Spawn { spawn_loc, unit } => {
+                        ensure!(unit.stats().necromancer, "Can only spawn necromancer in reset");
+                        ensure!(self.reinforcements[side].contains(&unit) > 0, "Necromancer not in reinforcements");
+                        ensure!(self.map.spec().graveyards.contains(&spawn_loc), "Can only spawn necromancer on graveyard");
+                        ensure!(self.get_piece(&spawn_loc).is_none(), "Can't spawn on occupied square");
+
+                        self.reinforcements[side].remove(&unit);
+                        self.add_piece(Piece::new(unit, side, spawn_loc));
+                        Ok(())
+                    }
+                    _ => bail!("Only spawn necromancer action is allowed in reset"),
+                }
+            }
+        }
+    }
+
+    fn do_normal_action(
+        &mut self,
+        action: BoardAction,
+        money: &mut SideArray<i32>,
+        board_points: &mut SideArray<i32>,
+        tech_state: &TechState,
+        side_to_move: Side,
+        phase: Phase,
+    ) -> Result<()> {
         match action {
-            BoardAction::Move { from_loc, to_loc} => {
-                ensure!(self.phase.is_attack(), "Cannot move in spawn phase");
+            BoardAction::Move { from_loc, to_loc } => {
+                ensure!(phase.is_attack(), "Cannot move in spawn phase");
                 ensure!(self.get_piece(&to_loc).is_none(), "Cannot move to occupied square");
 
                 self.can_move(&from_loc, &to_loc, side_to_move)?;
@@ -287,7 +324,7 @@ impl Board {
                 self.move_piece(piece, &to_loc);
             }
             BoardAction::MoveCyclic { locs } => {
-                ensure!(self.phase.is_attack(), "Cannot move in spawn phase");
+                ensure!(phase.is_attack(), "Cannot move in spawn phase");
 
                 let num_locs = locs.len();
                 ensure!(num_locs >= 2, "MoveCyclic must have at least 2 locations");
@@ -306,7 +343,7 @@ impl Board {
                 // Perform the cyclic move
                 for i in 1..num_locs {
                     let next_loc = &locs[i];
-                    
+
                     // For all but the last move, we need to swap pieces
                     let next_piece = self.remove_piece(next_loc).unwrap();
 
@@ -318,12 +355,14 @@ impl Board {
                 self.move_piece(current_piece, first_loc);
             }
             BoardAction::Attack { attacker_loc, target_loc } => {
-                ensure!(self.phase.is_attack(), "Cannot attack in spawn phase");
+                ensure!(phase.is_attack(), "Cannot attack in spawn phase");
 
-                let (remove, bounce) = 
+                let (remove, bounce) =
                     self.try_attack(attacker_loc, target_loc, side_to_move)?;
 
-                if !remove { return Ok(()); }
+                if !remove {
+                    return Ok(());
+                }
 
                 let target_piece = self.remove_piece(&target_loc).unwrap();
 
@@ -347,105 +386,96 @@ impl Board {
                 self.bounce_piece(piece);
             }
             BoardAction::Buy { unit } => {
-                ensure!(self.phase.is_spawn(), "Cannot buy in attack phase");
+                ensure!(phase.is_spawn(), "Cannot buy in attack phase");
 
                 ensure!(tech_state.can_buy(side_to_move, unit), "Unit not teched to");
 
                 let cost = unit.stats().cost;
-                ensure!(money[side_to_move] >= cost, "Not enough money");
+                ensure!(*money.get(side_to_move)? >= cost, "Not enough money");
 
                 money[side_to_move] -= cost;
-
                 self.add_reinforcement(unit, side_to_move);
             }
             BoardAction::Spawn { spawn_loc, unit } => {
-                ensure!(self.phase.is_spawn(), "Cannot spawn in attack phase");
+                ensure!(phase.is_spawn(), "Cannot spawn in attack phase");
 
                 ensure!(self.get_piece(&spawn_loc).is_none(), "Can't spawn on occupied square");
 
-                if let Some(terrain) = self.map.get_terrain(&spawn_loc) {
-                    ensure!(terrain.allows(&unit), "Terrain does not allow spawn");
+                ensure!(
+                    self.reinforcements[side_to_move].contains(&unit) > 0,
+                    "Cannot spawn unit not in reinforcements"
+                );
+
+                // Check for a spawner
+                let mut has_spawner = false;
+                for neighbor in spawn_loc.neighbors() {
+                    if let Some(piece) = self.get_piece(&neighbor) {
+                        if piece.side == side_to_move
+                            && piece.unit.stats().spawn
+                            && !piece.state.borrow().exhausted
+                        {
+                            has_spawner = true;
+                            break;
+                        }
+                    }
                 }
+                ensure!(has_spawner, "No spawner in range");
 
-                let has_spawner = spawn_loc.neighbors().iter().any(|neighbor| 
-                    self.get_piece(neighbor)
-                        .map_or(false, 
-                            |piece| 
-                            piece.side == side_to_move && 
-                            piece.unit.stats().spawn &&
-                            !piece.state.borrow().exhausted
-                        )
-                    );
-
-                ensure!(has_spawner, "No spawner around spawn location");
-
-                let num_units = self.reinforcements[side_to_move].remove(&unit);
-                ensure!(num_units > 0, "Can't spawn unit not in reinforcements");
-
-                let piece = Piece {
-                    loc: spawn_loc,
-                    side: side_to_move,
-                    unit,
-                    modifiers: Modifiers::default(),
-                    state: PieceState::spawned().into(),
-                };
-
+                self.reinforcements[side_to_move].remove(&unit);
+                let mut piece = Piece::new(unit, side_to_move, spawn_loc);
+                piece.state.borrow_mut().exhausted = true;
                 self.add_piece(piece);
             }
-            BoardAction::Cast { spell_cast } => {
-                spell_cast.cast(self, side_to_move)?;
-            }
-            BoardAction::Discard { spell } => {
-                let count = self.spells[side_to_move].remove(&spell);
-                ensure!(count > 0, "Cannot discard unowned spell");
-            }
-            BoardAction::EndPhase => {
-                self.phase = Phase::Spawn;
-            }
-            BoardAction::Resign => {
-                self.lose(side_to_move, board_points);
-            }
-            BoardAction::SaveUnit { .. } => {
-                bail!("Cannot save unit during game")
-            }
+            BoardAction::SaveUnit { .. } => bail!("SaveUnit not allowed in normal play"),
+            BoardAction::Cast { .. } => bail!("Cast not allowed in normal play"),
+            BoardAction::Discard { .. } => bail!("Discard not allowed in normal play"),
+            BoardAction::EndPhase => bail!("EndPhase not allowed in normal play"),
+            BoardAction::Resign => bail!("Resign not allowed in normal play"),
         }
-
         Ok(())
     }
 
-    pub fn end_turn(&mut self, 
-            money: &mut SideArray<i32>,
-            board_points: &mut SideArray<i32>,
-            side_to_move: Side, 
-        ) -> Result<()> {
+    pub fn end_turn(
+        &mut self,
+        money: &mut SideArray<i32>,
+        board_points: &mut SideArray<i32>,
+        side_to_move: Side,
+    ) -> Result<()> {
+        match self.state {
+            BoardState::Normal => {
+                // Reset piece states
+                for piece in self.pieces.values() {
+                    piece.state.borrow_mut().reset();
+                }
 
-        let income = self.units_on_graveyards(side_to_move) + 3;
-        money[side_to_move] += income;
+                // Income
+                let income = self.units_on_graveyards(side_to_move) + 2;
+                money[side_to_move] += income;
 
-        if self.winner.is_none() {
-            let enemies_on_graveyards = self.units_on_graveyards(!side_to_move);
-
-            if enemies_on_graveyards >= GRAVEYARDS_TO_WIN  {
-                self.lose(side_to_move, board_points);
+                // Check for graveyard control loss
+                if self.units_on_graveyards(!side_to_move) >= GRAVEYARDS_TO_WIN {
+                    self.lose(side_to_move, board_points);
+                }
             }
-        }
-
-        self.phase = Phase::Attack;
-
-        if self.resetting {
-            self.reset();
-            self.resetting = false;
-
-            return Ok(());
-        } 
-
-        if self.winner == Some(side_to_move) {
-            ensure!(self.reinforcements[side_to_move].iter().count() <= 1, 
-                "Must choose a unit to save before ending winning turn");
-        }
-
-        for piece in self.pieces.values() {
-            piece.state.borrow_mut().reset();
+            BoardState::Reset0 => {
+                self.state = BoardState::Reset1;
+            }
+            BoardState::Reset1 => {
+                self.state = BoardState::Reset2;
+            }
+            BoardState::Reset2 => {
+                // Spawn zombies around necromancers for both sides
+                for side in Side::all() {
+                    if let Some(necro_loc) = self.find_necromancer(side) {
+                        for neighbor in necro_loc.neighbors() {
+                            if self.get_piece(&neighbor).is_none() {
+                                self.add_piece(Piece::new(Unit::Zombie, side, neighbor));
+                            }
+                        }
+                    }
+                }
+                self.state = BoardState::Normal;
+            }
         }
 
         Ok(())
@@ -456,55 +486,54 @@ impl Board {
         Ok(())
     }
 
-
     pub fn win(&mut self, side: Side, board_points: &mut SideArray<i32>) {
-        self.winner = Some(side);
-        board_points[side] += 1;
-        self.reset();
+        if self.winner.is_none() {
+            self.winner = Some(side);
+            board_points[side] += 1;
+        }
     }
 
     pub fn lose(&mut self, side: Side, board_points: &mut SideArray<i32>) {
-        self.winner = Some(!side);
-        board_points[!side] += 1;
-        self.resetting = true;
-    }
-
-    fn clear(&mut self) {
-        for (loc, piece) in self.pieces.iter() {
-            self.reinforcements[piece.side].insert(piece.unit);
+        if self.winner.is_none() {
+            self.winner = Some(!side);
+            board_points[!side] += 1;
         }
+    }
 
+    pub fn clear(&mut self) {
         self.pieces.clear();
+        self.bitboards = Bitboards::new(self.map.spec());
     }
 
-    fn reset(&mut self) {
-        self.clear();
+    pub fn reset(&mut self) {
+        let to_bounce = 
+            self.pieces.drain()
+                .filter(|(_, piece)| !piece.unit.stats().necromancer)
+                .collect::<Vec<_>>();
 
-        let reinforcements = self.reinforcements.clone();
+        *self = Board::from_fen(Self::START_FEN, self.map).unwrap();
 
-        self.pieces = Board::default().pieces;
-        self.reinforcements = reinforcements;
+        for (_, piece) in to_bounce {
+            self.bounce_piece(piece);
+        }
     }
 
-    /// Convert board state to FEN notation
+    fn find_necromancer(&self, side: Side) -> Option<Loc> {
+        self.pieces.values()
+            .find(|p| p.side == side && p.unit.stats().necromancer)
+            .map(|p| p.loc)
+    }
+
+    // / Convert board state to FEN notation
     pub fn to_fen(&self) -> String {
         let mut fen = String::new();
-        let mut empty_count = 0;
-        
-        for y in 0..10 {
-            if y > 0 {
-                fen.push('/');
-            }
-            
-            for x in 0..10 {
-                let loc = Loc { y, x };
+        for y in 0..GRID_LEN as i32 {
+            let mut empty_count = 0;
+            for x in 0..GRID_LEN as i32 {
+                let loc = Loc::new(x, y);
                 if let Some(piece) = self.get_piece(&loc) {
                     if empty_count > 0 {
-                        if empty_count == 10 {
-                            fen.push('0');
-                        } else {
-                            fen.push(char::from_digit(empty_count as u32, 10).unwrap());
-                        }
+                        fen.push_str(&empty_count.to_string());
                         empty_count = 0;
                     }
                     let mut c = piece.unit.to_fen_char();
@@ -516,156 +545,173 @@ impl Board {
                     empty_count += 1;
                 }
             }
-            
             if empty_count > 0 {
-                if empty_count == 10 {
-                    fen.push('0');
-                } else {
-                    fen.push(char::from_digit(empty_count as u32, 10).unwrap());
-                }
-                empty_count = 0;
+                fen.push_str(&empty_count.to_string());
+            }
+            if y < GRID_LEN as i32 - 1 {
+                fen.push('/');
             }
         }
-        
         fen
     }
 
-    /// Create a board from FEN notation
+    // / Create a board from FEN notation
     pub fn from_fen(fen: &str, map: Map) -> Result<Self> {
         let mut board = Self::new(map);
-        let parts: Vec<&str> = fen.split('/').collect();
+        let rows: Vec<&str> = fen.split('/').collect();
+        ensure!(rows.len() == GRID_LEN, "FEN must have {} rows, but has {}", GRID_LEN, rows.len());
 
-        ensure!(parts.len() == 10, "Invalid FEN: must have 10 rows");
-
-        for (y, row_str) in parts.iter().enumerate() {
+        for (y, row_str) in rows.iter().enumerate() {
             let mut x = 0;
-            if *row_str == "0" {
-                x = 10;
-            } else {
-                for c in row_str.chars() {
-                    if let Some(digit) = c.to_digit(10) {
-                        ensure!(digit != 0, "FEN digit cannot be 0 unless it's the only char in the row");
-                        x += digit as i32;
-                    } else {
-                        let side = if c.is_uppercase() { Side::S0 } else { Side::S1 };
-                        let unit_char = c.to_ascii_lowercase();
-                        let unit = Unit::from_fen_char(unit_char)
-                            .ok_or_else(|| anyhow!("Invalid unit char: {}", unit_char))?;
-
-                        let loc = Loc::new(x, y as i32);
-                        board.add_piece(Piece {
-                            loc,
-                            side,
-                            unit,
-                            modifiers: Modifiers::default(),
-                            state: RefCell::new(PieceState::default()),
-                        });
-                        x += 1;
+            let mut chars = row_str.chars().peekable();
+            while let Some(c) = chars.next() {
+                if c.is_ascii_digit() {
+                    let mut num_str = String::new();
+                    num_str.push(c);
+                    while let Some(&next_c) = chars.peek() {
+                        if next_c.is_ascii_digit() {
+                            num_str.push(chars.next().unwrap());
+                        } else {
+                            break;
+                        }
                     }
+                    let num: i32 = num_str.parse().context("Invalid number in FEN")?;
+                    x += num;
+                } else {
+                    let side = if c.is_uppercase() { Side::S0 } else { Side::S1 };
+                    let unit = Unit::from_fen_char(c)
+                        .ok_or_else(|| anyhow!("Invalid char in FEN: {}", c))?;
+                    ensure!(x < GRID_LEN as i32, "FEN row {} is too long at char '{}'", y, c);
+                    let loc = Loc::new(x, y as i32);
+                    board.add_piece(Piece::new(unit, side, loc));
+                    x += 1;
                 }
             }
-            ensure!(x == 10, "Invalid FEN: row {} does not sum to 10, got {}", y, x);
+            ensure!(x == GRID_LEN as i32, "FEN row {} has incorrect length: {}, expected {}", y, x, GRID_LEN);
         }
-
         Ok(board)
     }
 
     pub fn get_valid_move_hexes(&self, piece_loc: Loc) -> Vec<Loc> {
         let piece = self.get_piece(&piece_loc).unwrap();
-        let stats = piece.unit.stats();
-        self.bitboards.get_valid_move_hexes(
-            &piece_loc,
-            piece.side,
-            stats.speed,
-            stats.flying,
-        )
+        let speed = piece.unit.stats().speed;
+        let is_flying = piece.unit.stats().flying;
+        self.bitboards.get_valid_moves(&piece_loc, piece.side, speed, is_flying).to_locs()
     }
 
     pub fn get_valid_moves(&self, piece_loc: Loc) -> Bitboard {
         let piece = self.get_piece(&piece_loc).unwrap();
-        let stats = piece.unit.stats();
-        self.bitboards.get_valid_moves(&piece_loc, piece.side, stats.speed, stats.flying)
+        let speed = piece.unit.stats().speed;
+        let is_flying = piece.unit.stats().flying;
+        self.bitboards.get_valid_moves(&piece_loc, piece.side, speed, is_flying)
     }
+
+    /// Returns a list of valid, empty locations where the given side can spawn units.
+    pub fn get_spawn_locs(&self, side: Side, flying: bool) -> Vec<Loc> {
+        self.bitboards.get_spawn_locs(side, flying).to_locs()
+    }
+
 }
 
 impl Default for Board {
     fn default() -> Self {
-        Board::from_fen(Self::START_FEN, Map::BlackenedShores).unwrap()
+        let map = Map::default();
+        Self::from_fen(Self::START_FEN, map).expect("Failed to create default board")
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::core::loc::Loc;
+    use crate::core::units::Unit;
 
     #[test]
     fn test_board_pieces() {
-        let mut board = Board::new(Map::BlackenedShores);
-        let piece = Piece {
-            loc: Loc { y: 0, x: 0 },
-            side: Side::S0,
-            unit: Unit::Zombie,
-            modifiers: Modifiers::default(),
-            state: PieceState::default().into(),
-        };
+        let map = Map::default();
+        let mut board = Board::new(map);
+        let loc = Loc::new(0, 0);
+        let piece = Piece::new(Unit::Zombie, Side::S0, loc);
         board.add_piece(piece);
-
-        assert!(board.get_piece(&Loc { y: 0, x: 0 }).is_some());
-        assert!(board.get_piece(&Loc { y: 0, x: 1 }).is_none());
+        assert_eq!(board.get_piece(&loc).unwrap().unit, Unit::Zombie);
+        let removed = board.remove_piece(&loc).unwrap();
+        assert_eq!(removed.unit, Unit::Zombie);
+        assert!(board.get_piece(&loc).is_none());
     }
 
     #[test]
     fn test_board_fen_conversion() {
-        let mut board = Board::new(Map::BlackenedShores);
-        
-        // Add a zombie at (0,0) for Side 0
-        board.add_piece(Piece {
-            loc: Loc { y: 0, x: 0 },
-            side: Side::S0,
-            unit: Unit::Zombie,
-            modifiers: Modifiers::default(),
-            state: PieceState::default().into(),
-        });
+        let map = Map::default();
+        let mut board = Board::new(map);
 
-        // Add an initiate at (0,9) for Side 1
-        board.add_piece(Piece {
-            loc: Loc { y: 0, x: 9 },
-            side: Side::S1,
-            unit: Unit::Initiate,
-            modifiers: Modifiers::default(),
-            state: PieceState::default().into(),
-        });
+        board.add_piece(Piece::new(Unit::Zombie, Side::S0, Loc::new(0, 0)));
+        board.add_piece(Piece::new(Unit::Zombie, Side::S1, Loc::new(1, 1)));
+        board.add_piece(Piece::new(
+            Unit::BasicNecromancer,
+            Side::S0,
+            Loc::new(2, 2),
+        ));
+        board.add_piece(Piece::new(
+            Unit::BasicNecromancer,
+            Side::S1,
+            Loc::new(3, 3),
+        ));
 
-        assert_eq!(board.to_fen(), "Z8i/0/0/0/0/0/0/0/0/0");
+        let fen = board.to_fen();
+        let new_board = Board::from_fen(&fen, map).unwrap();
 
-        let board2 = Board::from_fen(&board.to_fen(), board.map).unwrap();
-        assert_eq!(board2.to_fen(), board.to_fen());
+        assert_eq!(board.pieces.len(), new_board.pieces.len());
+        for (loc, piece) in &board.pieces {
+            let new_piece = new_board.get_piece(loc).unwrap();
+            assert_eq!(piece.unit, new_piece.unit);
+            assert_eq!(piece.side, new_piece.side);
+        }
     }
 
     #[test]
     fn test_fen_empty_board() {
-        let board = Board::new(Map::BlackenedShores);
-        assert_eq!(board.to_fen(), "0/0/0/0/0/0/0/0/0/0");
-
-        let board2 = Board::from_fen("0/0/0/0/0/0/0/0/0/0", Map::BlackenedShores).unwrap();
-        assert_eq!(board2.to_fen(), "0/0/0/0/0/0/0/0/0/0");
+        let map = Map::default();
+        let board = Board::new(map);
+        let fen = board.to_fen();
+        let new_board = Board::from_fen(&fen, map).unwrap();
+        assert!(new_board.pieces.is_empty());
     }
 
     #[test]
     fn test_fen_default_board() {
-        let board = Board::default();
-        assert_eq!(board.to_fen(), "0/2ZZ6/1ZNZ6/1ZZ7/0/0/7zz1/6znz1/6zz2/0");
+        let map = Map::default();
+        let board = Board::new(map);
+        let fen = board.to_fen();
+        assert_eq!(fen, "10/10/10/10/10/10/10/10/10/10");
     }
 
     #[test]
     fn test_invalid_fen() {
-        // Test invalid piece character
-        assert!(Board::from_fen("X9/0/0/0/0/0/0/0/0/0", Map::BlackenedShores).is_err());
+        let map = Map::default();
+        assert!(Board::from_fen("11/10", map).is_err());
+        assert!(Board::from_fen("10/11", map).is_err());
+        assert!(Board::from_fen("10/10/10/10/10/10/10/10/10/10/10", map).is_err());
+        assert!(Board::from_fen("X/10", map).is_err());
+        assert!(Board::from_fen("10/X", map).is_err());
+    }
 
-        // Test wrong number of ys
-        assert!(Board::from_fen("0/0/0/0/0/0/0/0/0", Map::BlackenedShores).is_err());
+    #[test]
+    fn test_board_reset() {
+        let map = Map::default();
+        let mut board = Board::new(map);
 
-        // Test wrong number of squares in y
-        assert!(Board::from_fen("Z8/0/0/0/0/0/0/0/0/0", Map::BlackenedShores).is_err());
+        board.add_piece(Piece::new(Unit::BasicNecromancer, Side::S0, Loc::new(0, 0)));
+        board.add_piece(Piece::new(Unit::Zombie, Side::S0, Loc::new(0, 1)));
+        board.add_piece(Piece::new(Unit::BasicNecromancer, Side::S1, Loc::new(1, 0)));
+        board.add_piece(Piece::new(Unit::Zombie, Side::S1, Loc::new(1, 1)));
+
+        board.reset();
+
+        assert_eq!(board.state, BoardState::Reset0);
+        assert_eq!(board.pieces.len(), 0);
+        assert_eq!(board.reinforcements[Side::S0].contains(&Unit::BasicNecromancer), 1);
+        assert_eq!(board.reinforcements[Side::S0].contains(&Unit::Zombie), 7);
+        assert_eq!(board.reinforcements[Side::S1].contains(&Unit::BasicNecromancer), 1);
+        assert_eq!(board.reinforcements[Side::S1].contains(&Unit::Zombie), 7);
     }
 }

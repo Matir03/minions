@@ -8,6 +8,7 @@ pub mod display;
 pub mod game;
 pub mod loc;
 pub mod map;
+pub mod phase;
 pub mod side;
 pub mod spells;
 pub mod tech;

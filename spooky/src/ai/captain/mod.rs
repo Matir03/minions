@@ -22,6 +22,8 @@ use crate::{
     },
     ai::{eval::Eval, mcts::{MCTSNode, NodeState, NodeStats}},
 };
+use crate::core::board::BoardState;
+use crate::core::phase::Phase;
 
 use self::{
     combat::{
@@ -63,9 +65,9 @@ impl BoardNodeState {
         original_board: &Board,
         actions: &[BoardAction],
         side_to_move: Side,
-        config: &GameConfig,
+        _config: &GameConfig,
         tech_state: &TechState,
-        current_board_idx: usize,
+        phase: Phase,
     ) -> (Board, SideArray<i32>, SideArray<i32>) {
         let mut new_board = original_board.clone();
         let mut turn_delta_money = SideArray::new(0, 0);
@@ -78,6 +80,7 @@ impl BoardNodeState {
                 &mut turn_delta_points,
                 tech_state,
                 side_to_move,
+                phase,
             ) {
                 eprintln!("[BoardNodeState] Error applying action {:?}: {}", action, e);
             }
@@ -87,10 +90,10 @@ impl BoardNodeState {
 }
 
 impl NodeState<BoardTurn> for BoardNodeState {
-    type Args = (i32, TechState, GameConfig, usize); // Added usize for current_board_idx
+    type Args = (i32, TechState, GameConfig, usize, i32); // Added usize for current_board_idx and i32 for turn_num
 
     fn propose_move(&self, _rng: &mut impl Rng, args: &<Self as NodeState<BoardTurn>>::Args) -> (BoardTurn, Self) {
-        let (money_allocation, tech_state, config, current_board_idx) = args;
+        let (money_allocation, tech_state, config, _current_board_idx, turn_num) = args;
 
         let z3_cfg = Config::new();
         let ctx = Context::new(&z3_cfg);
@@ -129,28 +132,36 @@ impl NodeState<BoardTurn> for BoardNodeState {
                         self.side_to_move,
                         config,
                         &tech_state,
-                        *current_board_idx,
+                        Phase::Attack,
                     );
                 proposed_turn_delta_money.add_assign(&combat_delta_money);
                 proposed_turn_delta_points.add_assign(&combat_delta_points);
 
                 // Heuristically determine and apply spawn actions
-                let spawn_actions = generate_heuristic_spawn_actions(
-                    &board_after_combat,
-                    self.side_to_move,
-                    &tech_state,
-                    *money_allocation - combat_delta_money[self.side_to_move],
-                );
+                let spawn_actions = if *turn_num == 1 {
+                    vec![]
+                } else {
+                    generate_heuristic_spawn_actions(
+                        &board_after_combat,
+                        self.side_to_move,
+                        &tech_state,
+                        *money_allocation - combat_delta_money[self.side_to_move],
+                    )
+                };
 
                 let (final_board_state, spawn_delta_money, spawn_delta_points) =
-                    Self::apply_actions_to_board(
-                        &board_after_combat,
-                        &spawn_actions,
-                        self.side_to_move,
-                        config,
-                        &tech_state,
-                        *current_board_idx,
-                    );
+                    if spawn_actions.is_empty() {
+                        (board_after_combat, SideArray::new(0, 0), SideArray::new(0, 0))
+                    } else {
+                        Self::apply_actions_to_board(
+                            &board_after_combat,
+                            &spawn_actions,
+                            self.side_to_move,
+                            config,
+                            &tech_state,
+                            Phase::Spawn,
+                        )
+                    };
                 proposed_turn_delta_money.add_assign(&spawn_delta_money);
                 proposed_turn_delta_points.add_assign(&spawn_delta_points);
 
@@ -193,7 +204,7 @@ mod tests {
         let config = GameConfig::default();
         let node_state = BoardNodeState::new(board, Side::S0);
 
-        let (turn, _new_state) = node_state.propose_move(&mut rng, &(12, tech_state, config, 0));
+        let (turn, _new_state) = node_state.propose_move(&mut rng, &(12, tech_state, config, 0, 0));
 
         let has_move = turn.attack_actions.iter().any(|a|
             matches!(a, BoardAction::Move {..} | BoardAction::MoveCyclic {..} | BoardAction::Attack {..})

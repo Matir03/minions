@@ -1,16 +1,10 @@
 //! Bitboards
-use super::{loc::Loc, map::{MapSpec, TileType, Terrain}, side::Side};
-
-// Helper function to convert a bitboard to a Vec<Loc>
-pub fn bitboard_to_locs(bb: Bitboard) -> Vec<Loc> {
-    let mut locs = Vec::new();
-    for i in 0..100 {
-        if (bb >> i) & 1 != 0 {
-            locs.push(Loc::from_index(i));
-        }
-    }
-    locs
-}
+use super::{
+    loc::Loc,
+    map::{MapSpec, TileType, Terrain},
+    side::{Side, SideArray},
+    board::Piece,
+};
 
 pub type Bitboard = u128;
 
@@ -30,12 +24,16 @@ impl Dir {
         let mut idx = 0;
 
         while idx < 100 {
-            let loc: Loc = Loc { 
-                y: (idx / 10) + self.dy, 
-                x: (idx % 10) + self.dx 
+            let cur_loc = Loc { 
+                y: (idx / 10), 
+                x: (idx % 10),
+            };
+            let new_loc = Loc {
+                y: cur_loc.y + self.dy,
+                x: cur_loc.x + self.dx,
             };
 
-            if loc.in_bounds() {
+            if new_loc.in_bounds() {
                 let shift = self.shift();
                 let new_idx = idx + shift;
     
@@ -79,20 +77,33 @@ const MASKS: [Bitboard; 6] = [
 
 pub trait BitboardOps {
     fn new() -> Self;
+    fn to_locs(self) -> Vec<Loc>;
 
-    fn propagate(&self) -> Self;
+    fn neighbors(&self) -> Self;
     fn propagate_masked(&self, mask: Bitboard) -> Self;
     fn all_movements(&self, range: i32, prop: Bitboard, vacant: Bitboard) -> Self;
 
     fn get(&self, loc: Loc) -> bool;
     fn set(&mut self, loc: Loc, value: bool);
+    fn pop(&mut self) -> Option<Loc>;
 }
 
 impl BitboardOps for Bitboard {
 
     fn new() -> Self { 0 }
 
-    fn propagate(&self) -> Self {
+    fn to_locs(self) -> Vec<Loc> {
+        let mut locs = Vec::new();
+        let mut bb = self;
+        while bb != 0 {
+            let bit_index = bb.trailing_zeros() as i32;
+            locs.push(Loc::from_index(bit_index));
+            bb &= bb - 1; // Clear the lowest set bit
+        }
+        locs
+    }
+
+    fn neighbors(&self) -> Self {
         ((self >>  1) & MASKS[0]) |
         ((self <<  9) & MASKS[1]) |
         ((self >> 10) & MASKS[2]) |
@@ -102,7 +113,7 @@ impl BitboardOps for Bitboard {
     }
 
     fn propagate_masked(&self, mask: Bitboard) -> Self {
-        self.propagate() & mask
+        self.neighbors() & mask
     }
 
     fn all_movements(&self, range: i32, prop: Bitboard, vacant: Bitboard) -> Self {
@@ -126,72 +137,94 @@ impl BitboardOps for Bitboard {
             *self &= !(1 << loc.index());
         }
     }
+
+    fn pop(&mut self) -> Option<Loc> {
+        let loc = self.trailing_zeros() as i32;
+        *self &= *self - 1; // Clear the lowest set bit
+        Some(Loc::from_index(loc))
+    }
 }
 
 #[derive(Debug, Clone)]
 pub struct Bitboards {
-    pub s0_pieces: Bitboard,
-    pub s1_pieces: Bitboard,
-    pub all_pieces: Bitboard,
+    // pieces by type
+    pub pieces: SideArray<Bitboard>,
+    pub spawners: SideArray<Bitboard>,
 
     // Terrain bitboards
     pub water: Bitboard,
+    pub land: Bitboard,
+
     pub earthquake: Bitboard,
     pub whirlwind: Bitboard,
     pub firestorm: Bitboard,
+    pub graveyards: Bitboard,
 }
 
 impl Bitboards {
     pub fn new(map_spec: &MapSpec) -> Self {
         let mut water = Bitboard::new();
+        let mut land = Bitboard::new();
         let mut earthquake = Bitboard::new();
         let mut whirlwind = Bitboard::new();
         let mut firestorm = Bitboard::new();
+        let mut graveyards = Bitboard::new();
 
         for y in 0..10 {
             for x in 0..10 {
                 let loc = Loc::new(x, y);
                 if let Some(tile) = map_spec.tiles.get(&loc) {
-                    if let TileType::NativeTerrain(terrain) = tile {
-                        match terrain {
+                    match tile {
+                        TileType::NativeTerrain(terrain) => match terrain {
                             Terrain::Flood => water.set(loc, true),
                             Terrain::Earthquake => earthquake.set(loc, true),
                             Terrain::Whirlwind => whirlwind.set(loc, true),
                             Terrain::Firestorm => firestorm.set(loc, true),
-                        }
+                        },
+                        TileType::Graveyard => graveyards.set(loc, true),
+                        _ => {},
                     }
                 }
             }
         }
 
         Self {
-            s0_pieces: Bitboard::new(),
-            s1_pieces: Bitboard::new(),
-            all_pieces: Bitboard::new(),
+            pieces: SideArray::new(Bitboard::new(), Bitboard::new()),
+            spawners: SideArray::new(Bitboard::new(), Bitboard::new()),
             water,
+            land: !water,
             earthquake,
             whirlwind,
             firestorm,
+            graveyards,
         }
     }
 
-    pub fn set_piece(&mut self, loc: &Loc, side: Side, value: bool) {
-        match side {
-            Side::S0 => self.s0_pieces.set(*loc, value),
-            Side::S1 => self.s1_pieces.set(*loc, value),
-        };
-        self.all_pieces.set(*loc, value);
+    pub fn add_piece(&mut self, piece: &Piece) {
+        let loc = piece.loc;
+        let side = piece.side;
+    
+        self.pieces[side].set(loc, true);
+
+        if piece.unit.stats().spawn {
+            self.spawners[side].set(loc, true);
+        }
+    }
+
+    pub fn remove_piece(&mut self, loc: &Loc, side: Side) {
+        self.pieces[side].set(*loc, false);
+        self.spawners[side].set(*loc, false);
+    }
+
+    pub fn empty(&self) -> Bitboard {
+        !(self.pieces[Side::S0] | self.pieces[Side::S1])
     }
 
     pub fn get_valid_moves(&self, loc: &Loc, side: Side, range: i32, is_flying: bool) -> Bitboard {
-        let mut prop_mask = !self.all_pieces;
+        let mut prop_mask = !self.pieces[!side];
         prop_mask.set(*loc, true);
 
-        let dest_mask = if side == Side::S0 {
-            !self.s0_pieces
-        } else {
-            !self.s1_pieces
-        };
+        let dest_mask = self.empty();
 
         if !is_flying {
             prop_mask &= !self.water;
@@ -203,9 +236,24 @@ impl Bitboards {
         start.all_movements(range, prop_mask, dest_mask)
     }
 
-    pub fn get_valid_move_hexes(&self, loc: &Loc, side: Side, range: i32, is_flying: bool) -> Vec<Loc> {
-        let moves_bb = self.get_valid_moves(loc, side, range, is_flying);
-        bitboard_to_locs(moves_bb)
+    pub fn occupied_graveyards(&self, side: Side) -> Bitboard {
+        self.graveyards & self.pieces[side]
+    }
+
+    pub fn unoccupied_graveyards(&self, side: Side) -> Bitboard {
+        self.graveyards & !self.pieces[side]
+    }
+
+    pub fn get_spawn_locs(&self, side: Side, flying: bool) -> Bitboard {
+        let mut hexes = self.spawners[side].neighbors();
+        println!("hexes: {}", hexes.to_locs().len());
+        hexes &= self.empty();
+        println!("hexes: {}", hexes.to_locs().len());
+        if !flying {
+            hexes &= self.land;
+        }
+        println!("hexes: {}", hexes.to_locs().len());
+        hexes
     }
 }
     

@@ -1,11 +1,5 @@
 use crate::core::{
-    action::BoardAction,
-    board::Board,
-    convert::FromIndex,
-    loc::Loc,
-    side::Side,
-    tech::TechState,
-    units::{Unit, NUM_UNITS},
+    action::BoardAction, bitboards::BitboardOps as _, board::Board, convert::FromIndex, loc::Loc, side::Side, tech::TechState, units::{Unit, NUM_UNITS}
 };
 
 /// Given the current board state and available money, this function decides which units to
@@ -16,20 +10,49 @@ pub fn generate_heuristic_spawn_actions(
     tech_state: &TechState,
     money: i32,
 ) -> Vec<BoardAction> {
-    let units_to_spawn = purchase_heuristic(side, tech_state, money);
-    let mut available_spawn_locs = get_spawn_locs(board, side);
-
-    // Simple placement heuristic: sort units by cost (most expensive first)
-    // and place them one by one in the first available spawn location.
     let mut actions = Vec::new();
-    for unit in units_to_spawn {
-        if let Some(loc) = available_spawn_locs.pop() {
-            actions.push(BoardAction::Spawn { spawn_loc: loc, unit });
+
+    // Part 1: Decide what to buy and create `Buy` actions
+    let units_to_buy = purchase_heuristic(side, tech_state, money);
+    for &unit in &units_to_buy {
+        actions.push(BoardAction::Buy { unit });
+    }
+
+    // Part 2: Decide what to spawn from all available reinforcements (original + newly bought)
+    let mut all_units_to_potentially_spawn = board.reinforcements[side].clone();
+    for &unit in &units_to_buy {
+        all_units_to_potentially_spawn.insert(unit);
+    }
+
+    // Greedily spawn the most expensive units.
+    let mut sorted_units = all_units_to_potentially_spawn
+        .iter()
+        .copied()
+        .collect::<Vec<_>>();
+    sorted_units.sort_by_key(|u| -(u.stats().cost as i32));
+
+    // Get spawn locations based on the current board state.
+    let mut all_spawn_locs = board.bitboards.get_spawn_locs(side, true);
+    let mut land_spawn_locs = board.bitboards.get_spawn_locs(side, false);
+
+    for unit in sorted_units {
+        if unit.stats().flying {
+            if let Some(loc) = all_spawn_locs.pop() {
+                actions.push(BoardAction::Spawn { spawn_loc: loc, unit });
+                land_spawn_locs.set(loc, false);
+            } else {
+                // no more spawn locations
+                break;
+            }
         } else {
-            // No more available spawn locations
-            break;
+            // land units
+            if let Some(loc) = land_spawn_locs.pop() {
+                actions.push(BoardAction::Spawn { spawn_loc: loc, unit });
+                all_spawn_locs.set(loc, false);
+            } 
         }
     }
+
     actions
 }
 
@@ -62,36 +85,6 @@ fn purchase_heuristic(side: Side, tech_state: &TechState, mut money: i32) -> Vec
     units_to_spawn
 }
 
-/// Returns a list of valid, empty locations where the given side can spawn units.
-fn get_spawn_locs(board: &Board, side: Side) -> Vec<Loc> {
-    let y_range = if side == Side::S0 { 0..=2 } else { 7..=9 };
-    let mut locs = Vec::new();
-    for y in y_range {
-        for x in 0..=9 {
-            let loc = Loc::new(x, y);
-            if !board.pieces.contains_key(&loc) {
-                locs.push(loc);
-            }
-        }
-    }
-    // Sort by distance from center, then y, then x to be deterministic.
-    // The most central locations will be at the end of the vector, to be popped.
-    locs.sort_by(|a, b| {
-        let dist_sq_a = (2 * a.x - 9).pow(2) + (2 * a.y - 9).pow(2);
-        let dist_sq_b = (2 * b.x - 9).pow(2) + (2 * b.y - 9).pow(2);
-        dist_sq_b
-            .cmp(&dist_sq_a)
-            .then_with(|| {
-                if side == Side::S0 {
-                    a.y.cmp(&b.y)
-                } else {
-                    b.y.cmp(&a.y)
-                }
-            })
-            .then_with(|| a.x.cmp(&b.x))
-    });
-    locs
-}
 
 #[cfg(test)]
 mod tests {
@@ -182,80 +175,68 @@ mod tests {
 
     #[test]
     fn test_get_spawn_locs_s0() {
-        let board = Board::new(Map::BlackenedShores);
-        let locs = get_spawn_locs(&board, Side::S0);
-        assert_eq!(locs.len(), 30); // 3 rows of 10
+        let mut board = Board::new(Map::BlackenedShores);
+        // Add a spawner unit
+        board.add_piece(Piece::new(Unit::BasicNecromancer, Side::S0, Loc::new(1, 1)));
+        let locs = board.get_spawn_locs(Side::S0, true);
+        // Necromancer at (1,1) can spawn at 6 adjacent hexes in the spawn zone.
+        assert_eq!(locs.len(), 6);
         assert!(locs.iter().all(|loc| loc.y <= 2));
     }
 
     #[test]
     fn test_get_spawn_locs_s1() {
-        let board = Board::new(Map::BlackenedShores);
-        let locs = get_spawn_locs(&board, Side::S1);
-        assert_eq!(locs.len(), 30); // 3 rows of 10
+        let mut board = Board::new(Map::BlackenedShores);
+        board.add_piece(Piece::new(Unit::BasicNecromancer, Side::S1, Loc::new(1, 8)));
+        let locs = board.get_spawn_locs(Side::S1, true);
+        assert_eq!(locs.len(), 6);
         assert!(locs.iter().all(|loc| loc.y >= 7));
     }
 
     #[test]
     fn test_get_spawn_locs_blocked() {
         let mut board = Board::new(Map::BlackenedShores);
-        let loc = Loc::new(0, 0);
-        let piece = Piece {
-            loc,
-            side: Side::S0,
-            unit: Unit::Initiate,
-            modifiers: Default::default(),
-            state: Default::default(),
-        };
-        board.add_piece(piece);
-        let locs = get_spawn_locs(&board, Side::S0);
-        assert_eq!(locs.len(), 29);
-        assert!(!locs.contains(&loc));
+        // Add a spawner
+        board.add_piece(Piece::new(Unit::BasicNecromancer, Side::S0, Loc::new(1, 1)));
+
+        // Block one of the spawn locations
+        let blocked_loc = Loc::new(1, 0);
+        board.add_piece(Piece::new(Unit::Zombie, Side::S0, blocked_loc));
+
+        let locs = board.get_spawn_locs(Side::S0, true);
+        assert_eq!(locs.len(), 5);
+        assert!(!locs.contains(&blocked_loc));
     }
 
     #[test]
     fn test_generate_heuristic_spawn_actions_full() {
-        let board = Board::new(Map::BlackenedShores);
+        let mut board = Board::new(Map::BlackenedShores);
+        board.add_piece(Piece::new(Unit::BasicNecromancer, Side::S0, Loc::new(4, 1)));
+
         let tech_state = new_all_unlocked_tech_state();
         // With 4 money, it should buy 2 Initiates (cost 2 each)
         let money = 4;
         let actions = generate_heuristic_spawn_actions(&board, Side::S0, &tech_state, money);
-        assert_eq!(actions.len(), 2);
 
-        // All spawned units should be Initiates
+        // It should generate 2 Buy actions and 2 Spawn actions.
+        assert_eq!(actions.len(), 4);
+
+        let mut buy_count = 0;
+        let mut spawn_count = 0;
         for action in &actions {
-            if let BoardAction::Spawn { unit, .. } = action {
-                assert_eq!(*unit, Unit::Initiate);
-            } else {
-                panic!("Expected a spawn action");
+            match action {
+                BoardAction::Buy { unit } => {
+                    assert_eq!(*unit, Unit::Initiate);
+                    buy_count += 1;
+                }
+                BoardAction::Spawn { unit, .. } => {
+                    assert_eq!(*unit, Unit::Initiate);
+                    spawn_count += 1;
+                }
+                _ => panic!("Unexpected action type"),
             }
         }
-
-        // Test placement order. The first action is for the first unit from the purchase
-        // heuristic (all Initiates, so order doesn't matter), and it should be placed
-        // in the most central location. Because the code `pop()`s from the spawn list,
-        // this corresponds to the last element of the sorted `get_spawn_locs` vector.
-        if let BoardAction::Spawn { spawn_loc, .. } = &actions[0] {
-            assert_eq!(*spawn_loc, Loc::new(5, 2));
-        } else {
-            panic!("Expected a spawn action");
-        }
-    }
-
-    #[test]
-    fn test_get_spawn_locs_is_deterministic() {
-        let board = Board::new(Map::BlackenedShores);
-        let locs_s0 = get_spawn_locs(&board, Side::S0);
-        // The most central locations should be at the end.
-        // The two most central are (4, 2) and (5, 2).
-        // With our deterministic sort (dist DESC, then y ASC, then x ASC), (5, 2) should be last.
-        assert_eq!(*locs_s0.last().unwrap(), Loc::new(5, 2));
-        assert_eq!(locs_s0[locs_s0.len() - 2], Loc::new(4, 2));
-
-        let locs_s1 = get_spawn_locs(&board, Side::S1);
-        // For S1, most central are (4, 7) and (5, 7).
-        // With our deterministic sort (dist DESC, then y DESC, then x ASC), (5, 7) should be last.
-        assert_eq!(*locs_s1.last().unwrap(), Loc::new(5, 7));
-        assert_eq!(locs_s1[locs_s1.len() - 2], Loc::new(4, 7));
+        assert_eq!(buy_count, 2);
+        assert_eq!(spawn_count, 2);
     }
 }

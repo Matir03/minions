@@ -114,9 +114,8 @@ pub fn handle_command(cmd: &str, engine: &mut Engine) -> Result<()> {
             engine.do_action(action)?;
         }
         "endturn" => {
-            let winner = engine.end_turn()?;
-
-            if let Some(winner) = winner {
+            let turn = engine.turn.take().context("Turn not started")?;
+            if let Some(winner) = engine.take_turn(turn)? {
                 println!("info result winner {}", winner);
             }
         }
