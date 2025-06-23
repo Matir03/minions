@@ -30,16 +30,16 @@ impl<'ctx> RepositioningStage<'ctx> {
         variables: &Variables<'ctx>,
     ) {
         let unoccupied_graveyards = board.unoccupied_graveyards(side);
-        if unoccupied_graveyards.is_empty() || graph.friendlies.is_empty() {
+        if unoccupied_graveyards.is_empty() || graph.friends.is_empty() {
             return;
         }
 
         let mut total_distance = Int::from_i64(self.ctx, 0);
-        let power_of_2_32 = Int::from_i64(self.ctx, 4294967296);
+        let power_of_2_32 = Int::from_i64(self.ctx, 1 << 32);
 
-        for friendly_loc in &graph.friendlies {
+        for friendly_loc in &graph.friends {
             let attacks_by_this_unit: Vec<_> = graph
-                .pairs
+                .triples
                 .iter()
                 .filter(|p| p.attacker_pos == *friendly_loc)
                 .map(|p| &variables.attacks[&(p.attacker_pos, p.defender_pos)])
@@ -51,7 +51,7 @@ impl<'ctx> RepositioningStage<'ctx> {
                 z3::ast::Bool::or(self.ctx, &attacks_by_this_unit).not()
             };
 
-            let final_hex_var = &variables.attack_hex[friendly_loc];
+            let final_hex_var = &variables.move_hex[friendly_loc];
             let final_x = final_hex_var.div(&power_of_2_32);
             let final_y = final_hex_var.rem(&power_of_2_32);
 

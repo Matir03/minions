@@ -1,5 +1,5 @@
 use crate::{
-    ai::captain::BoardNodeState,
+    ai::{captain::BoardNodeState, rng::make_rng},
     core::{
         board::Board,
         game::GameConfig,
@@ -8,7 +8,6 @@ use crate::{
         units::Unit,
     },
 };
-use rand::thread_rng;
 use crate::ai::mcts::NodeState;
 
 #[test]
@@ -16,7 +15,7 @@ fn test_propose_move_integration() {
     let board = Board::default();
     let side = Side::S0;
     let node_state = BoardNodeState::new(board, side);
-    let mut rng = thread_rng();
+    let mut rng = make_rng();
     let mut tech_state = TechState::new();
     let techline = Techline::default();
     let assignment = TechAssignment::new(1, vec![0]);

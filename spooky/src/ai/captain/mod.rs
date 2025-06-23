@@ -13,7 +13,6 @@ use crate::{
         board::{Board, actions::BoardTurn, BoardState},
         game::{GameConfig, GameState},
         map::Map,
-        phase::Phase,
         side::{Side, SideArray},
         tech::TechState,
     },
@@ -164,7 +163,7 @@ impl NodeState<BoardTurn> for BoardNodeState {
                 (turn_taken, new_state)
             }
             SatResult::Unsat | SatResult::Unknown => {
-                panic!("there should always be a legal solution")
+                panic!("Z3 solver returned unsat or unknown")
             }
         }
     }

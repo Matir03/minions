@@ -161,11 +161,12 @@ impl<T> HexGrid<T> {
 /// Different map types available in the game
 #[derive(Debug, Clone, Copy, PartialEq, Eq, FromPrimitive, ToPrimitive)]
 pub enum Map {
+    AllLand,
     BlackenedShores,
     MidnightLake,
 }
 
-const NUM_MAPS: usize = 2;
+const NUM_MAPS: usize = 3;
 
 impl Map {
     pub fn spec(&self) -> &MapSpec {
@@ -196,11 +197,14 @@ impl ToIndex for Map {
 
 impl Default for Map {
     fn default() -> Self {
-        Map::BlackenedShores
+        Map::AllLand
     }
 }
 
 const MAP_FENS: [&str; NUM_MAPS] = [
+    // AllLand
+    "0/0/0/0/0/0/0/0/0/0",
+
     // BlackenedShores
     "2G3G3/W9/W9/W4G3G/GW4G3/W2WW5/WG2W5/W1W6G/3G1W4/2WWWGWWW1", 
 
@@ -224,12 +228,14 @@ mod tests {
 
     #[test]
     fn test_map_label_conversion() {
-        assert_eq!(Map::from_index(0).unwrap(), Map::BlackenedShores);
-        assert_eq!(Map::from_index(1).unwrap(), Map::MidnightLake);
-        assert!(Map::from_index(2).is_err());
+        assert_eq!(Map::from_index(0).unwrap(), Map::AllLand);
+        assert_eq!(Map::from_index(1).unwrap(), Map::BlackenedShores);
+        assert_eq!(Map::from_index(2).unwrap(), Map::MidnightLake);
+        assert!(Map::from_index(3).is_err());
 
-        assert_eq!(Map::BlackenedShores.to_index().unwrap(), 0);
-        assert_eq!(Map::MidnightLake.to_index().unwrap(), 1);
+        assert_eq!(Map::AllLand.to_index().unwrap(), 0);
+        assert_eq!(Map::BlackenedShores.to_index().unwrap(), 1);
+        assert_eq!(Map::MidnightLake.to_index().unwrap(), 2);
     }
 
     #[test]

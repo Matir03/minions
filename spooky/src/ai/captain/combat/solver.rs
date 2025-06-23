@@ -49,19 +49,6 @@ impl<'ctx> CombatSolver<'ctx> {
         }
         optimizer.maximize(&num_attacks);
 
-        let mut num_moves = Int::from_i64(ctx, 0);
-        for friendly in &graph.friendlies {
-            let attacker_hex_var = &variables.attack_hex[friendly];
-            let attacker_loc_val = Int::from_i64(ctx, loc_to_i64(friendly));
-
-            let has_moved = attacker_hex_var._eq(&attacker_loc_val).not();
-            num_moves = Int::add(
-                ctx,
-                &[&num_moves, &has_moved.ite(&Int::from_i64(ctx, 1), &Int::from_i64(ctx, 0))],
-            );
-        }
-        optimizer.minimize(&num_moves);
-
         Self {
             ctx,
             optimizer,
@@ -79,7 +66,7 @@ pub fn block_solution<'ctx>(
     variables: &Variables<'ctx>,
 ) {
     let mut conjuncts: Vec<Bool<'ctx>> = Vec::new();
-    for var in variables.attack_hex.values() {
+    for var in variables.move_hex.values() {
         let model_val = model.eval(var, true).unwrap();
         conjuncts.push(var._eq(&model_val));
     }
@@ -102,8 +89,8 @@ pub fn generate_move_from_model<'ctx>(
     let mut attacker_new_positions = HashMap::new();
 
     // First, determine the new position of each attacker.
-    for attacker in &graph.friendlies {
-        let z3_hex_var = &variables.attack_hex[attacker];
+    for attacker in &graph.friends {
+        let z3_hex_var = &variables.move_hex[attacker];
         if let Some(val) = model.eval(z3_hex_var, true).unwrap().as_i64() {
             let to_loc = i64_to_loc(val);
             if *attacker != to_loc {
@@ -146,7 +133,7 @@ mod tests {
     use z3::{Config, SatResult};
 
     fn create_board_with_pieces(pieces: Vec<(Unit, Side, Loc)>) -> Board {
-        let mut board = Board::new(Map::BlackenedShores);
+        let mut board = Board::new(Map::AllLand);
         for (unit, side, loc) in pieces {
             let piece = Piece {
                 unit,
@@ -174,7 +161,7 @@ mod tests {
         let optimizer = Optimize::new(&ctx);
         let graph = board.combat_graph(Side::S0);
 
-        assert_eq!(graph.friendlies.len(), 1);
+        assert_eq!(graph.friends.len(), 1);
         assert_eq!(graph.defenders.len(), 1);
 
         let solver = CombatSolver::new(&ctx, &optimizer, graph, &board);
@@ -220,8 +207,19 @@ mod tests {
         let ctx = Context::new(&z3_cfg);
         let optimizer = Optimize::new(&ctx);
         let graph = board.combat_graph(Side::S0);
+        println!("Graph: {:#?}", graph);
         let solver = CombatSolver::new(&ctx, &optimizer, graph, &board);
-        let model = match optimizer.check(&[]) {
+        let assumption = Bool::new_const(&ctx, "kill_defender");
+        optimizer.assert(&assumption._eq(
+            &Bool::and(&ctx, 
+                &[
+                    &solver.variables.attacks[&(Loc::new(1, 0), Loc::new(0, 0))], 
+                    &solver.variables.move_hex[&Loc::new(1, 0)].
+                        _eq(&Int::from_i64(&ctx, loc_to_i64(&Loc::new(1, 0))))
+                ]
+            )
+        ));
+        let model = match optimizer.check(&[assumption]) {
             SatResult::Sat => Some(optimizer.get_model().unwrap()),
             _ => None,
         }

@@ -45,6 +45,19 @@ impl Loc {
     pub fn index(&self) -> usize {
         (self.y as usize) * GRID_LEN + (self.x as usize)
     }
+
+    pub fn paths_to(&self, other: &Loc) -> Vec<Vec<Loc>> {
+        let delta = other - self;
+        let dist = self.dist(other);
+        let paths = PATH_MAPS[dist as usize].get(&delta).unwrap();
+        paths.iter()
+            .map(|path| 
+                path.iter()
+                    .map(|delta| self + delta)
+                    .collect::<Vec<Loc>>()
+            )
+            .collect()
+    }
 }
 
 impl From<(i32, i32)> for Loc {
@@ -74,13 +87,13 @@ impl Display for Loc {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct Delta {
+pub struct LocDelta {
     pub dx: i32,
     pub dy: i32,
 }
 
-impl Delta {
-    pub fn neighbors(&self) -> [Delta; 6] {
+impl LocDelta {
+    pub fn neighbors(&self) -> [LocDelta; 6] {
         DIRS.map(|dir| self + &dir.into())
     }
 
@@ -91,15 +104,15 @@ impl Delta {
             .unwrap()
     }
 
-    pub fn dist(&self, other: &Delta) -> i32 {
+    pub fn dist(&self, other: &LocDelta) -> i32 {
         (self - other).length()
     }
 }
 
-impl Add<&Delta> for &Loc {
+impl Add<&LocDelta> for &Loc {
     type Output = Loc;
 
-    fn add(self, other: &Delta) -> Self::Output {
+    fn add(self, other: &LocDelta) -> Self::Output {
         Loc {
             x: self.x + other.dx,
             y: self.y + other.dy,
@@ -107,10 +120,10 @@ impl Add<&Delta> for &Loc {
     }
 }
 
-impl Sub<&Delta> for &Loc {
+impl Sub<&LocDelta> for &Loc {
     type Output = Loc;
 
-    fn sub(self, other: &Delta) -> Self::Output {
+    fn sub(self, other: &LocDelta) -> Self::Output {
         Loc {
             x: self.x - other.dx,
             y: self.y - other.dy,
@@ -119,43 +132,43 @@ impl Sub<&Delta> for &Loc {
 }
 
 impl Sub<&Loc> for &Loc {
-    type Output = Delta;
+    type Output = LocDelta;
 
     fn sub(self, other: &Loc) -> Self::Output {
-        Delta {
+        LocDelta {
             dx: self.x - other.x,
             dy: self.y - other.y,
         }
     }
 }
 
-impl Add<&Delta> for &Delta {
-    type Output = Delta;
+impl Add<&LocDelta> for &LocDelta {
+    type Output = LocDelta;
 
-    fn add(self, other: &Delta) -> Self::Output {
-        Delta {
+    fn add(self, other: &LocDelta) -> Self::Output {
+        LocDelta {
             dx: self.dx + other.dx,
             dy: self.dy + other.dy,
         }
     }
 }
 
-impl Sub<&Delta> for &Delta {
-    type Output = Delta;
+impl Sub<&LocDelta> for &LocDelta {
+    type Output = LocDelta;
 
-    fn sub(self, other: &Delta) -> Self::Output {
-        Delta {
+    fn sub(self, other: &LocDelta) -> Self::Output {
+        LocDelta {
             dx: self.dx - other.dx,
             dy: self.dy - other.dy,
         }
     }
 }
 
-impl Neg for &Delta {
-    type Output = Delta;
+impl Neg for &LocDelta {
+    type Output = LocDelta;
 
     fn neg(self) -> Self::Output {
-        Delta {
+        LocDelta {
             dx: -self.dx,
             dy: -self.dy,
         }
@@ -180,26 +193,26 @@ const DIRS: [Dir; 6] = [
     Dir::SW,
 ];
 
-impl From<Dir> for Delta {
+impl From<Dir> for LocDelta {
     fn from(dir: Dir) -> Self {
         match dir {
-            Dir::W => Delta { dx: -1, dy: 0 },
-            Dir::NW => Delta { dx: -1, dy: 1 },
-            Dir::NE => Delta { dx: 0, dy: 1 },
-            Dir::E => Delta { dx: 1, dy: 0 },
-            Dir::SE => Delta { dx: 1, dy: -1 },
-            Dir::SW => Delta { dx: 0, dy: -1 },
+            Dir::W => LocDelta { dx: -1, dy: 0 },
+            Dir::NW => LocDelta { dx: -1, dy: 1 },
+            Dir::NE => LocDelta { dx: 0, dy: 1 },
+            Dir::E => LocDelta { dx: 1, dy: 0 },
+            Dir::SE => LocDelta { dx: 1, dy: -1 },
+            Dir::SW => LocDelta { dx: 0, dy: -1 },
         }
     }
 } 
 
-type Path = Vec<Delta>;
+type Path = Vec<LocDelta>;
 
 lazy_static!(
-    pub static ref PATH_MAPS: [HashMap<Delta, Vec<Path>>; 4] = {
+    pub static ref PATH_MAPS: [HashMap<LocDelta, Vec<Path>>; 4] = {
         let mut path_maps = Vec::new();
         let mut hashmap = HashMap::new();
-        hashmap.insert(Delta { dx: 0, dy: 0 }, vec![vec![]]);
+        hashmap.insert(LocDelta { dx: 0, dy: 0 }, vec![vec![]]);
 
         for i in 0..4 {
             path_maps.push(hashmap.clone());

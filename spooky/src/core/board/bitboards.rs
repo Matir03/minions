@@ -136,6 +136,7 @@ impl BitboardOps for Bitboard {
     }
 
     fn pop(&mut self) -> Option<Loc> {
+        if *self == 0 { return None; }
         let loc = self.trailing_zeros() as i32;
         *self &= *self - 1; // Clear the lowest set bit
         Some(Loc::from_index(loc))
@@ -219,13 +220,22 @@ impl Bitboards {
 
     pub fn get_valid_moves(&self, loc: &Loc, side: Side, range: i32, is_flying: bool) -> Bitboard {
         let mut prop_mask = !self.pieces[!side];
-        prop_mask.set(*loc, true);
-
-        let dest_mask = self.empty();
-
         if !is_flying {
             prop_mask &= !self.water;
         }
+
+        let mut dest_mask = self.empty();
+        dest_mask.set(*loc, true);
+
+        let mut start = Bitboard::new();
+        start.set(*loc, true);
+
+        start.all_movements(range, prop_mask, dest_mask)
+    }
+
+    pub fn get_theoretical_moves(&self, loc: &Loc, side: Side, range: i32, is_flying: bool) -> Bitboard {
+        let mut prop_mask = if is_flying { !0 } else { !self.water };
+        let dest_mask = !0;
 
         let mut start = Bitboard::new();
         start.set(*loc, true);
@@ -263,11 +273,11 @@ impl Board {
         self.bitboards.unoccupied_graveyards(side).to_locs()
     }
 
-    pub fn get_valid_move_hexes(&self, piece_loc: Loc) -> Vec<Loc> {
+    pub fn get_theoretical_moves(&self, piece_loc: Loc) -> Bitboard {
         let piece = self.get_piece(&piece_loc).unwrap();
         let speed = piece.unit.stats().speed;
         let is_flying = piece.unit.stats().flying;
-        self.bitboards.get_valid_moves(&piece_loc, piece.side, speed, is_flying).to_locs()
+        self.bitboards.get_theoretical_moves(&piece_loc, piece.side, speed, is_flying)
     }
 
     pub fn get_valid_moves(&self, piece_loc: Loc) -> Bitboard {
@@ -275,6 +285,14 @@ impl Board {
         let speed = piece.unit.stats().speed;
         let is_flying = piece.unit.stats().flying;
         self.bitboards.get_valid_moves(&piece_loc, piece.side, speed, is_flying)
+    }
+
+    pub fn get_valid_move_hexes(&self, piece_loc: Loc) -> Vec<Loc> {
+        self.get_valid_moves(piece_loc).to_locs()
+    }
+
+    pub fn get_theoretical_move_hexes(&self, piece_loc: Loc) -> Vec<Loc> {
+        self.get_theoretical_moves(piece_loc).to_locs()
     }
 
     /// Returns a list of valid, empty locations where the given side can spawn units.
