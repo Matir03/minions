@@ -224,24 +224,24 @@ impl Board {
                 self.move_piece(piece, &to_loc);
             }
             AttackAction::MoveCyclic { locs } => {
-                let from_loc = locs[0];
-                let piece = self.get_piece(&from_loc).context("No piece to move")?;
-                ensure!(piece.side == side, "Cannot move opponent's piece");
-                ensure!(
-                    piece.state.borrow().can_act(),
-                    "Piece has already moved or attacked"
-                );
+                // Ensure all pieces in the cycle can move.
+                for i in 0..locs.len() {
+                    let from = locs[i];
+                    let to = locs[(i + 1) % locs.len()];
 
-                let mut total_dist = 0;
-                for i in 0..locs.len() - 1 {
-                    let path = self.path(locs[i], locs[i + 1]).context("No path")?;
-                    total_dist += path.len() - 1;
+                    let piece = self.get_piece(&from).context("No piece to move in cycle")?;
+                    ensure!(piece.side == side, "Cannot move opponent's piece in cycle");
+                    ensure!(
+                        piece.state.borrow().can_act(),
+                        "Piece in cycle has already moved or attacked"
+                    );
+
+                    let dist = self.path(from, to).context("No path for cycle move")?.len() as i32 - 1;
+                    ensure!(
+                        dist <= piece.unit.stats().speed,
+                        "Move distance exceeds piece speed in cycle"
+                    );
                 }
-
-                ensure!(
-                    total_dist as i32 <= piece.unit.stats().speed,
-                    "Move distance exceeds piece speed"
-                );
 
                 self.move_pieces_cyclic(side, &locs)?;
             }

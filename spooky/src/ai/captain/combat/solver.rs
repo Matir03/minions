@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::core::{board::Board, loc::Loc, side::Side, units::{Unit, Attack}, board::actions::{AttackAction, SpawnAction}};
 
@@ -86,20 +86,64 @@ pub fn generate_move_from_model<'ctx>(
     variables: &Variables<'ctx>,
 ) -> Vec<AttackAction> {
     let mut actions = Vec::new();
+    let mut moves = HashMap::new();
     let mut attacker_new_positions = HashMap::new();
 
-    // First, determine the new position of each attacker.
+    // First, collect all moves and new positions from the model.
     for attacker in &graph.friends {
         let z3_hex_var = &variables.move_hex[attacker];
         if let Some(val) = model.eval(z3_hex_var, true).unwrap().as_i64() {
             let to_loc = i64_to_loc(val);
-            if *attacker != to_loc {
-                actions.push(AttackAction::Move {
-                    from_loc: *attacker,
-                    to_loc,
-                });
-            }
             attacker_new_positions.insert(*attacker, to_loc);
+            if *attacker != to_loc {
+                moves.insert(*attacker, to_loc);
+            }
+        }
+    }
+
+    // Detect cycles and chains and create corresponding move actions.
+    let mut visited = HashSet::new();
+    for &start_loc in moves.keys() {
+        if visited.contains(&start_loc) {
+            continue;
+        }
+
+        let mut path = Vec::new();
+        let mut current_loc = start_loc;
+
+        // Trace the path. Because destinations are unique, each component is either
+        // a simple path or a simple cycle.
+        loop {
+            if visited.contains(&current_loc) {
+                // This indicates we've hit a node from another path, which shouldn't happen
+                // with unique destinations. We'll treat the path so far as a chain.
+                break;
+            }
+
+            path.push(current_loc);
+            visited.insert(current_loc);
+
+            if let Some(&next_loc) = moves.get(&current_loc) {
+                if next_loc == start_loc {
+                    // Cycle detected.
+                    actions.push(AttackAction::MoveCyclic { locs: path });
+                    path = Vec::new(); // Clear path to indicate it's been handled.
+                    break;
+                }
+                current_loc = next_loc;
+            } else {
+                // End of a chain.
+                break;
+            }
+        }
+
+        // If the path is not empty, it's a chain that needs to be processed.
+        if !path.is_empty() {
+            for from in path {
+                if let Some(&to) = moves.get(&from) {
+                    actions.push(AttackAction::Move { from_loc: from, to_loc: to });
+                }
+            }
         }
     }
 
