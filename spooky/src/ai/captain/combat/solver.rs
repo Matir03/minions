@@ -87,79 +87,101 @@ pub fn generate_move_from_model<'ctx>(
 ) -> Vec<AttackAction> {
     let mut actions = Vec::new();
     let mut moves = HashMap::new();
-    let mut attacker_new_positions = HashMap::new();
+    let mut move_times = HashMap::new();
+    let mut attacks = HashMap::new();
 
     // First, collect all moves and new positions from the model.
-    for attacker in &graph.friends {
-        let z3_hex_var = &variables.move_hex[attacker];
-        if let Some(val) = model.eval(z3_hex_var, true).unwrap().as_i64() {
-            let to_loc = i64_to_loc(val);
-            attacker_new_positions.insert(*attacker, to_loc);
-            if *attacker != to_loc {
-                moves.insert(*attacker, to_loc);
-            }
+    for friend in &graph.friends {
+        let z3_hex_var = &variables.move_hex[friend];
+        let val = model.eval(z3_hex_var, true).unwrap()
+            .as_i64().unwrap();
+        let to_loc = i64_to_loc(val);
+        moves.insert(*friend, to_loc);
+
+        let z3_time_var = &variables.move_time[friend];
+        let val = model.eval(z3_time_var, true).unwrap()
+            .as_i64().unwrap();
+
+        move_times.insert(*friend, val);
+    }
+
+    for ((attacker, defender), num_attacks_var) in &variables.num_attacks {
+        let val = model.eval(num_attacks_var, true).unwrap()
+            .as_i64().unwrap();
+
+        if val > 0 {
+            attacks.entry(*attacker)
+                .or_insert_with(Vec::new)
+                .push((*defender, val));
         }
     }
 
-    // Detect cycles and chains and create corresponding move actions.
-    let mut visited = HashSet::new();
-    for &start_loc in moves.keys() {
-        if visited.contains(&start_loc) {
-            continue;
+    let mut movers_by_tick = moves.keys()
+        .map(|&mover| (move_times[&mover], mover))
+        .collect::<Vec<_>>();
+
+    movers_by_tick.sort_by_key(|&(time, _)| time);
+
+    let mut grouped_movers = Vec::new();
+
+    let mut current_time = None;
+    for (time, mover) in movers_by_tick {
+        if current_time != Some(time) {
+            current_time = Some(time);
+            grouped_movers.push(HashSet::new());
         }
+        grouped_movers.last_mut().unwrap().insert(mover);
+    }
 
-        let mut path = Vec::new();
-        let mut current_loc = start_loc;
+    for mover_group in grouped_movers {
+        let mut visited = HashSet::new();
 
-        // Trace the path. Because destinations are unique, each component is either
-        // a simple path or a simple cycle.
-        loop {
-            if visited.contains(&current_loc) {
-                // This indicates we've hit a node from another path, which shouldn't happen
-                // with unique destinations. We'll treat the path so far as a chain.
-                break;
+        for mover in mover_group.clone() {
+            if visited.contains(&mover) {
+                continue;
             }
 
-            path.push(current_loc);
-            visited.insert(current_loc);
+            let mut chain_movers = Vec::new();
+            let mut current_loc = mover;
+            
+            loop {
+                chain_movers.push(current_loc);
+                visited.insert(current_loc);
+                let next_loc = *moves.get(&current_loc).unwrap();
 
-            if let Some(&next_loc) = moves.get(&current_loc) {
-                if next_loc == start_loc {
-                    // Cycle detected.
-                    actions.push(AttackAction::MoveCyclic { locs: path });
-                    path = Vec::new(); // Clear path to indicate it's been handled.
+                if next_loc == mover {
+                    // cycle detected
+                    if chain_movers.len() > 1 { // not just a self-move
+                        actions.push(AttackAction::MoveCyclic { locs: chain_movers.clone() });
+                    }
                     break;
                 }
-                current_loc = next_loc;
-            } else {
-                // End of a chain.
-                break;
-            }
-        }
 
-        // If the path is not empty, it's a chain that needs to be processed.
-        if !path.is_empty() {
-            for from in path {
-                if let Some(&to) = moves.get(&from) {
-                    actions.push(AttackAction::Move { from_loc: from, to_loc: to });
+                if !mover_group.contains(&next_loc) || visited.contains(&next_loc) {
+                    // end of chain
+                    for from_loc in chain_movers.iter().rev().cloned() {
+                        let to_loc = *moves.get(&from_loc).unwrap();
+                        actions.push(AttackAction::Move { from_loc, to_loc });
+                    }
+                    break;
+                }
+
+                current_loc = next_loc;
+            }
+
+            for original_attacker in chain_movers {
+                if let Some(attacks) = attacks.get(&original_attacker) {
+                    let attacker_new_loc = moves.get(&original_attacker).unwrap();
+                    for (defender, num_attacks) in attacks {
+                        for _ in 0..*num_attacks {
+                            actions.push(AttackAction::Attack { 
+                                attacker_loc: *attacker_new_loc, 
+                                target_loc: *defender 
+                            });
+                        }
+                    }
                 }
             }
-        }
-    }
-
-    // Next, generate attack actions from the attackers' new positions.
-    for ((attacker, defender), is_attacking_var) in &variables.attacks {
-        if model
-            .eval(is_attacking_var, true)
-            .unwrap()
-            .as_bool()
-            .unwrap_or(false)
-        {
-            let attacker_pos = attacker_new_positions.get(attacker).unwrap_or(attacker);
-            actions.push(AttackAction::Attack {
-                attacker_loc: *attacker_pos,
-                target_loc: *defender,
-            });
         }
     }
 
@@ -189,7 +211,6 @@ mod tests {
         let ctx = Context::new(&z3_cfg);
         let optimizer = Optimize::new(&ctx);
         let graph = board.combat_graph(Side::S0);
-        println!("Graph: {:#?}", graph);
         let solver = CombatSolver::new(&ctx, &optimizer, graph, &board);
 
 
@@ -314,7 +335,6 @@ mod tests {
         let ctx = Context::new(&z3_cfg);
         let optimizer = Optimize::new(&ctx);
         let graph = board.combat_graph(Side::S0);
-        println!("Graph: {:#?}", graph);
         let solver = CombatSolver::new(&ctx, &optimizer, graph, &board);
         let assumption = Bool::new_const(&ctx, "kill_defender");
         optimizer.assert(&assumption._eq(

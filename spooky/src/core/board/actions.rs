@@ -220,8 +220,7 @@ impl Board {
                     "Move distance exceeds piece speed"
                 );
 
-                let piece = self.remove_piece(&from_loc).unwrap();
-                self.move_piece(piece, &to_loc);
+                self.move_piece(piece.clone(), &to_loc);
             }
             AttackAction::MoveCyclic { locs } => {
                 self.move_pieces_cyclic(side, &locs)?;
