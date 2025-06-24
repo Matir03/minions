@@ -202,20 +202,44 @@ impl Board {
         Ok(())
     }
 
-    fn move_pieces_cyclic(&mut self, side: Side, locs: &[Loc]) -> Result<()> {
-        // TODO: check for valid paths
-        let first_piece = self.remove_piece(&locs[0]).context("No piece to move")?;
-        ensure!(first_piece.side == side, "Cannot move opponent's piece");
+    fn check_valid_move_cyclic(&self, side: Side, locs: &[Loc]) -> Result<()> {
+        // Ensure all pieces in the cycle can move.
+        for i in 0..locs.len() {
+            let from = locs[i];
+            let to = locs[(i + 1) % locs.len()];
 
-        for i in 0..locs.len() - 1 {
-            let mut piece = self.remove_piece(&locs[i + 1]).context("No piece to move")?;
-            piece.loc = locs[i];
-            self.add_piece(piece);
+            let piece = self.get_piece(&from).context("No piece to move in cycle")?;
+            ensure!(piece.side == side, "Cannot move opponent's piece in cycle");
+            ensure!(
+                piece.state.borrow().can_act(),
+                "Piece in cycle has already moved or attacked"
+            );
+
+            let dist = self.path(from, to).context("No path for cycle move")?.len() as i32 - 1;
+            ensure!(
+                dist <= piece.unit.stats().speed,
+                "Move distance exceeds piece speed in cycle"
+            );
         }
 
-        let mut last_piece = first_piece;
-        last_piece.loc = *locs.last().unwrap();
-        self.add_piece(last_piece);
+        Ok(())
+    }
+
+    fn move_pieces_cyclic(&mut self, side: Side, locs: &[Loc]) -> Result<()> {
+        // TODO: check for valid paths
+        self.check_valid_move_cyclic(side, locs)?;
+
+        let pieces = locs.iter().map(|loc| 
+            self.remove_piece(loc).unwrap()
+        ).collect::<Vec<_>>();
+
+        let cycled_locs = locs.iter().cycle().skip(1);
+        
+        for (mut piece, loc) in pieces.into_iter().zip(cycled_locs) {
+            piece.loc = *loc;
+            piece.state.borrow_mut().moved = true;
+            self.add_piece(piece);
+        }
 
         Ok(())
     }

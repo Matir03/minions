@@ -176,6 +176,69 @@ mod tests {
     use crate::core::map::Map;
     use z3::{Config, SatResult};
 
+    #[test]
+    fn test_cyclic_move() {
+        // Three rats in a triangle, each wanting to move to the next one's spot.
+        let board = create_board_with_pieces(vec![
+            (Unit::Rat, Side::S0, Loc::new(0, 0)),
+            (Unit::Zombie, Side::S0, Loc::new(1, 0)),
+            (Unit::Skeleton, Side::S0, Loc::new(0, 1)),
+        ]);
+
+        let z3_cfg = Config::new();
+        let ctx = Context::new(&z3_cfg);
+        let optimizer = Optimize::new(&ctx);
+        let graph = board.combat_graph(Side::S0);
+        println!("Graph: {:#?}", graph);
+        let solver = CombatSolver::new(&ctx, &optimizer, graph, &board);
+
+
+        let move1 = solver.variables.move_hex[&Loc::new(0, 0)]._eq(&Loc::new(1, 0).as_z3(&ctx));
+        let move2 = solver.variables.move_hex[&Loc::new(1, 0)]._eq(&Loc::new(0, 1).as_z3(&ctx));
+        let move3 = solver.variables.move_hex[&Loc::new(0, 1)]._eq(&Loc::new(0, 0).as_z3(&ctx));
+        optimizer.assert(&move1);
+        optimizer.assert(&move2);
+        optimizer.assert(&move3);
+
+        let model = match optimizer.check(&[]) {
+            SatResult::Sat => Some(optimizer.get_model().unwrap()),
+            _ => None,
+        }
+        .expect("Should find a solution");
+
+        let actions = generate_move_from_model(&model, &solver.graph, &solver.variables);
+
+        assert_eq!(actions.len(), 1, "Expected a single MoveCyclic action");
+
+        // Apply the action and verify the board state
+        let mut board_after_move = board.clone();
+        let result = board_after_move.do_attack_action(Side::S0, actions[0].clone());
+        assert!(result.is_ok(), "Cyclic move failed: {:?}", result);
+
+        assert_eq!(board_after_move.get_piece(&Loc::new(0, 0)).unwrap().unit, Unit::Skeleton);
+        assert_eq!(board_after_move.get_piece(&Loc::new(1, 0)).unwrap().unit, Unit::Rat);
+        assert_eq!(board_after_move.get_piece(&Loc::new(0, 1)).unwrap().unit, Unit::Zombie);
+
+        // Also verify the action itself
+        match &actions[0] {
+            AttackAction::MoveCyclic { locs } => {
+                assert_eq!(locs.len(), 3, "Cycle should involve 3 locations");
+                assert!(locs.contains(&Loc::new(0, 0)));
+                assert!(locs.contains(&Loc::new(1, 0)));
+                assert!(locs.contains(&Loc::new(0, 1)));
+
+                // assert cyclic order
+                let rat = locs.iter().position(|&loc| loc == Loc::new(0, 0)).unwrap();
+                let zombie = locs.iter().position(|&loc| loc == Loc::new(1, 0)).unwrap();
+                let skeleton = locs.iter().position(|&loc| loc == Loc::new(0, 1)).unwrap();
+                assert_eq!((3 + skeleton - zombie) % 3, 1);
+                assert_eq!((3 + rat - skeleton) % 3, 1);
+                assert_eq!((3 + zombie - rat) % 3, 1);
+            }
+            _ => panic!("Expected a MoveCyclic action, got {:?}", actions[0]),
+        }
+    }
+
     fn create_board_with_pieces(pieces: Vec<(Unit, Side, Loc)>) -> Board {
         let mut board = Board::new(Map::AllLand);
         for (unit, side, loc) in pieces {

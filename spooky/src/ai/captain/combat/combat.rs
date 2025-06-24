@@ -111,7 +111,7 @@ impl CombatGraph {
             let piece = board.get_piece(friend).unwrap();
             let flying = piece.unit.stats().flying;
 
-            let free_move_hexes = board.get_valid_move_hexes(*friend)
+            let free_move_hexes = board.get_unobstructed_move_hexes(*friend)
                 .into_iter()
                 .collect::<HashSet<Loc>>();
 

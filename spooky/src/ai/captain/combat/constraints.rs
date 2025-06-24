@@ -15,7 +15,7 @@ type Z3Time<'ctx> = Int<'ctx>; // for theory of inequality
 
 type Z3Loc<'ctx> = Int<'ctx>;
 impl Loc {
-    fn as_z3<'ctx>(self, ctx: &'ctx Context) -> Z3Loc<'ctx> {
+    pub fn as_z3<'ctx>(self, ctx: &'ctx Context) -> Z3Loc<'ctx> {
         Int::from_i64(ctx, loc_to_i64(&self))
     }
 }
@@ -110,7 +110,7 @@ fn add_movement_constraints<'ctx>(
 ) {
     // must move to a valid hex
     for friend in &graph.friends {
-        let valid_move_hexes = board.get_valid_move_hexes(*friend);
+        let valid_move_hexes = board.get_theoretical_move_hexes(*friend);
         solver.assert(&loc_var_in_hexes(ctx, &variables.move_hex[friend], &valid_move_hexes));
     }
     

@@ -24,7 +24,7 @@ pub enum AttackAction {
         to_loc: Loc,
     },
     MoveCyclic {
-        locs: Vec<Loc>,
+        locs: Vec<Loc>, // locs[i] moves to locs[(i + 1) % locs.len()]
     },
     Attack {
         attacker_loc: Loc,
@@ -224,25 +224,6 @@ impl Board {
                 self.move_piece(piece, &to_loc);
             }
             AttackAction::MoveCyclic { locs } => {
-                // Ensure all pieces in the cycle can move.
-                for i in 0..locs.len() {
-                    let from = locs[i];
-                    let to = locs[(i + 1) % locs.len()];
-
-                    let piece = self.get_piece(&from).context("No piece to move in cycle")?;
-                    ensure!(piece.side == side, "Cannot move opponent's piece in cycle");
-                    ensure!(
-                        piece.state.borrow().can_act(),
-                        "Piece in cycle has already moved or attacked"
-                    );
-
-                    let dist = self.path(from, to).context("No path for cycle move")?.len() as i32 - 1;
-                    ensure!(
-                        dist <= piece.unit.stats().speed,
-                        "Move distance exceeds piece speed in cycle"
-                    );
-                }
-
                 self.move_pieces_cyclic(side, &locs)?;
             }
             AttackAction::Attack { attacker_loc, target_loc } => {

@@ -78,7 +78,7 @@ pub trait BitboardOps {
 
     fn neighbors(&self) -> Self;
     fn propagate_masked(&self, mask: Bitboard) -> Self;
-    fn all_movements(&self, range: i32, prop: Bitboard, vacant: Bitboard) -> Self;
+    fn all_movements(&self, speed: i32, prop: Bitboard, vacant: Bitboard) -> Self;
 
     fn get(&self, loc: Loc) -> bool;
     fn set(&mut self, loc: Loc, value: bool);
@@ -113,10 +113,10 @@ impl BitboardOps for Bitboard {
         self.neighbors() & mask
     }
 
-    fn all_movements(&self, range: i32, prop: Bitboard, vacant: Bitboard) -> Self {
+    fn all_movements(&self, speed: i32, prop: Bitboard, vacant: Bitboard) -> Self {
         let mut moves: Bitboard = *self;
 
-        for _ in 0..range {
+        for _ in 0..speed {
             moves |= moves.propagate_masked(prop);
         }
 
@@ -218,7 +218,7 @@ impl Bitboards {
         !(self.pieces[Side::S0] | self.pieces[Side::S1])
     }
 
-    pub fn get_valid_moves(&self, loc: &Loc, side: Side, range: i32, is_flying: bool) -> Bitboard {
+    pub fn get_valid_moves(&self, loc: &Loc, side: Side, speed: i32, is_flying: bool) -> Bitboard {
         let mut prop_mask = !self.pieces[!side];
         if !is_flying {
             prop_mask &= !self.water;
@@ -230,17 +230,31 @@ impl Bitboards {
         let mut start = Bitboard::new();
         start.set(*loc, true);
 
-        start.all_movements(range, prop_mask, dest_mask)
+        start.all_movements(speed, prop_mask, dest_mask)
     }
 
-    pub fn get_theoretical_moves(&self, loc: &Loc, side: Side, range: i32, is_flying: bool) -> Bitboard {
+    pub fn get_unobstructed_moves(&self, loc: &Loc, side: Side, speed: i32, is_flying: bool) -> Bitboard {
+        let mut prop_mask = !self.pieces[!side];
+        if !is_flying {
+            prop_mask &= !self.water;
+        }
+
+        let mut dest_mask = !0;
+
+        let mut start = Bitboard::new();
+        start.set(*loc, true);
+
+        start.all_movements(speed, prop_mask, dest_mask)
+    }
+
+    pub fn get_theoretical_moves(&self, loc: &Loc, side: Side, speed: i32, is_flying: bool) -> Bitboard {
         let mut prop_mask = if is_flying { !0 } else { !self.water };
         let dest_mask = !0;
 
         let mut start = Bitboard::new();
         start.set(*loc, true);
 
-        start.all_movements(range, prop_mask, dest_mask)
+        start.all_movements(speed, prop_mask, dest_mask)
     }
 
     pub fn occupied_graveyards(&self, side: Side) -> Bitboard {
@@ -273,6 +287,13 @@ impl Board {
         self.bitboards.unoccupied_graveyards(side).to_locs()
     }
 
+    pub fn get_unobstructed_moves(&self, piece_loc: Loc) -> Bitboard {
+        let piece = self.get_piece(&piece_loc).unwrap();
+        let speed = piece.unit.stats().speed;
+        let is_flying = piece.unit.stats().flying;
+        self.bitboards.get_unobstructed_moves(&piece_loc, piece.side, speed, is_flying)
+    }
+
     pub fn get_theoretical_moves(&self, piece_loc: Loc) -> Bitboard {
         let piece = self.get_piece(&piece_loc).unwrap();
         let speed = piece.unit.stats().speed;
@@ -293,6 +314,10 @@ impl Board {
 
     pub fn get_theoretical_move_hexes(&self, piece_loc: Loc) -> Vec<Loc> {
         self.get_theoretical_moves(piece_loc).to_locs()
+    }
+
+    pub fn get_unobstructed_move_hexes(&self, piece_loc: Loc) -> Vec<Loc> {
+        self.get_unobstructed_moves(piece_loc).to_locs()
     }
 
     /// Returns a list of valid, empty locations where the given side can spawn units.
