@@ -143,7 +143,7 @@ impl BitboardOps for Bitboard {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Bitboards {
     // pieces by type
     pub pieces: SideArray<Bitboard>,

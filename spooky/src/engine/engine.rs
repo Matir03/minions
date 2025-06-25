@@ -1,4 +1,5 @@
-use crate::core::{GameConfig, GameState, GameAction, Spell, Side, GameTurn};
+use crate::core::{move_gen, GameConfig, GameState, GameAction, Spell, Side, GameTurn};
+use std::sync::Arc;
 use crate::ai::Eval;
 
 use super::options::EngineOptions;
@@ -8,7 +9,7 @@ use anyhow::{Context, Result};
 
 /// Engine manages the game state and provides methods for game analysis and move generation
 pub struct Engine {
-    pub config: GameConfig,
+    pub config: Arc<GameConfig>,
     pub state: GameState,
     pub options: EngineOptions,
     pub turn: Option<GameTurn>,
@@ -17,22 +18,20 @@ pub struct Engine {
 impl Engine {
     /// Create a new engine instance with default options
     pub fn new() -> Self {
+        let config = Arc::new(GameConfig::default());
         Self {
-            config: GameConfig::default(),
-            state: GameState::default(),
+            config: config.clone(),
+            state: GameState::new_default(config),
             options: EngineOptions::default(),
             turn: None,
         }
     }
 
     /// Update the current game state
-    pub fn set_game(&mut self, config: GameConfig, game: GameState) {
-        self.config = config;
-        self.state = game;
-    }
+
 
     pub fn reset_game(&mut self) {
-        self.state = GameState::default();
+        self.state = GameState::new_default(self.config.clone());
     }
 
     /// Set engine options
@@ -56,11 +55,11 @@ impl Engine {
     }
 
     pub fn end_turn(&mut self) -> Result<()> {
-        self.state.end_turn(&self.config)
+        self.state.end_turn()
     }
 
     pub fn take_turn(&mut self, turn: GameTurn) -> Result<Option<Side>> {
-        self.state.take_turn(turn, &self.config)?;
+        self.state.take_turn(turn)?;
         Ok(self.state.winner())
     }
 
@@ -105,7 +104,37 @@ impl Engine {
         self.state.to_fen()
     }
 
-    pub fn perft(&self, board_index: usize) -> u64 {
-        todo!()
+    pub fn perft(&self, board_index: usize, depth: u32) -> u64 {
+        if depth == 0 {
+            return 1;
+        }
+
+        let board = &self.state.boards[board_index];
+        let side = self.state.side_to_move;
+
+        // Base case for recursion is handled by the initial depth check.
+        if depth == 1 {
+            return move_gen::generate_attack_actions(board, side).len() as u64;
+        }
+
+        let mut nodes = 0;
+        let actions = move_gen::generate_attack_actions(board, side);
+
+        for action in actions {
+            let mut new_board = board.clone();
+            if new_board.do_attack_action(side, action).is_ok() {
+                let mut new_state = self.state.clone();
+                new_state.boards[board_index] = new_board;
+                // Note: This is a simplified perft that doesn't handle turn changes.
+                // We'll need a more robust implementation for full game perft.
+                let engine_clone = Engine { 
+                    state: new_state, 
+                    options: self.options.clone(),
+                };
+                nodes += engine_clone.perft(board_index, depth - 1);
+            }
+        }
+
+        nodes
     }
 }

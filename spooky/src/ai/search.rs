@@ -61,15 +61,26 @@ impl<'a> SearchTree<'a> {
             current_mcts_node = current_mcts_node.borrow().edges[child_idx].child;
         }
 
-        let leaf_eval = Eval::static_eval(self.args.config, &current_mcts_node.borrow().state.game_state);
+        let (leaf_eval, leaf_side) = {
+            let leaf_node = current_mcts_node.borrow();
+            let eval = Eval::static_eval(self.args.config, &leaf_node.state.game_state);
+            let side = leaf_node.state.game_state.side_to_move;
+            (eval, side)
+        };
 
-        for node in explored_nodes {
-            let mut node_borrowed = node.borrow_mut();
-            node_borrowed.update(&leaf_eval);
+        for node_ref in explored_nodes {
+            let mut node_borrowed = node_ref.borrow_mut();
+            let perspective_eval = if node_borrowed.state.game_state.side_to_move != leaf_side {
+                leaf_eval.flip()
+            } else {
+                leaf_eval
+            };
+            
+            node_borrowed.update(&perspective_eval);
             node_borrowed.state.board_nodes.iter().for_each(|board_node| {
-                board_node.borrow_mut().update(&leaf_eval);
+                board_node.borrow_mut().update(&perspective_eval);
             });
-            node_borrowed.state.general_node.borrow_mut().update(&leaf_eval); 
+            node_borrowed.state.general_node.borrow_mut().update(&perspective_eval);
         }
     }
 

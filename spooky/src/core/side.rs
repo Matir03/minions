@@ -57,7 +57,7 @@ impl Not for Side {
 }   
 
 /// Array indexed by game side
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SideArray<T> {
     pub values: [T; 2],
 }

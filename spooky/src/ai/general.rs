@@ -17,7 +17,7 @@ use super::{
     search::SearchArgs,
 };
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct GeneralNodeState {
     pub side: Side,
     pub tech_state: TechState,

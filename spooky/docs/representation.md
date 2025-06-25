@@ -11,14 +11,13 @@ Composed of:
 
 ### GameConfig
 - `numBoards`: int
-- `maps`: MapLabel[numBoards]
-  - `MapLabel`: enum {BlackenedShores, MidnightLake, ...}
-  - Maps to global Vector<Map>
+- `maps`: Vec<Arc<Map>>
 - `techline`: Techline
 
 ### GameState
+- `config`: Arc<GameConfig>
 - `side_to_move`: Side
-- `boards`: Board[numBoards]
+- `boards`: Vec<Board>
 - `techStatus`: SideArray<TechStatus[numTechs]>
   - `TechStatus`: enum {Locked, Unlocked, Acquired}
 - `money`: SideArray<int>
@@ -63,9 +62,12 @@ One of:
 ## Board State
 
 ### Board
-- `pieces`: SideArray<Vector<Piece>>
-- `reinforcements`: SideArray<Vector<UnitLabel>>
-- `spells`: SideArray<Vector<Spell>>
+- `map`: Arc<Map>
+- `state`: BoardState
+- `pieces`: HashMap<Loc, Piece>
+- `reinforcements`: SideArray<HashBag<Unit>>
+- `spells`: SideArray<Vec<Spell>>
+- `winner`: Option<Side>
 
 ### Piece
 - `loc`: Loc

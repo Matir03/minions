@@ -45,6 +45,16 @@ Move generation within a `GameNode` involves a coordinated process:
     *   The collective decisions and outcomes (delta money, delta points) from the `GeneralNode` and all `BoardNode`s are aggregated.
     *   This information is used to create new child `GameNode`s with updated game states.
 
+### State Management and Ownership
+
+To ensure memory efficiency and prevent unnecessary data duplication, the engine employs a shared ownership model for core, immutable data structures.
+
+-   **`GameConfig`**: The game's configuration, which includes settings that do not change during a match, is wrapped in an `Arc<GameConfig>`. This allows multiple parts of the system (like `GameState` and various AI components) to share a single instance of the configuration without expensive cloning.
+
+-   **`Map`**: Similarly, each game `Map` is wrapped in an `Arc<Map>`. Since maps are immutable, sharing them via `Arc` is safe and efficient, especially in states where multiple `Board` instances might reference the same map.
+
+This approach simplifies lifetime management and improves performance by reducing memory allocation and copying overhead.
+
 ## Key Features
 
 ### Lazy Refinement

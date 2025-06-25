@@ -70,7 +70,7 @@ pub struct MCTSNode<'a, State: NodeState<Turn>, Turn> {
     pub state: State,
 }
 
-impl<'a, State: NodeState<Turn>, Turn> MCTSNode<'a, State, Turn> {
+impl<'a, State: NodeState<Turn> + PartialEq, Turn> MCTSNode<'a, State, Turn> {
     pub fn new(state: State, arena: &'a Bump) -> Self {
         Self {
             stats: NodeStats::new(),
@@ -144,11 +144,11 @@ impl<'a, State: NodeState<Turn>, Turn> MCTSNode<'a, State, Turn> {
             return (index, self.edges[index].child);
         }
 
-        let (is_new, index) = self.poll(search_args, rng, args);
+        let (_is_new, index) = self.poll(search_args, rng, args);
 
-        // Ensure the index is valid
+        // Ensure the index is valid. This should be guaranteed by the logic in `poll`.
         if index >= self.edges.len() {
-            panic!("Invalid child index: {} >= {}", index, self.edges.len());
+            unreachable!("get_child: poll() returned an invalid index ({}) but edges has length {}", index, self.edges.len());
         }
 
         (index, self.edges[index].child)
@@ -159,16 +159,17 @@ impl<'a, State: NodeState<Turn>, Turn> MCTSNode<'a, State, Turn> {
     }
 
     pub fn make_child(&mut self, search_args: &SearchArgs<'a>, rng: &mut impl Rng, args: State::Args) -> usize
-        where Self: 'a
+        where Self: 'a, State: PartialEq
     {
         let (turn, new_node_state) = self.state.propose_move(rng, &args); // Args might need to be Clone
 
-        // TODO: Check if this turn/state already exists as a child to avoid duplicates?
-        // For now, always create a new one.
+        // Check if this turn/state already exists as a child to avoid duplicates.
+        if let Some(pos) = self.edges.iter().position(|edge| edge.child.borrow().state == new_node_state) {
+            return pos;
+        }
 
         let new_mcts_node = MCTSNode::new(new_node_state, search_args.arena); 
         let new_mcts_node_ref = search_args.arena.alloc(RefCell::new(new_mcts_node));
-        let new_mcts_node_ref_ptr = new_mcts_node_ref.as_ptr() as usize;
 
         let edge = MCTSEdge {
             turn,

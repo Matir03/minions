@@ -57,7 +57,7 @@ impl ToIndex for Tech {
 pub const NUM_TECHS: usize = 26;
 
 /// Represents the tech tree structure
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Techline {
     pub techs: Vec<Tech>,
 }
@@ -118,7 +118,7 @@ impl TechAssignment {
 }
 
 /// state of both teams' tech
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TechState {
     /// index of next tech to unlock
     pub unlock_index: SideArray<usize>,

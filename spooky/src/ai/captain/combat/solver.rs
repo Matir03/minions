@@ -190,6 +190,8 @@ pub fn generate_move_from_model<'ctx>(
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
     use crate::core::board::{Modifiers, Piece, PieceState};
     use crate::core::side::Side;
@@ -261,7 +263,7 @@ mod tests {
     }
 
     fn create_board_with_pieces(pieces: Vec<(Unit, Side, Loc)>) -> Board {
-        let mut board = Board::new(Map::AllLand);
+        let mut board = Board::new(Arc::new(Map::AllLand));
         for (unit, side, loc) in pieces {
             let piece = Piece {
                 unit,

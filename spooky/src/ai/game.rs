@@ -9,7 +9,7 @@ use crate::core::{GameConfig, GameState, Side, SideArray, GameTurn, board::Board
 use hashbag::HashBag;
 use crate::ai::mcts::{MCTSNode, NodeState, NodeStats, MCTSEdge};
 use crate::ai::general::{GeneralNodeState, GeneralNode, GeneralNodeRef}; 
-use crate::ai::captain::{BoardNodeState, BoardNode, BoardNodeRef};
+use crate::ai::captain::node::{BoardNode, BoardNodeRef, BoardNodeState};
 use crate::core::board::actions::BoardTurn; 
 use crate::ai::eval::Eval;
 
@@ -21,12 +21,27 @@ use rand::prelude::*;
 use bumpalo::{Bump, collections::Vec as BumpVec};
 use std::vec::Vec as StdVec;
 
-#[derive(Debug)]
 pub struct GameNodeState<'a> {
     pub game_state: GameState,
     pub general_node: GeneralNodeRef<'a>,
     pub board_nodes: BumpVec<'a, BoardNodeRef<'a>>,
 }
+
+impl<'a> std::fmt::Debug for GameNodeState<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GameNodeState")
+            .field("game_state", &self.game_state)
+            .finish()
+    }
+}
+
+impl<'a> PartialEq for GameNodeState<'a> {
+    fn eq(&self, other: &Self) -> bool {
+        self.game_state == other.game_state
+    }
+}
+
+impl<'a> Eq for GameNodeState<'a> {}
 
 impl<'a> GameNodeState<'a> {
     pub fn from_game_state(game_state: GameState, arena: &'a Bump) -> Self {
@@ -101,6 +116,7 @@ impl<'a> NodeState<GameTurn> for GameNodeState<'a> {
         next_board_points.add_assign(&total_board_delta_points);
 
         let next_game_state = GameState {
+            config: self.game_state.config.clone(),
             tech_state, 
             side_to_move: !current_side,
             boards: next_board_states_for_gamestate,

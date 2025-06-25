@@ -1,4 +1,5 @@
 use anyhow::{anyhow, bail, ensure, Context, Result};
+use std::sync::Arc;
 
 use crate::core::{
     loc::{Loc, GRID_LEN},
@@ -56,7 +57,7 @@ impl Board {
     }
 
     /// Create a board from FEN notation
-    pub fn from_fen(fen: &str, map: Map) -> Result<Self> {
+    pub fn from_fen(fen: &str, map: Arc<Map>) -> Result<Self> {
         let mut board = Self::new(map);
         let parts: Vec<&str> = fen.split('/').collect();
 

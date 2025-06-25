@@ -50,15 +50,16 @@ pub fn handle_command(cmd: &str, engine: &mut Engine) -> Result<()> {
                 }
                 "config" if parts.len() >= 3 => {
                     let fen = parts[2..].join(" ");
-                    let config = GameConfig::from_fen(&fen)?;
-
-                    engine.set_game(config, GameState::default());
+                    let config = std::sync::Arc::new(GameConfig::from_fen(&fen)?);
+                    let state = GameState::new_default(config.clone());
+                    engine.config = config;
+                    engine.state = state;
                 }
                 "fen" if parts.len() >= 3 => {
                     let fen = parts[2..].join(" ");
                     let (config, state) = parse_fen(&fen)?;
-
-                    engine.set_game(config, state);
+                    engine.config = config;
+                    engine.state = state;
                 }
                 _ => bail!("invalid position command")
             }
@@ -123,14 +124,16 @@ pub fn handle_command(cmd: &str, engine: &mut Engine) -> Result<()> {
             engine.display();
         }
         "perft" => {
-            ensure!(parts.len() >= 2, "perft command requires at least 2 arguments");
-            let board_indices = parts[1..].iter()
-                .map(|s| Ok(engine.perft(
-                    s.parse().context("invalid board index")?))
-                )
+            ensure!(parts.len() >= 3, "perft command requires a depth and at least one board index");
+            let depth: u32 = parts[1].parse().context("invalid depth")?;
+            let board_counts = parts[2..].iter()
+                .map(|s| {
+                    let board_index = s.parse().context("invalid board index")?;
+                    Ok(engine.perft(board_index, depth))
+                })
                 .collect::<Result<Vec<u64>>>()?;
 
-            println!("perft {}", board_indices.iter().sum::<u64>());
+            println!("perft {}", board_counts.iter().sum::<u64>());
         }
         "getfen" => {
             println!("{}", engine.get_fen()?);

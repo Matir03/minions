@@ -55,7 +55,7 @@ pub enum SpawnAction {
 }
 
 /// Represents the actions taken during a single board's turn phase.
-#[derive(Clone, Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct BoardTurn {
     pub setup_actions: Vec<SetupAction>,
     pub attack_actions: Vec<AttackAction>,
@@ -200,78 +200,103 @@ impl Board {
         Ok(())
     }
 
-    pub fn do_attack_action(&mut self, side: Side, action: AttackAction) -> Result<()> {
+    pub fn do_attack_action(
+        &mut self,
+        side: Side,
+        action: AttackAction,
+    ) -> Result<Option<(Side, i32)>> {
         match action {
             AttackAction::Move { from_loc, to_loc } => {
                 let piece = self.get_piece(&from_loc).context("No piece to move")?;
-                ensure!(piece.side == side, "Cannot move opponent's piece");
-                ensure!(
-                    piece.state.borrow().can_act(),
-                    "Piece has already moved or attacked"
-                );
-                ensure!(
-                    self.get_piece(&to_loc).is_none(),
-                    "Cannot move to occupied location"
-                );
+                if piece.side != side {
+                    bail!("Cannot move opponent's piece");
+                }
+                if !piece.state.borrow().can_act() {
+                    bail!("Piece has already moved or attacked");
+                }
+                if self.get_piece(&to_loc).is_some() {
+                    bail!("Destination square is occupied");
+                }
 
-                let path = self.path(from_loc, to_loc).context("No path")?;
-                ensure!(
-                    path.len() as i32 - 1 <= piece.unit.stats().speed,
-                    "Move distance exceeds piece speed"
-                );
+                let mut piece_to_move = self.remove_piece(&from_loc)
+                    .expect("Piece should exist here");
+                piece_to_move.state.borrow_mut().moved = true;
+                piece_to_move.loc = to_loc;
+                self.add_piece(piece_to_move);
 
-                self.move_piece(piece.clone(), &to_loc);
+                Ok(None)
             }
             AttackAction::MoveCyclic { locs } => {
                 self.move_pieces_cyclic(side, &locs)?;
+                Ok(None)
             }
-            AttackAction::Attack { attacker_loc, target_loc } => {
-                let attacker = self.get_piece(&attacker_loc).context("No attacker")?;
-                let target = self.get_piece(&target_loc).context("No target")?;
-                ensure!(attacker.side == side, "Cannot attack with opponent's piece");
-                ensure!(target.side != side, "Cannot attack own piece");
-                ensure!(
-                    attacker.state.borrow().can_act(),
-                    "Piece has already moved or attacked"
-                );
-
-                let dist = self.path(attacker_loc, target_loc).context("No path")?.len() as i32 - 1;
-                ensure!(
-                    dist > 0 && dist <= attacker.unit.stats().range,
-                    "Target out of range"
-                );
-
-                self.attack_piece(attacker_loc, target_loc)?;
+            AttackAction::Attack {
+                attacker_loc,
+                target_loc,
+            } => {
+                self.try_attack(attacker_loc, target_loc, side)?;
+                self.attack_piece(attacker_loc, target_loc)
             }
-            AttackAction::Blink { .. } => bail!("Blink action not implemented"),
-            AttackAction::Cast { .. } => bail!("Cast action not implemented"),
-            AttackAction::Resign => self.resign(side),
+            AttackAction::Blink { blink_loc } => {
+                let piece = self.get_piece(&blink_loc).context("No piece to blink")?.clone();
+                if piece.side != side {
+                    bail!("Cannot blink opponent's piece");
+                }
+                if !piece.unit.stats().blink {
+                    bail!("Piece cannot blink");
+                }
+                if !piece.state.borrow().can_act() {
+                    bail!("Blinking piece has already moved or attacked");
+                }
+
+                self.get_piece(&blink_loc).unwrap().state.borrow_mut().exhausted = true;
+
+                let mut pieces_to_bounce = vec![];
+                for neighbor in blink_loc.neighbors() {
+                    if let Some(p) = self.get_piece(&neighbor) {
+                        if p.side != side {
+                            pieces_to_bounce.push(p.clone());
+                        }
+                    }
+                }
+
+                for piece_to_bounce in pieces_to_bounce {
+                    self.remove_piece(&piece_to_bounce.loc);
+                    self.add_reinforcement(piece_to_bounce.unit, piece_to_bounce.side);
+                }
+                Ok(None)
+            }
+            AttackAction::Cast { spell_cast } => {
+                spell_cast.cast(self, side)?;
+                Ok(None)
+            }
+            AttackAction::Resign => {
+                self.resign(side);
+                Ok(None)
+            }
         }
-
-        Ok(())
     }
 
     pub fn do_spawn_action(&mut self, side: Side, money: &mut i32, action: SpawnAction) -> Result<()> {
         match action {
             SpawnAction::Buy { unit } => {
                 let cost = unit.stats().cost;
-                ensure!(*money >= cost, "Not enough money to buy unit");
+                if *money < cost {
+                    bail!("Not enough money to buy unit");
+                }
                 *money -= cost;
                 self.reinforcements[side].insert(unit);
             }
             SpawnAction::Spawn { spawn_loc, unit } => {
-                ensure!(
-                    self.bitboards.get_spawn_locs(side, unit.stats().flying).get(spawn_loc),
-                    "Can only spawn units on keeps"
-                );
-                ensure!(
-                    self.get_piece(&spawn_loc).is_none(),
-                    "Cannot spawn on occupied location"
-                );
-                ensure!(
-                    self.reinforcements[side].remove(&unit) > 0,
-                    "Unit not in reinforcements"
-                );
+                if !self.bitboards.get_spawn_locs(side, unit.stats().flying).get(spawn_loc) {
+                    bail!("Can only spawn units on keeps");
+                }
+                if self.get_piece(&spawn_loc).is_some() {
+                    bail!("Cannot spawn on occupied location");
+                }
+                if self.reinforcements[side].remove(&unit) == 0 {
+                    bail!("Unit not in reinforcements");
+                }
 
                 self.spawn_piece(side, spawn_loc, unit)?;
                 *money -= unit.stats().cost;

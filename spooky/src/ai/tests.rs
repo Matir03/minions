@@ -1,5 +1,5 @@
-use crate::{
-    ai::{captain::BoardNodeState, rng::make_rng},
+use crate::{ 
+    ai::{captain::node::BoardNodeState, mcts::NodeState, rng::make_rng},
     core::{
         board::Board,
         game::GameConfig,
@@ -8,7 +8,6 @@ use crate::{
         units::Unit,
     },
 };
-use crate::ai::mcts::NodeState;
 
 #[test]
 fn test_propose_move_integration() {
