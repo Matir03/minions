@@ -66,7 +66,7 @@ pub fn handle_command<'a>(cmd: &str, engine: &mut Engine<'a>) -> Result<Option<G
                 _ => bail!("invalid position command")
             }
         }
-        "go" => {
+        "go" | "play" => {
             let args = parts[1..].join(" ");
             let search_options = args.parse::<SearchOptions>()?;
 
@@ -78,18 +78,11 @@ pub fn handle_command<'a>(cmd: &str, engine: &mut Engine<'a>) -> Result<Option<G
             println!("info nps {} nodes {} time {}", nps, nodes_explored, time);
 
             println!("{}", turn);
+            if let Some(winner) = engine.take_turn(turn)? {
+                println!("info result winner {}", winner);
+            }
             Ok(None)
         }
-        // "play" => {
-        //     let args = parts[1..].join(" ");
-        //     let search_options = args.parse::<SearchOptions>()?;
-
-        //     let turn_response = engine.play(&search_options, || {
-        //         todo!("implement spell buying communication");
-        //     });
-
-        //     println!("{}", turn_response);
-        // }
         "turn" => {
             let spells = if parts.len() >= 2 {
                 ensure!(parts[1] == "spells", "invalid turn arguments");
@@ -128,6 +121,25 @@ pub fn handle_command<'a>(cmd: &str, engine: &mut Engine<'a>) -> Result<Option<G
         }
         "display" => {
             engine.display();
+            Ok(None)
+        }
+        "auto" => {
+            let args = parts[1..].join(" ");
+            let search_options = args.parse::<SearchOptions>()?;
+
+            engine.display();
+
+            while engine.state.winner().is_none() {
+                println!("\nRunning search for player {:?}...", engine.state.side_to_move);
+                let (_, turn, _, time) = engine.go(&search_options);
+                println!("Best turn found in {:.2}s:\n{}", time, turn);
+                if let Some(winner) = engine.take_turn(turn)? {
+                    println!("Game over! Winner: {}", winner);
+                } else {
+                    println!("\nNew board state:");
+                }
+                engine.display();
+            }
             Ok(None)
         }
         // "perft" => {

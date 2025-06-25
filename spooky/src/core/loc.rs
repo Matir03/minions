@@ -8,7 +8,7 @@ pub const GRID_LEN: usize = 10;
 pub const GRID_SIZE: usize = GRID_LEN * GRID_LEN;
 
 /// A location on the game board
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Loc {
     pub x: i32,
     pub y: i32,

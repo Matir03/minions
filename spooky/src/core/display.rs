@@ -2,26 +2,31 @@ use std::fmt;
 use colored::Colorize;
 
 use super::{
-    game::GameState,
     board::{Board, Piece, PieceState},
-    side::Side,
-    units::Unit,
+    game::GameState,
     loc::Loc,
+    map::{Terrain, TileType},
+    side::Side,
     tech::{Tech, TechState},
-    map::Terrain,
+    units::Unit,
 };
 
 impl<'a> fmt::Display for GameState<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // writeln!(f, "=== Minions Game ===")?;
         writeln!(f)?;
         writeln!(f, "Current Turn: {}", self.side_to_move)?;
-        writeln!(f, "Points: {} | {}", 
+        writeln!(
+            f,
+            "Points: {} | {}",
             self.board_points[Side::S0].to_string().bright_blue(),
-            self.board_points[Side::S1].to_string().bright_red())?;
-        writeln!(f, "Money: {} | {}", 
+            self.board_points[Side::S1].to_string().bright_red()
+        )?;
+        writeln!(
+            f,
+            "Money: {} | {}",
             self.money[Side::S0].to_string().bright_blue(),
-            self.money[Side::S1].to_string().bright_red())?;
+            self.money[Side::S1].to_string().bright_red()
+        )?;
         writeln!(f)?;
 
         writeln!(f, "Tech State:")?;
@@ -31,7 +36,55 @@ impl<'a> fmt::Display for GameState<'a> {
             writeln!(f)?;
             writeln!(f, "Board {}:", i)?;
             write!(f, "{}", board)?;
-            writeln!(f)?;
+
+            let mut s0_units: Vec<_> = board.pieces.values().filter(|p| p.side == Side::S0).collect();
+            let mut s1_units: Vec<_> = board.pieces.values().filter(|p| p.side == Side::S1).collect();
+            s0_units.sort_by_key(|p| p.loc);
+            s1_units.sort_by_key(|p| p.loc);
+
+            if !s0_units.is_empty() {
+                writeln!(f, "{}", "Blue units:".bright_blue())?;
+                for piece in s0_units {
+                    let state = piece.state.borrow();
+                    let defense = piece.unit.stats().defense - state.damage_taken;
+                    let status = if state.can_act() {
+                        "Ready".green()
+                    } else {
+                        "Done".dimmed()
+                    };
+                    writeln!(
+                        f,
+                        "  - {} at {}: {}/{} HP ({})",
+                        piece.unit.to_fen_char(),
+                        piece.loc,
+                        defense,
+                        piece.unit.stats().defense,
+                        status
+                    )?;
+                }
+            }
+
+            if !s1_units.is_empty() {
+                writeln!(f, "{}", "Red units:".bright_red())?;
+                for piece in s1_units {
+                    let state = piece.state.borrow();
+                    let defense = piece.unit.stats().defense - state.damage_taken;
+                    let status = if state.can_act() {
+                        "Ready".green()
+                    } else {
+                        "Done".dimmed()
+                    };
+                    writeln!(
+                        f,
+                        "  - {} at {}: {}/{} HP ({})",
+                        piece.unit.to_fen_char(),
+                        piece.loc,
+                        defense,
+                        piece.unit.stats().defense,
+                        status
+                    )?;
+                }
+            }
         }
 
         Ok(())
@@ -51,18 +104,33 @@ impl<'a> fmt::Display for Board<'a> {
         write!(f, "   ")?;
         writeln!(f, "{}", "─".repeat(32))?;
 
-        for y in 0..10 {  // Reversed to match game coordinates
+        for y in 0..10 {
+            // Reversed to match game coordinates
             // Add proper indentation for hex grid
             let indent = y as usize;
             write!(f, "{:2} {}", y, " ".repeat(indent))?;
             write!(f, "\\")?;
-            
+
             for x in 0..10 {
                 let loc = Loc::new(x, y);
                 if let Some(piece) = self.get_piece(&loc) {
                     write!(f, " {} ", piece)?;
                 } else {
-                    write!(f, " · ")?;  // Using middle dot for empty spaces
+                    let tile_type = self.map.spec().tiles.get(&loc).unwrap_or(&TileType::Ground);
+                    let terrain_char = match tile_type {
+                        TileType::Ground => ".".dimmed(),
+                        TileType::Graveyard => "G".white().bold(),
+                        TileType::NativeTerrain(terrain) => {
+                            let symbol = match terrain {
+                                Terrain::Flood => "~",
+                                Terrain::Earthquake => "E",
+                                Terrain::Whirlwind => "W",
+                                Terrain::Firestorm => "F",
+                            };
+                            symbol.yellow()
+                        }
+                    };
+                    write!(f, " {} ", terrain_char)?;
                 }
             }
             writeln!(f, " \\")?;
@@ -78,11 +146,16 @@ impl<'a> fmt::Display for Board<'a> {
 impl fmt::Display for Piece {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let symbol = self.unit.to_fen_char().to_string();
+        let state = self.state.borrow();
 
-        let colored_symbol = match self.side {
+        let mut colored_symbol = match self.side {
             Side::S0 => symbol.bright_blue(),
             Side::S1 => symbol.bright_red(),
         };
+
+        if !state.can_act() {
+            colored_symbol = colored_symbol.dimmed();
+        }
 
         write!(f, "{}", colored_symbol)
     }
