@@ -103,38 +103,4 @@ impl Engine {
     pub fn get_fen(&self) -> Result<String> {
         self.state.to_fen()
     }
-
-    pub fn perft(&self, board_index: usize, depth: u32) -> u64 {
-        if depth == 0 {
-            return 1;
-        }
-
-        let board = &self.state.boards[board_index];
-        let side = self.state.side_to_move;
-
-        // Base case for recursion is handled by the initial depth check.
-        if depth == 1 {
-            return move_gen::generate_attack_actions(board, side).len() as u64;
-        }
-
-        let mut nodes = 0;
-        let actions = move_gen::generate_attack_actions(board, side);
-
-        for action in actions {
-            let mut new_board = board.clone();
-            if new_board.do_attack_action(side, action).is_ok() {
-                let mut new_state = self.state.clone();
-                new_state.boards[board_index] = new_board;
-                // Note: This is a simplified perft that doesn't handle turn changes.
-                // We'll need a more robust implementation for full game perft.
-                let engine_clone = Engine { 
-                    state: new_state, 
-                    options: self.options.clone(),
-                };
-                nodes += engine_clone.perft(board_index, depth - 1);
-            }
-        }
-
-        nodes
-    }
 }
