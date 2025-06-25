@@ -16,7 +16,7 @@ fn search_position(config: &GameConfig, state: &GameState, explorations: u32) {
 
 fn search_benchmark(c: &mut Criterion) {
     let config = GameConfig::default();
-    let state = GameState::default();
+    let state = GameState::new_default(&config);
     let explorations = 100;
 
         c.bench_function(&format!("search_{}_explorations", explorations), |b| {

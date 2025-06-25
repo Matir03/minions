@@ -267,13 +267,10 @@ impl Bitboards {
 
     pub fn get_spawn_locs(&self, side: Side, flying: bool) -> Bitboard {
         let mut hexes = self.spawners[side].neighbors();
-        println!("hexes: {}", hexes.to_locs().len());
         hexes &= self.empty();
-        println!("hexes: {}", hexes.to_locs().len());
         if !flying {
             hexes &= self.land;
         }
-        println!("hexes: {}", hexes.to_locs().len());
         hexes
     }
 }
