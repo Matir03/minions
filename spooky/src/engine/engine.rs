@@ -1,4 +1,4 @@
-use crate::core::{move_gen, GameConfig, GameState, GameAction, Spell, Side, GameTurn};
+use crate::core::{GameConfig, GameState, GameAction, Spell, Side, GameTurn};
 use std::sync::Arc;
 use crate::ai::Eval;
 
@@ -8,19 +8,18 @@ use super::search::{search_no_spells, SearchOptions};
 use anyhow::{Context, Result};
 
 /// Engine manages the game state and provides methods for game analysis and move generation
-pub struct Engine {
-    pub config: Arc<GameConfig>,
-    pub state: GameState,
+pub struct Engine<'a> {
+    pub config: &'a GameConfig,
+    pub state: GameState<'a>,
     pub options: EngineOptions,
     pub turn: Option<GameTurn>,
 }
 
-impl Engine {
+impl<'a> Engine<'a> {
     /// Create a new engine instance with default options
-    pub fn new() -> Self {
-        let config = Arc::new(GameConfig::default());
+    pub fn new(config: &'a GameConfig) -> Self {
         Self {
-            config: config.clone(),
+            config,
             state: GameState::new_default(config),
             options: EngineOptions::default(),
             turn: None,
@@ -31,7 +30,7 @@ impl Engine {
 
 
     pub fn reset_game(&mut self) {
-        self.state = GameState::new_default(self.config.clone());
+        self.state = GameState::new_default(self.config);
     }
 
     /// Set engine options

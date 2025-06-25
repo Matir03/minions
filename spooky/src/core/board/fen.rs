@@ -1,5 +1,5 @@
 use anyhow::{anyhow, bail, ensure, Context, Result};
-use std::sync::Arc;
+
 
 use crate::core::{
     loc::{Loc, GRID_LEN},
@@ -11,7 +11,7 @@ use crate::core::{
 
 use super::{Board, Piece};
 
-impl Board {
+impl<'a> Board<'a> {
     /// Convert board state to FEN notation
     pub fn to_fen(&self) -> String {
         let mut fen = String::new();
@@ -57,7 +57,7 @@ impl Board {
     }
 
     /// Create a board from FEN notation
-    pub fn from_fen(fen: &str, map: Arc<Map>) -> Result<Self> {
+        pub fn from_fen(fen: &str, map: &'a Map) -> Result<Self> {
         let mut board = Self::new(map);
         let parts: Vec<&str> = fen.split('/').collect();
 

@@ -2,6 +2,7 @@ use crate::{
     ai::{captain::node::BoardNodeState, mcts::NodeState, rng::make_rng},
     core::{
         board::Board,
+        map::Map,
         game::GameConfig,
         side::Side,
         tech::{Tech, TechAssignment, TechState, Techline},
@@ -11,7 +12,8 @@ use crate::{
 
 #[test]
 fn test_propose_move_integration() {
-    let board = Board::default();
+    let map = Map::default();
+    let board = Board::new(&map);
     let side = Side::S0;
     let node_state = BoardNodeState::new(board, side);
     let mut rng = make_rng();
@@ -22,8 +24,7 @@ fn test_propose_move_integration() {
         .assign_techs(assignment, side, &techline)
         .unwrap();
     let config = GameConfig::default();
-    let (tech_state, config) = (tech_state, config);
-    let args = (12, tech_state, config, 0, 0);
+    let args = (100, tech_state, &config, 0, 0);
 
     let (turn, new_state) = node_state.propose_move(&mut rng, &args);
 

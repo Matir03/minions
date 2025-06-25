@@ -2,7 +2,7 @@
 
 use anyhow::{Result, anyhow, bail, ensure, Context};
 use std::path::Path;
-use std::sync::Arc;
+
 use crate::core::convert::{FromIndex, ToIndex};
 use super::{
     action::GameTurn, 
@@ -19,17 +19,18 @@ use super::{
 pub struct GameConfig {
     pub num_boards: usize,
     pub points_to_win: i32,
-    pub maps: Vec<Arc<Map>>,
+        pub maps: Vec<Map>,
     pub techline: Techline,
     pub start_money: i32,
 }
 
 impl Default for GameConfig {
     fn default() -> Self {
+        const NUM_BOARDS: usize = 2;
         Self {
-            num_boards: 2,
+            num_boards: NUM_BOARDS,
             points_to_win: 2,
-            maps: vec![Arc::new(Map::default())],
+            maps: vec![Map::default(); NUM_BOARDS],
             techline: Techline::default(),
             start_money: 12,
         }
@@ -37,8 +38,18 @@ impl Default for GameConfig {
 }
 
 impl GameConfig {
-    fn default_maps() -> Vec<Arc<Map>> {
-        vec![Arc::new(Map::default())]
+    pub fn new(num_boards: usize, points_to_win: i32, maps: Vec<Map>, techline: Techline, start_money: i32) -> Self {
+        Self {
+            num_boards,
+            points_to_win,
+            maps,
+            techline,
+            start_money,
+        }
+    }
+
+        fn default_maps() -> Vec<Map> {
+        vec![Map::default()]
     }
 
     pub fn spell_cost(&self) -> i32 {
@@ -50,6 +61,8 @@ impl GameConfig {
         let mut fen = String::new();
         
         fen.push_str(&self.num_boards.to_string());
+        fen.push(' ');
+        fen.push_str(&self.points_to_win.to_string());
         fen.push(' ');
         
         fen.push_str(&self.maps
@@ -101,7 +114,7 @@ impl GameConfig {
             .collect::<Result<Vec<_>>>()?;
             
         let maps = map_indices.into_iter()
-            .map(|i| Map::from_index(i).map(Arc::new))
+            .map(Map::from_index)
             .collect::<Result<Vec<_>>>()?;
             
         // Parse techline length
@@ -135,9 +148,9 @@ impl GameConfig {
 
 /// State of a Minions game (excluding the static configuration)
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct GameState {
-    pub config: Arc<GameConfig>,
-    pub boards: Vec<Board>,
+pub struct GameState<'a> {
+        pub config: &'a GameConfig,
+        pub boards: Vec<Board<'a>>,
     pub side_to_move: Side,
     pub ply: i32,
     pub board_points: SideArray<i32>,
@@ -146,8 +159,8 @@ pub struct GameState {
     pub winner: Option<Side>,
 }
 
-impl GameState {
-    pub fn new(config: Arc<GameConfig>, side_to_move: Side, turn_num: i32, boards: Vec<Board>, tech_state: TechState, money: SideArray<i32>) -> Self {
+impl<'a> GameState<'a> {
+        pub fn new(config: &'a GameConfig, side_to_move: Side, turn_num: i32, boards: Vec<Board<'a>>, tech_state: TechState, money: SideArray<i32>) -> Self {
         Self {
             config,
             side_to_move,
@@ -160,12 +173,12 @@ impl GameState {
         }
     }
 
-    pub fn new_default(config: Arc<GameConfig>) -> Self {
+        pub fn new_default(config: &'a GameConfig) -> Self {
         let boards = config
             .maps
             .iter()
             .map(|map| {
-                Board::from_fen(Board::START_FEN, map.clone())
+                Board::from_fen(Board::START_FEN, map)
                     .expect("Failed to create board from FEN")
             })
             .collect();
@@ -225,7 +238,7 @@ impl GameState {
     }
 
     /// Parse state from FEN notation
-        pub fn from_fen(fen: &str, config: Arc<GameConfig>) -> Result<Self> {
+            pub fn from_fen(fen: &str, config: &'a GameConfig) -> Result<Self> {
         let mut parts = fen.split_whitespace();
 
         // Parse board states
@@ -234,8 +247,8 @@ impl GameState {
             .split('|');
 
         let mut boards = Vec::new();
-        for (board_fen, map) in board_fens.zip(&config.maps) {
-            boards.push(Board::from_fen(board_fen, map.clone())?);
+                for (board_fen, map) in board_fens.zip(&config.maps) {
+            boards.push(Board::from_fen(board_fen, map)?);
         }
 
         ensure!(boards.len() == config.num_boards, "Invalid number of boards");
@@ -375,115 +388,107 @@ impl GameState {
     }
 }
 
-/// Parse game state from FEN notation
-pub fn parse_fen(fen_str: &str) -> Result<(Arc<GameConfig>, GameState)> {
-    let mut parts_iter = fen_str.split_whitespace();
-    
-    // First 5 parts are for GameConfig
-    let config_fen_string_parts: Vec<&str> = parts_iter.by_ref().take(5).collect();
-    ensure!(config_fen_string_parts.len() == 5, "Invalid FEN: Not enough parts for GameConfig - expected 5, got {}", config_fen_string_parts.len());
-    let config_fen_to_parse = config_fen_string_parts.join(" ");
-    let config = Arc::new(GameConfig::from_fen(&config_fen_to_parse)?);
 
-    // The rest of the parts are for GameState
-    let state_fen_string_parts: Vec<&str> = parts_iter.collect();
-    ensure!(!state_fen_string_parts.is_empty(), "Invalid FEN: No parts remaining for GameState");
-    let state_fen_to_parse = state_fen_string_parts.join(" ");
-    let state = GameState::from_fen(&state_fen_to_parse, config.clone())?;
-    
-    Ok((config, state))
-}
-
-/// Parse game state from a FEN file
-pub fn load_fen_from_file<P: AsRef<Path>>(path: P) -> Result<(Arc<GameConfig>, GameState)> {
-    let fen_str = std::fs::read_to_string(path)?;
-    parse_fen(&fen_str)
-}
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::core::{loc::Loc, units::Unit};
+use super::*;
+use crate::core::{loc::Loc, units::Unit};
 
-    #[test]
-    fn test_basic_fen_conversion() {
-        let fen = "1 2 0 4 1,2,3,4 Z8i/0/0/0/0/0/0/0/0/0 0 1 _ LLLU|LLLL 10|5";
-        let (config, state) = parse_fen(fen).unwrap();
+#[test]
+fn test_basic_fen_conversion() {
+let config = GameConfig::default();
+let state = GameState::new_default(&config);
 
-        assert_eq!(config.num_boards, 1);
-        assert_eq!(config.points_to_win, 2);
-        assert_eq!(config.maps.len(), 1);
-        assert_eq!(config.techline.techs.len(), 4);
-        assert_eq!(state.side_to_move, Side::S0);
-        assert_eq!(state.ply, 1);
-        assert_eq!(state.winner, None);
-        assert_eq!(state.money[Side::S0], 10);
-        assert_eq!(state.money[Side::S1], 5);
-    }
+let config_fen = config.to_fen().unwrap();
+let new_config = GameConfig::from_fen(&config_fen).unwrap();
+assert_eq!(config, new_config);
 
-    #[test]
-    fn test_empty_spaces_fen() {
-        let fen = "2 10 0,1 4 1,2,3,4 0/0/0/0/0/0/0/0/0/0|0/0/0/0/0/0/0/0/0/0 1 1 _ LLLU|LLLL 10|5";
-        let (config, state) = parse_fen(fen).unwrap();
+let state_fen = state.to_fen().unwrap();
+let new_state = GameState::from_fen(&state_fen, &config).unwrap();
+assert_eq!(state, new_state);
+}
 
-        assert_eq!(config.num_boards, 2);
-        assert_eq!(state.boards.len(), 2);
-        assert_eq!(state.side_to_move, Side::S1);
-    }
+#[test]
+fn test_empty_spaces_fen() {
+    let config = GameConfig::default();
+    let boards = config
+        .maps
+        .iter()
+        .map(|map| Board::new(map))
+        .collect();
+    let state = GameState::new(
+        &config,
+        Side::S0,
+        1,
+        boards,
+        TechState::new(),
+        SideArray::new(config.start_money, config.start_money),
+    );
 
-    // #[test]
-    // fn test_fen_with_modifiers() {
-    //     let fen = "1 0 4 1,2,3,4 Z8i/0/0/0/0/0/0/0/0/0 0 LLLUUA|LLLLLA 10|5";
-    //     let (_, state) = Game::parse_fen(fen).unwrap();
+    let state_fen = state.to_fen().unwrap();
+    let new_state = GameState::from_fen(&state_fen, &config).unwrap();
+    assert_eq!(state, new_state);
+}
 
-    //     let piece = state.boards[0].get_piece(&Loc { y: 0, x: 0 }).unwrap();
-    //     assert_eq!(piece.side, Side::S0);
-    //     assert_eq!(piece.unit, Unit::Zombie);
-    //     assert!(!piece.modifiers.shielded);
-    // }
+#[test]
+fn test_invalid_fen() {
+let config = GameConfig::default();
+let valid_board_fen = "0/0/0/0/0/0/0/0/0/0|0/0/0/0/0/0/0/0/0/0";
+let valid_tech_fen = "LLLLLLLLLLLLLLLLLLLLLLLLLL|LLLLLLLLLLLLLLLLLLLLLLLLLL";
 
-    #[test]
-    fn test_invalid_fen() {
-        // Invalid number of boards
-        assert!(parse_fen("0 0 4 0,1,2,3 0/0/0/0/0/0/0/0/0/0 0 LLLUUA|LLLLLA 10|5").is_err());
+// Not enough boards
+let fen1 = format!("0/0/0/0/0/0/0/0/0/0 0 1 _ {} 10|5", valid_tech_fen);
+assert!(GameState::from_fen(&fen1, &config).is_err());
 
-        // Invalid tech status
-        assert!(parse_fen("1 0 4 0,1,2,3 0/0/0/0/0/0/0/0/0/0 0 LLLUUX|LLLLLA 10|5").is_err());
+// Too many boards
+let fen2 = format!("0|0|0 0 1 _ {} 10|5", valid_tech_fen);
+assert!(GameState::from_fen(&fen2, &config).is_err());
 
-        // Invalid money format
-        assert!(parse_fen("1 0 4 0,1,2,3 0/0/0/0/0/0/0/0/0/0 0 LLLUUA|LLLLLA 10").is_err());
-    }
+// Invalid side to move
+let fen3 = format!("{} 2 1 _ {} 10|5", valid_board_fen, valid_tech_fen);
+assert!(GameState::from_fen(&fen3, &config).is_err());
 
-    #[test]
-    fn test_win_condition() {
-        let config = std::sync::Arc::new(GameConfig::default());
-        let mut state = GameState::new_default(config.clone());
-        state.board_points[Side::S0] = config.points_to_win;
+// Invalid winner
+let fen4 = format!("{} 0 1 X {} 10|5", valid_board_fen, valid_tech_fen);
+assert!(GameState::from_fen(&fen4, &config).is_err());
 
-        state.end_turn().unwrap();
+// Invalid money
+let fen5 = format!("{} 0 1 _ {} 10", valid_board_fen, valid_tech_fen);
+assert!(GameState::from_fen(&fen5, &config).is_err());
 
-        assert_eq!(state.winner(), Some(Side::S0));
-    }
+// Invalid tech state
+let fen6 = format!("{} 0 1 _ L|L 10|5", valid_board_fen);
+assert!(GameState::from_fen(&fen6, &config).is_err());
+}
 
-    #[test]
-    fn test_load_fen_from_file() {
-        use std::io::Write;
-        use tempfile::NamedTempFile;
+#[test]
+fn test_win_condition() {
+    let config = GameConfig::default();
+    let mut state = GameState::new_default(&config);
+    state.board_points[Side::S0] = config.points_to_win;
 
-        let fen = "1 2 0 4 1,2,3,4 Z8i/0/0/0/0/0/0/0/0/0 0 1 _ LLLU|LLLL 10|5";
-        let mut file = NamedTempFile::new().unwrap();
-        write!(file, "{}", fen).unwrap();
+    state.end_turn().unwrap();
+    assert_eq!(state.winner(), Some(Side::S0));
+}
 
-        let (config, state) = load_fen_from_file(file.path()).unwrap();
+#[test]
+fn test_load_fen_from_file() {
+    let manifest_dir = env!("CARGO_MANIFEST_DIR");
+    let config_path = Path::new(manifest_dir).join("data/test_config.fen");
+    let state_path = Path::new(manifest_dir).join("data/test_state.fen");
 
-        assert_eq!(config.num_boards, 1);
-        assert_eq!(config.points_to_win, 2);
-        assert_eq!(config.maps.len(), 1);
-        assert_eq!(config.techline.techs.len(), 4);
-        assert_eq!(state.side_to_move, Side::S0);
-        assert_eq!(state.ply, 1);
-        assert_eq!(state.winner, None);
-        assert_eq!(state.money[Side::S0], 10);
-        assert_eq!(state.money[Side::S1], 5);
-    }
+    let config_fen = std::fs::read_to_string(config_path).unwrap();
+    let state_fen = std::fs::read_to_string(state_path).unwrap();
+
+    let config = GameConfig::from_fen(&config_fen).unwrap();
+    let state = GameState::from_fen(&state_fen, &config).unwrap();
+
+    assert_eq!(config.num_boards, 2);
+    assert_eq!(config.points_to_win, 2);
+    assert_eq!(state.side_to_move, Side::S0);
+    assert_eq!(state.ply, 1);
+    assert_eq!(state.money[Side::S0], 12);
+    assert_eq!(state.money[Side::S1], 12);
+}
 }

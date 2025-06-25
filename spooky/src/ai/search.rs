@@ -32,7 +32,7 @@ pub struct SearchTree<'a> {
 }
 
 impl<'a> SearchTree<'a> {
-    pub fn new(config: &'a GameConfig, state: GameState, arena: &'a Bump) -> Self {
+    pub fn new(config: &'a GameConfig, state: GameState<'a>, arena: &'a Bump) -> Self {
         // let arena = Bump::new();
         let search_args_for_init = SearchArgs { config, arena };
         let game_node_state = GameNodeState::from_game_state(state, arena);

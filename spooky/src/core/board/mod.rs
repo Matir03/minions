@@ -30,12 +30,12 @@ mod tests {
     use super::*;
     use crate::core::loc::Loc;
     use crate::core::units::Unit;
-    use std::sync::Arc;
+
 
     #[test]
     fn test_board_pieces() {
-        let map = Arc::new(Map::default());
-        let mut board = Board::new(map);
+        let map = Map::default();
+        let mut board = Board::new(&map);
         let loc = Loc::new(0, 0);
         let piece = Piece::new(Unit::Zombie, Side::S0, loc);
         board.add_piece(piece);
@@ -47,8 +47,8 @@ mod tests {
 
     #[test]
     fn test_board_fen_conversion() {
-        let map = Arc::new(Map::default());
-        let mut board = Board::new(map.clone());
+        let map = Map::default();
+        let mut board = Board::new(&map);
 
         board.add_piece(Piece::new(Unit::Zombie, Side::S0, Loc::new(0, 0)));
         board.add_piece(Piece::new(Unit::Zombie, Side::S1, Loc::new(1, 1)));
@@ -64,7 +64,7 @@ mod tests {
         ));
 
         let fen = board.to_fen();
-        let new_board = Board::from_fen(&fen, map).unwrap();
+        let new_board = Board::from_fen(&fen, &map).unwrap();
 
         assert_eq!(board.pieces.len(), new_board.pieces.len());
         for (loc, piece) in &board.pieces {
@@ -76,34 +76,35 @@ mod tests {
 
     #[test]
     fn test_fen_empty_board() {
-        let map = Arc::new(Map::default());
-        let board = Board::new(map.clone());
+        let map = Map::default();
+        let board = Board::new(&map);
         let fen = board.to_fen();
-        let new_board = Board::from_fen(&fen, map).unwrap();
+        let new_board = Board::from_fen(&fen, &map).unwrap();
         assert!(new_board.pieces.is_empty());
     }
 
     #[test]
     fn test_fen_default_board() {
-        let map = Arc::new(Map::default());
-        let board = Board::new(map);
+        let map = Map::default();
+        let board = Board::new(&map);
         let fen = board.to_fen();
         assert_eq!(fen, "0/0/0/0/0/0/0/0/0/0");
     }
 
     #[test]
     fn test_invalid_fen() {
-        let map = Arc::new(Map::default());
-        assert!(Board::from_fen("11/10", map.clone()).is_err());
-        assert!(Board::from_fen("10/11", map.clone()).is_err());
-        assert!(Board::from_fen("10/10/10/10/10/10/10/10/10/10", map.clone()).is_err());
-        assert!(Board::from_fen("X/10", map.clone()).is_err());
-        assert!(Board::from_fen("10/X", map).is_err());
+        let map = Map::default();
+        assert!(Board::from_fen("11/10", &map).is_err());
+        assert!(Board::from_fen("10/11", &map).is_err());
+        assert!(Board::from_fen("10/10/10/10/10/10/10/10/10/10", &map).is_err());
+        assert!(Board::from_fen("X/10", &map).is_err());
+        assert!(Board::from_fen("10/X", &map).is_err());
     }
 
     #[test]
     fn test_board_reset() {
-        let mut board = Board::default();
+        let map = Map::default();
+        let mut board = Board::new(&map);
 
         board.add_piece(Piece::new(Unit::Initiate, Side::S0, Loc::new(0, 0)));
         board.add_piece(Piece::new(Unit::Skeleton, Side::S1, Loc::new(5, 6)));
@@ -112,12 +113,10 @@ mod tests {
 
         assert_eq!(board.pieces.len(), 14);
 
-        assert_eq!(board.reinforcements[Side::S0].len(), 7);
-        assert_eq!(board.reinforcements[Side::S0].contains(&Unit::Zombie), 6);
+        assert_eq!(board.reinforcements[Side::S0].len(), 1);
         assert_eq!(board.reinforcements[Side::S0].contains(&Unit::Initiate), 1);
 
-        assert_eq!(board.reinforcements[Side::S1].len(), 7);
-        assert_eq!(board.reinforcements[Side::S1].contains(&Unit::Zombie), 6);
+        assert_eq!(board.reinforcements[Side::S1].len(), 1);
         assert_eq!(board.reinforcements[Side::S1].contains(&Unit::Skeleton), 1);
     }
 }

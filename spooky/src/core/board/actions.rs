@@ -185,7 +185,7 @@ impl SpawnAction {
     }
 }
 
-impl Board {
+impl<'a> Board<'a> {
     pub fn do_setup_action(&mut self, side: Side, action: SetupAction) -> Result<()> {
         let necromancer_unit = action.necromancer_choice;
         ensure!(necromancer_unit.stats().necromancer, "Cannot choose non-necromancer unit as necromancer");

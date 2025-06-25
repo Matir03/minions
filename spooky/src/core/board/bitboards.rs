@@ -278,7 +278,7 @@ impl Bitboards {
     }
 }
 
-impl Board {
+impl<'a> Board<'a> {
     pub fn units_on_graveyards(&self, side: Side) -> i32 {
         self.bitboards.occupied_graveyards(side).count_ones() as i32
     }

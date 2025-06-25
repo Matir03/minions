@@ -5,7 +5,7 @@ use crate::core::map::Terrain;
 use crate::core::{Board, Loc, Side};
 use crate::core::board::Piece;
 
-impl Board {
+impl<'a> Board<'a> {
     pub fn identify_combat_triples(&self, side_to_move: Side) -> Vec<CombatTriple> {
         let mut triples = Vec::new();
 

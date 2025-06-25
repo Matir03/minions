@@ -7,13 +7,12 @@ pub mod display;
 pub mod game;
 pub mod loc;
 pub mod map;
-pub mod move_gen;
 pub mod side;
 pub mod spells;
 pub mod tech;
 pub mod units;
 
-pub use game::{GameConfig, GameState, parse_fen};
+pub use game::{GameConfig, GameState};
 pub use board::Board;
 pub use action::{GameTurn, GameAction};
 pub use tech::{Tech, Techline, TechStatus};

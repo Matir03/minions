@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashMap, sync::Arc};
+use std::{cell::RefCell, collections::HashMap};
 use hashbag::HashBag;
 use super::bitboards::Bitboards;
 
@@ -97,8 +97,8 @@ impl Piece {
 
 /// Represents a single Minions board
 #[derive(Debug, Clone)]
-pub struct Board {
-    pub map: Arc<Map>,
+pub struct Board<'a> {
+        pub map: &'a Map,
     pub pieces: HashMap<Loc, Piece>,
     pub reinforcements: SideArray<HashBag<Unit>>,
     pub spells: SideArray<HashBag<Spell>>,
@@ -107,7 +107,7 @@ pub struct Board {
     pub bitboards: Bitboards,
 }
 
-impl PartialEq for Board {
+impl<'a> PartialEq for Board<'a> {
     fn eq(&self, other: &Self) -> bool {
         self.map == other.map
             && self.pieces == other.pieces
@@ -119,10 +119,10 @@ impl PartialEq for Board {
     }
 }
 
-impl Eq for Board {}
+impl<'a> Eq for Board<'a> {}
 
-impl Board {
-    pub const START_FEN: &str = "0/2ZZ6/1ZNZ6/1ZZ7/0/0/7zz1/6znz1/6zz2/0";
+impl<'a> Board<'a> {
+    pub const START_FEN: &'static str = "0/2ZZ6/1ZNZ6/1ZZ7/0/0/7zz1/6znz1/6zz2/0";
     pub const NECROMANCER_START_LOC: SideArray<Loc> = SideArray {
         values: [
             Loc { x: 2, y: 2 },

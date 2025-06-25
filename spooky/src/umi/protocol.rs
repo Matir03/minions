@@ -5,32 +5,34 @@ use anyhow::{bail, ensure, Context, Result};
 use spooky::{
     core::{
         GameConfig,
-        GameState,
+
         GameAction,
-        parse_fen,
+
         Spell,
     },
     engine::{Engine, SearchOptions}
 };
 
 /// Handle a UMI command
-pub fn handle_command(cmd: &str, engine: &mut Engine) -> Result<()> {
+pub fn handle_command<'a>(cmd: &str, engine: &mut Engine<'a>) -> Result<Option<GameConfig>> {
     let parts: Vec<&str> = cmd.split_whitespace().collect();
 
     if parts.is_empty() {
-        return Ok(());
+        return Ok(None);
     }
 
-    match parts[0] {
+    let result = match parts[0] {
         "umi" => {
             println!("id name Spooky author Ritam Nag");
             println!("option name spells type bool default false");
             println!("umiok");
             io::stdout().flush().unwrap();
+            Ok(None)
         }
         "isready" => {
             println!("readyok");
             io::stdout().flush().unwrap();
+            Ok(None)
         }
         "setoption" => {
             ensure!(parts.len() == 4 && parts[1] == "name" && parts[3] == "value",
@@ -40,6 +42,7 @@ pub fn handle_command(cmd: &str, engine: &mut Engine) -> Result<()> {
             let option_value = parts[4];
 
             engine.set_option(option_name, option_value)?;
+            Ok(None)
         }
         "position" => {
             ensure!(parts.len() >= 2, "position command requires at least 2 arguments");
@@ -47,20 +50,19 @@ pub fn handle_command(cmd: &str, engine: &mut Engine) -> Result<()> {
             match parts[1] {
                 "startpos" => {
                     engine.reset_game();
+                    Ok(None)
                 }
                 "config" if parts.len() >= 3 => {
                     let fen = parts[2..].join(" ");
-                    let config = std::sync::Arc::new(GameConfig::from_fen(&fen)?);
-                    let state = GameState::new_default(config.clone());
-                    engine.config = config;
-                    engine.state = state;
+                    let config = GameConfig::from_fen(&fen)?;
+                    Ok(Some(config))
                 }
-                "fen" if parts.len() >= 3 => {
-                    let fen = parts[2..].join(" ");
-                    let (config, state) = parse_fen(&fen)?;
-                    engine.config = config;
-                    engine.state = state;
-                }
+                // "fen" if parts.len() >= 3 => {
+                //     let fen = parts[2..].join(" ");
+                //     let (config, state) = parse_fen(&fen)?;
+                //     engine.config = config;
+                //     engine.state = state;
+                // }
                 _ => bail!("invalid position command")
             }
         }
@@ -76,6 +78,7 @@ pub fn handle_command(cmd: &str, engine: &mut Engine) -> Result<()> {
             println!("info nps {} nodes {} time {}", nps, nodes_explored, time);
 
             println!("{}", turn);
+            Ok(None)
         }
         // "play" => {
         //     let args = parts[1..].join(" ");
@@ -104,6 +107,7 @@ pub fn handle_command(cmd: &str, engine: &mut Engine) -> Result<()> {
             };
 
             engine.start_turn(spells);
+            Ok(None)
         }
         "action" => {
             ensure!(parts.len() >= 2, "missing action arguments");
@@ -113,38 +117,41 @@ pub fn handle_command(cmd: &str, engine: &mut Engine) -> Result<()> {
 
             let action = GameAction::from_args(action_name, action_args)?;
             engine.do_action(action)?;
+            Ok(None)
         }
         "endturn" => {
             let turn = engine.turn.take().context("Turn not started")?;
             if let Some(winner) = engine.take_turn(turn)? {
                 println!("info result winner {}", winner);
             }
+            Ok(None)
         }
         "display" => {
             engine.display();
+            Ok(None)
         }
-        "perft" => {
-            ensure!(parts.len() >= 3, "perft command requires a depth and at least one board index");
-            let depth: u32 = parts[1].parse().context("invalid depth")?;
-            let board_counts = parts[2..].iter()
-                .map(|s| {
-                    let board_index = s.parse().context("invalid board index")?;
-                    Ok(engine.perft(board_index, depth))
-                })
-                .collect::<Result<Vec<u64>>>()?;
+        // "perft" => {
+        //     ensure!(parts.len() >= 3, "perft command requires a depth and at least one board index");
+        //     let depth: u32 = parts[1].parse().context("invalid depth")?;
+        //     let board_counts = parts[2..].iter()
+        //         .map(|s| {
+        //             let board_index = s.parse().context("invalid board index")?;
+        //             Ok(engine.perft(board_index, depth))
+        //         })
+        //         .collect::<Result<Vec<u64>>>()?;
 
-            println!("perft {}", board_counts.iter().sum::<u64>());
-        }
+        //     println!("perft {}", board_counts.iter().sum::<u64>());
+        // }
         "getfen" => {
             println!("{}", engine.get_fen()?);
+            Ok(None)
         }
         "quit" => {
             std::process::exit(0);
-        }
+        },
         cmd => {
             bail!("Unknown command: {}", cmd);
         }
-    }
-
-    Ok(())
+    };
+    result
 }

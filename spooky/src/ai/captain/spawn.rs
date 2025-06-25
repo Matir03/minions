@@ -95,7 +95,7 @@ fn purchase_heuristic(side: Side, tech_state: &TechState, mut money: i32) -> Vec
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+
 
     use super::*;
     use crate::core::board::{Board, Piece};
@@ -184,7 +184,8 @@ mod tests {
 
     #[test]
     fn test_get_spawn_locs_s0() {
-                let mut board = Board::new(Arc::new(Map::BlackenedShores));
+        let map = Map::BlackenedShores;
+        let mut board = Board::new(&map);
         // Add a spawner unit
         board.add_piece(Piece::new(Unit::BasicNecromancer, Side::S0, Loc::new(1, 1)));
         let locs = board.get_spawn_locs(Side::S0, true);
@@ -195,7 +196,8 @@ mod tests {
 
     #[test]
     fn test_get_spawn_locs_s1() {
-                let mut board = Board::new(Arc::new(Map::BlackenedShores));
+        let map = Map::BlackenedShores;
+        let mut board = Board::new(&map);
         board.add_piece(Piece::new(Unit::BasicNecromancer, Side::S1, Loc::new(1, 8)));
         let locs = board.get_spawn_locs(Side::S1, true);
         assert_eq!(locs.len(), 6);
@@ -204,7 +206,8 @@ mod tests {
 
     #[test]
     fn test_get_spawn_locs_blocked() {
-                let mut board = Board::new(Arc::new(Map::BlackenedShores));
+        let map = Map::BlackenedShores;
+        let mut board = Board::new(&map);
         // Add a spawner
         board.add_piece(Piece::new(Unit::BasicNecromancer, Side::S0, Loc::new(1, 1)));
 
@@ -219,7 +222,8 @@ mod tests {
 
     #[test]
     fn test_generate_heuristic_spawn_actions_full() {
-                let mut board = Board::new(Arc::new(Map::BlackenedShores));
+        let map = Map::BlackenedShores;
+        let mut board = Board::new(&map);
         board.add_piece(Piece::new(Unit::BasicNecromancer, Side::S0, Loc::new(4, 1)));
 
         let tech_state = new_all_unlocked_tech_state();

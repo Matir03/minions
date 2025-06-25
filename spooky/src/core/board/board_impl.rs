@@ -1,4 +1,4 @@
-use std::{cell::RefCell, collections::HashMap, sync::Arc};
+use std::{cell::RefCell, collections::HashMap};
 use anyhow::{anyhow, bail, ensure, Context, Result};
 use hashbag::HashBag;
 
@@ -16,11 +16,11 @@ use super::{
     definitions::{Board, BoardState, Piece, PieceState},
 };
 
-impl Board {
+impl<'a> Board<'a> {
     /// Create a new empty board
-    pub fn new(map: Arc<Map>) -> Self {
+        pub fn new(map: &'a Map) -> Self {
         Self {
-            map: map.clone(),
+                        map,
             pieces: HashMap::new(),
             reinforcements: SideArray::new(HashBag::new(), HashBag::new()),
             spells: SideArray::new(HashBag::new(), HashBag::new()),
@@ -356,7 +356,12 @@ impl Board {
                 .filter(|(_, piece)| !piece.unit.stats().necromancer)
                 .collect::<Vec<_>>();
 
-        *self = Board::from_fen(Self::START_FEN, self.map.clone()).unwrap();
+                let new_board = Board::from_fen(Self::START_FEN, self.map).unwrap();
+        self.pieces = new_board.pieces;
+        self.winner = new_board.winner;
+        self.state = new_board.state;
+        self.bitboards = new_board.bitboards;
+        self.spells = new_board.spells;
 
         for (_, piece) in to_bounce {
             self.add_reinforcement(piece.unit, piece.side);
@@ -370,16 +375,9 @@ impl Board {
     }
 }
 
-impl Default for Board {
-    fn default() -> Self {
-        let map = Arc::new(Map::default());
-        Self::from_fen(Self::START_FEN, map).expect("Failed to create default board")
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+    
 
     use super::super::definitions::{Board, BoardState, Piece};
     use crate::core::loc::Loc;
@@ -389,8 +387,8 @@ mod tests {
 
     #[test]
     fn test_board_pieces() {
-        let map = Arc::new(Map::default());
-        let mut board = Board::new(map);
+        let map = Map::default();
+        let mut board = Board::new(&map);
         let loc = Loc::new(0, 0);
         let piece = Piece::new(Unit::Zombie, Side::S0, loc);
         board.add_piece(piece);
@@ -402,12 +400,12 @@ mod tests {
 
     #[test]
     fn test_board_fen_conversion() {
-        let map = Arc::new(Map::default());
-        let board = Board::from_fen(Board::START_FEN, map.clone()).unwrap();
+        let map = Map::default();
+        let board = Board::from_fen(Board::START_FEN, &map).unwrap();
         let fen = board.to_fen();
         assert_eq!(fen, Board::START_FEN);
 
-        let board2 = Board::from_fen(&fen, map).unwrap();
+        let board2 = Board::from_fen(&fen, &map).unwrap();
         assert_eq!(board.pieces.len(), board2.pieces.len());
         for (loc, piece) in &board.pieces {
             let piece2 = board2.get_piece(loc).unwrap();
@@ -418,32 +416,34 @@ mod tests {
 
     #[test]
     fn test_fen_empty_board() {
-        let map = Arc::new(Map::default());
-        let board = Board::new(map.clone());
+        let map = Map::default();
+        let board = Board::new(&map);
         let fen = board.to_fen();
-        let board2 = Board::from_fen(&fen, map).unwrap();
+        let board2 = Board::from_fen(&fen, &map).unwrap();
         assert!(board2.pieces.is_empty());
     }
 
     #[test]
     fn test_fen_default_board() {
-        let board = Board::default();
+        let map = Map::default();
+        let board = Board::from_fen(Board::START_FEN, &map).unwrap();
         let fen = board.to_fen();
-        let board2 = Board::from_fen(&fen, board.map).unwrap();
+        let board2 = Board::from_fen(&fen, &map).unwrap();
         assert_eq!(board.pieces.len(), board2.pieces.len());
     }
 
     #[test]
     fn test_invalid_fen() {
-        let map = Arc::new(Map::default());
+        let map = Map::default();
         let fen = "invalid fen";
-        let result = Board::from_fen(fen, map);
+        let result = Board::from_fen(fen, &map);
         assert!(result.is_err());
     }
 
     #[test]
     fn test_board_reset() {
-        let mut board = Board::default();
+        let map = Map::default();
+        let mut board = Board::from_fen(Board::START_FEN, &map).unwrap();
         let num_pieces = board.pieces.len();
         board.winner = Some(Side::S0);
         board.end_turn(Side::S0).unwrap();

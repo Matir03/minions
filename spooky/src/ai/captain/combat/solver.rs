@@ -190,7 +190,7 @@ pub fn generate_move_from_model<'ctx>(
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+
 
     use super::*;
     use crate::core::board::{Modifiers, Piece, PieceState};
@@ -203,7 +203,8 @@ mod tests {
     #[test]
     fn test_cyclic_move() {
         // Three rats in a triangle, each wanting to move to the next one's spot.
-        let board = create_board_with_pieces(vec![
+        let map = Map::AllLand;
+        let board = create_board_with_pieces(&map, vec![
             (Unit::Rat, Side::S0, Loc::new(0, 0)),
             (Unit::Zombie, Side::S0, Loc::new(1, 0)),
             (Unit::Skeleton, Side::S0, Loc::new(0, 1)),
@@ -262,8 +263,8 @@ mod tests {
         }
     }
 
-    fn create_board_with_pieces(pieces: Vec<(Unit, Side, Loc)>) -> Board {
-        let mut board = Board::new(Arc::new(Map::AllLand));
+    fn create_board_with_pieces<'a>(map: &'a Map, pieces: Vec<(Unit, Side, Loc)>) -> Board<'a> {
+        let mut board = Board::new(map);
         for (unit, side, loc) in pieces {
             let piece = Piece {
                 unit,
@@ -281,7 +282,8 @@ mod tests {
     fn test_simple_attack_can_reach() {
         // Attacker Rat at (2,0), Defender Rat at (0,0).
         // Rat has move=1, range=1. It can move to (1,0) and then attack (0,0).
-        let board = create_board_with_pieces(vec![
+        let map = Map::AllLand;
+        let board = create_board_with_pieces(&map, vec![
             (Unit::Rat, Side::S0, Loc::new(2, 0)),
             (Unit::Rat, Side::S1, Loc::new(0, 0)),
         ]);
@@ -328,7 +330,8 @@ mod tests {
     fn test_simple_attack_no_move_needed() {
         // Attacker Rat at (1,0), Defender Rat at (0,0).
         // Distance is 1, which is within range. No move needed.
-        let board = create_board_with_pieces(vec![
+        let map = Map::AllLand;
+        let board = create_board_with_pieces(&map, vec![
             (Unit::Rat, Side::S0, Loc::new(1, 0)),
             (Unit::Rat, Side::S1, Loc::new(0, 0)),
         ]);

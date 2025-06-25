@@ -11,7 +11,7 @@ use super::{
     map::Terrain,
 };
 
-impl fmt::Display for GameState {
+impl<'a> fmt::Display for GameState<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // writeln!(f, "=== Minions Game ===")?;
         writeln!(f)?;
@@ -38,7 +38,7 @@ impl fmt::Display for GameState {
     }
 }
 
-impl fmt::Display for Board {
+impl<'a> fmt::Display for Board<'a> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // Print column numbers with proper spacing for hex grid
         write!(f, "    ")?;

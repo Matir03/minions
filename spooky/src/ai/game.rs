@@ -22,7 +22,7 @@ use bumpalo::{Bump, collections::Vec as BumpVec};
 use std::vec::Vec as StdVec;
 
 pub struct GameNodeState<'a> {
-    pub game_state: GameState,
+    pub game_state: GameState<'a>,
     pub general_node: GeneralNodeRef<'a>,
     pub board_nodes: BumpVec<'a, BoardNodeRef<'a>>,
 }
@@ -44,7 +44,7 @@ impl<'a> PartialEq for GameNodeState<'a> {
 impl<'a> Eq for GameNodeState<'a> {}
 
 impl<'a> GameNodeState<'a> {
-    pub fn from_game_state(game_state: GameState, arena: &'a Bump) -> Self {
+    pub fn from_game_state(game_state: GameState<'a>, arena: &'a Bump) -> Self {
         let general_mcts_node = arena.alloc(RefCell::new(MCTSNode::new(GeneralNodeState::new(game_state.side_to_move, game_state.tech_state.clone(), SideArray::new(0,0)), arena)));
         let mut board_mcts_nodes = BumpVec::new_in(arena);
         
@@ -93,7 +93,7 @@ impl<'a> NodeState<GameTurn> for GameNodeState<'a> {
             let mut board_mcts_node_borrowed = board_mcts_node_ref.borrow_mut();
             let board_money = *money_for_boards.get(i).unwrap();
 
-            let board_args = (board_money, tech_state.clone(), search_args.config.clone(), i, self.game_state.ply);
+            let board_args = (board_money, tech_state.clone(), search_args.config, i, self.game_state.ply);
             let (_b_is_new, b_child_idx) = board_mcts_node_borrowed.poll(&search_args, rng, board_args);
             
             let board_turn = board_mcts_node_borrowed.edges[b_child_idx].turn.clone();
@@ -116,7 +116,7 @@ impl<'a> NodeState<GameTurn> for GameNodeState<'a> {
         next_board_points.add_assign(&total_board_delta_points);
 
         let next_game_state = GameState {
-            config: self.game_state.config.clone(),
+            config: self.game_state.config,
             tech_state, 
             side_to_move: !current_side,
             boards: next_board_states_for_gamestate,

@@ -1,5 +1,5 @@
 use std::io::{self, BufRead};
-use spooky::Engine;
+use spooky::{Engine, core::GameConfig};
 
 mod umi;
 use umi::protocol::handle_command;
@@ -9,7 +9,8 @@ fn main() {
     println!("Spooky - Minions Engine");
     
     let stdin = io::stdin();
-    let mut engine = Engine::new();
+    let mut config = GameConfig::default();
+    let mut engine = Engine::new(&config);
     
     for line in stdin.lock().lines() {
         let input = line.unwrap();
@@ -17,8 +18,15 @@ fn main() {
         if let Some(cmd) = parse_command(&input) {
             let result = handle_command(&cmd, &mut engine);
 
-            if let Err(err) = result {
-                eprintln!("{}", err);
+            match result {
+                Ok(Some(new_config)) => {
+                    config = new_config;
+                    engine = Engine::new(&config);
+                }
+                Err(err) => {
+                    eprintln!("{}", err);
+                }
+                _ => {}
             }
         }
     }

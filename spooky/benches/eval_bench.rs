@@ -1,13 +1,12 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use spooky::ai::eval::Eval;
-use spooky::core::{GameConfig, GameState};
+use spooky::core::GameState;
 
 fn eval_benchmark(c: &mut Criterion) {
-    let config = GameConfig::default();
     let state = GameState::default();
     
     c.bench_function("position evaluation", |b| {
-        b.iter(|| Eval::static_eval(black_box(&config), black_box(&state)))
+        b.iter(|| Eval::static_eval( black_box(&state)))
     });
 }
 
