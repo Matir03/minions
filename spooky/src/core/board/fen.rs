@@ -24,7 +24,7 @@ impl<'a> Board<'a> {
             
             for x in 0..10 {
                 let loc = Loc { y, x };
-                if let Some(piece) = self.get_piece(&loc) {
+                if let Ok(piece) = self.get_piece(&loc) {
                     if empty_count > 0 {
                         if empty_count == 10 {
                             fen.push('0');
@@ -84,7 +84,7 @@ impl<'a> Board<'a> {
                             side,
                             unit,
                             modifiers: Modifiers::default(),
-                            state: RefCell::new(PieceState::default()),
+                            state: PieceState::default(),
                         });
                         x += 1;
                     }

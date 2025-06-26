@@ -271,7 +271,7 @@ mod tests {
                 side,
                 loc,
                 modifiers: Modifiers::default(),
-                state: RefCell::new(PieceState::default()),
+                state: PieceState::default(),
             };
             board.add_piece(piece);
         }

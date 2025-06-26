@@ -1,5 +1,5 @@
 /// MCTS Node representing the state of a single board and its turn processing (attack + spawn).
-use std::cell::RefCell;
+use std::{cell::RefCell, fmt};
 use std::ops::AddAssign;
 
 use rand::prelude::*;
@@ -87,6 +87,7 @@ impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
     type Args = (i32, TechState, &'a GameConfig, usize, i32); // Added usize for current_board_idx and i32 for turn_num
 
     fn propose_move(&self, _rng: &mut impl Rng, args: &<Self as NodeState<BoardTurn>>::Args) -> (BoardTurn, Self) {
+        println!("[BoardNodeState] Proposing move for side {}", self.side_to_move);
         let (money, ref tech_state, _config, _current_board_idx, turn_num) = *args;
 
         let z3_cfg = Config::new();
@@ -117,7 +118,10 @@ impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
         let rebate = new_board.do_attacks(
             self.side_to_move,
             &attack_actions,
-        ).expect("[BoardNodeState] Failed to perform attack phase actions");
+        ).expect(&format!(
+            "[BoardNodeState] Failed to perform attack phase actions: {:?}",
+            attack_actions,
+        ));
 
         let spawn_actions = generate_heuristic_spawn_actions(
             &new_board,
@@ -130,7 +134,10 @@ impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
             self.side_to_move,
             money,
             &spawn_actions,
-        ).expect("[BoardNodeState] Failed to perform spawn phase actions");
+        ).expect(&format!(
+            "[BoardNodeState] Failed to perform spawn phase actions: {:#?}",
+            spawn_actions,
+        ));
 
         let income = new_board.get_income(self.side_to_move);
 

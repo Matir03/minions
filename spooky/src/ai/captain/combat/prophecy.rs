@@ -44,14 +44,14 @@ impl Prophecy {
             }
 
             // Adjust based on health
-            let damage_taken = piece.state.borrow().damage_taken;
+            let damage_taken = piece.state.damage_taken;
             let health_ratio = (stats.defense - damage_taken) as f32 / stats.defense as f32;
             if health_ratio < 0.5 {
                 passive_prob += 0.3; // Damaged pieces more likely to be passive
             }
 
             // Adjust based on movement state
-            if piece.state.borrow().moved && stats.lumbering {
+            if piece.state.moved && stats.lumbering {
                 passive_prob += 0.4; // Lumbering pieces that moved are likely passive
             }
 
@@ -69,7 +69,7 @@ impl Prophecy {
             }
 
             // Adjust based on health
-            let damage_taken = piece.state.borrow().damage_taken;
+            let damage_taken = piece.state.damage_taken;
             let health_ratio = (stats.defense - damage_taken) as f32 / stats.defense as f32;
             if health_ratio < 0.5 {
                 removal_prob += 0.3; // Damaged pieces more likely to be removed

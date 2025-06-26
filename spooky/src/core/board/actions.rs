@@ -205,22 +205,24 @@ impl<'a> Board<'a> {
         side: Side,
         action: AttackAction,
     ) -> Result<i32> {
+        println!("[Board] Performing attack action: {}", action);
         match action {
             AttackAction::Move { from_loc, to_loc } => {
                 let piece = self.get_piece(&from_loc).context("No piece to move")?;
                 if piece.side != side {
                     bail!("Cannot move opponent's piece");
                 }
-                if !piece.state.borrow().can_act() {
+                if !piece.state.can_act() {
+                    println!("{:#?}", self);
                     bail!("Piece has already moved or attacked");
                 }
-                if self.get_piece(&to_loc).is_some() {
+                if self.get_piece(&to_loc).is_ok() {
                     bail!("Destination square is occupied");
                 }
 
                 let mut piece_to_move = self.remove_piece(&from_loc)
                     .expect("Piece should exist here");
-                piece_to_move.state.borrow_mut().moved = true;
+                piece_to_move.state.moved = true;
                 piece_to_move.loc = to_loc;
                 self.add_piece(piece_to_move);
 
@@ -245,25 +247,12 @@ impl<'a> Board<'a> {
                 if !piece.unit.stats().blink {
                     bail!("Piece cannot blink");
                 }
-                if !piece.state.borrow().can_act() {
+                if !piece.state.can_act() {
                     bail!("Blinking piece has already moved or attacked");
                 }
 
-                self.get_piece(&blink_loc).unwrap().state.borrow_mut().exhausted = true;
+                self.bounce_piece(piece);
 
-                let mut pieces_to_bounce = vec![];
-                for neighbor in blink_loc.neighbors() {
-                    if let Some(p) = self.get_piece(&neighbor) {
-                        if p.side != side {
-                            pieces_to_bounce.push(p.clone());
-                        }
-                    }
-                }
-
-                for piece_to_bounce in pieces_to_bounce {
-                    self.remove_piece(&piece_to_bounce.loc);
-                    self.add_reinforcement(piece_to_bounce.unit, piece_to_bounce.side);
-                }
                 Ok(0)
             }
             AttackAction::Cast { spell_cast } => {
@@ -300,7 +289,7 @@ impl<'a> Board<'a> {
                 if !self.bitboards.get_spawn_locs(side, unit.stats().flying).get(spawn_loc) {
                     bail!("Can only spawn units on keeps");
                 }
-                if self.get_piece(&spawn_loc).is_some() {
+                if self.get_piece(&spawn_loc).is_ok() {
                     bail!("Cannot spawn on occupied location");
                 }
                 if self.reinforcements[side].remove(&unit) == 0 {

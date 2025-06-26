@@ -6,7 +6,10 @@ pub mod actions;
 pub mod bitboards;
 pub use bitboards::{Bitboard, BitboardOps, Bitboards};
 
-pub use definitions::{Board, BoardState, Modifiers, Piece, PieceState};
+pub mod piece;
+
+pub use definitions::{Board, BoardState};
+pub use piece::{Piece, PieceState, Modifiers};
 
 use std::{cell::RefCell, collections::HashMap};
 use anyhow::{anyhow, bail, ensure, Context, Result};
@@ -42,7 +45,7 @@ mod tests {
         assert_eq!(board.get_piece(&loc).unwrap().unit, Unit::Zombie);
         let removed = board.remove_piece(&loc).unwrap();
         assert_eq!(removed.unit, Unit::Zombie);
-        assert!(board.get_piece(&loc).is_none());
+        assert!(board.get_piece(&loc).is_err());
     }
 
     #[test]

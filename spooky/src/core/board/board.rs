@@ -1,19 +1,20 @@
-use std::{cell::RefCell, collections::HashMap};
+use std::{borrow::BorrowMut, cell::RefCell, collections::HashMap};
 use anyhow::{anyhow, bail, ensure, Context, Result};
 use hashbag::HashBag;
 
 use crate::core::{
-    loc::{Loc, PATH_MAPS},
-    map::{Map, MapSpec, Terrain, TileType},
-    side::{Side, SideArray},
-    spells::Spell,
-    tech::TechState,
-    units::{Unit, Attack},
+    loc::{Loc, PATH_MAPS}, 
+    map::{Map, MapSpec, Terrain, TileType}, 
+    side::{Side, SideArray}, 
+    spells::Spell, 
+    tech::TechState, 
+    units::{Attack, Unit}
 };
 use super::{
     actions::{SetupAction, AttackAction, SpawnAction},
     bitboards::Bitboards,
-    definitions::{Board, BoardState, Piece, PieceState},
+    definitions::{Board, BoardState},
+    piece::{Piece, PieceState},
 };
 
 impl<'a> Board<'a> {
@@ -30,12 +31,12 @@ impl<'a> Board<'a> {
         }
     }
 
-    pub fn get_piece(&self, loc: &Loc) -> Option<&Piece> {
-        self.pieces.get(loc)
+    pub fn get_piece(&self, loc: &Loc) -> Result<&Piece> {
+        self.pieces.get(loc).context(format!("No piece at {}", loc))
     }
 
-    pub fn get_piece_mut(&mut self, loc: Loc) -> Result<&mut Piece> {
-        self.pieces.get_mut(&loc).context("No piece at loc")
+    pub fn get_piece_mut(&mut self, loc: &Loc) -> Result<&mut Piece> {
+        self.pieces.get_mut(loc).context(format!("No piece at {}", loc))
     }
 
     /// Add a piece to the board
@@ -65,12 +66,10 @@ impl<'a> Board<'a> {
     }
 
     pub fn can_move(&self, from_loc: &Loc, to_loc: &Loc, side_to_move: Side) -> Result<()> {
-        let piece = self
-            .get_piece(from_loc)
-            .ok_or_else(|| anyhow!("No piece to move from {}", from_loc))?;
+        let piece = self.get_piece(from_loc)?;
 
         ensure!(piece.side == side_to_move, "Cannot move opponent's piece");
-        ensure!(!piece.state.borrow().moved, "Cannot move piece twice");
+        ensure!(!piece.state.moved, "Cannot move piece twice");
 
         let valid_moves = self.get_valid_move_hexes(*from_loc);
         ensure!(
@@ -86,19 +85,17 @@ impl<'a> Board<'a> {
     pub fn move_piece(&mut self, mut piece: Piece, to_loc: &Loc) {
         self.remove_piece(&piece.loc);
         piece.loc = *to_loc;
-        piece.state.borrow_mut().moved = true;
+        piece.state.moved = true;
         self.add_piece(piece);
     }
 
-    pub fn try_attack(&self, attacker_loc: Loc, target_loc: Loc, side_to_move: Side) -> Result<(bool, bool)> {
-        let attacker = self
-            .get_piece(&attacker_loc)
-            .ok_or_else(|| anyhow!("No attacker at {attacker_loc}"))?;
+    pub fn try_attack(&mut self, attacker_loc: Loc, target_loc: Loc, side_to_move: Side) -> Result<(bool, bool)> {
+        let attacker = self.get_piece(&attacker_loc)?;
 
         ensure!(attacker.side == side_to_move, "Cannot attack with opponent's piece");
 
         let attacker_stats = attacker.unit.stats();
-        let mut attacker_state = attacker.state.borrow_mut();
+        let mut attacker_state = attacker.state.clone();
 
         ensure!(
             !attacker_state.moved || !attacker_stats.lumbering,
@@ -115,15 +112,14 @@ impl<'a> Board<'a> {
             "Piece has already used all attacks"
         );
 
-        let target = self
-            .get_piece(&target_loc)
-            .ok_or_else(|| anyhow!("No target at {target_loc}"))?;
+        let attack = attacker_stats.attack;
+
+        let target = self.get_piece(&target_loc)?;
 
         let target_stats = target.unit.stats();
 
         ensure!(target.side != side_to_move, "Cannot attack own piece");
 
-        let attack = attacker_stats.attack;
         let mut damage_effect: i32 = 0;
         let mut bounce = false;
 
@@ -147,11 +143,13 @@ impl<'a> Board<'a> {
         attacker_state.moved = true;
         attacker_state.attacks_used += 1;
 
-        let mut target_state = target.state.borrow_mut();
-
+        let mut target_state = target.state.clone();
         target_state.damage_taken += damage_effect;
 
         let remove = target_state.damage_taken >= target_stats.defense || bounce;
+
+        self.get_piece_mut(&attacker_loc)?.state = attacker_state;
+        self.get_piece_mut(&target_loc)?.state = target_state;
 
         Ok((remove, bounce))
     }
@@ -189,7 +187,7 @@ impl<'a> Board<'a> {
             "Cannot spawn on occupied location"
         );
         let mut piece = Piece::new(unit, side, loc);
-        piece.state = RefCell::new(PieceState::spawned());
+        piece.state = PieceState::spawned();
         self.add_piece(piece);
         Ok(())
     }
@@ -200,10 +198,10 @@ impl<'a> Board<'a> {
             let from = locs[i];
             let to = locs[(i + 1) % locs.len()];
 
-            let piece = self.get_piece(&from).context("No piece to move in cycle")?;
+            let piece = self.get_piece(&from)?;
             ensure!(piece.side == side, "Cannot move opponent's piece in cycle");
             ensure!(
-                piece.state.borrow().can_act(),
+                piece.state.can_act(),
                 "Piece in cycle has already moved or attacked"
             );
 
@@ -228,7 +226,7 @@ impl<'a> Board<'a> {
         
         for (mut piece, loc) in pieces.into_iter().zip(cycled_locs) {
             piece.loc = *loc;
-            piece.state.borrow_mut().moved = true;
+            piece.state.moved = true;
             self.add_piece(piece);
         }
 
@@ -266,10 +264,13 @@ impl<'a> Board<'a> {
             (damage_effect, bounce)
         };
 
-        self.get_piece_mut(attacker_loc)?.state.borrow_mut().exhausted = true;
+        self.get_piece_mut(&attacker_loc)
+            .context("No attacker")?
+            .state
+            .exhausted = true;
 
         let target_is_dead = {
-            let target_piece = self.get_piece_mut(target_loc)?;
+            let target_piece = self.get_piece_mut(&target_loc).context("No target")?;
             let mut target_state = target_piece.state.borrow_mut();
             target_state.damage_taken += damage_amount;
             target_state.damage_taken >= target_piece.unit.stats().defense
@@ -300,8 +301,8 @@ impl<'a> Board<'a> {
         &mut self,
         side_to_move: Side,
     ) -> Result<(i32, Option<Side>)> {
-        for piece in self.pieces.values() {
-            piece.state.borrow_mut().reset();
+        for piece in self.pieces.values_mut() {
+            piece.state.reset();
         }
 
         // Income
@@ -376,9 +377,8 @@ impl<'a> Board<'a> {
 
 #[cfg(test)]
 mod tests {
-    
-
-    use super::super::definitions::{Board, BoardState, Piece};
+    use super::super::definitions::{Board, BoardState};
+    use crate::core::board::Piece;
     use crate::core::loc::Loc;
     use crate::core::map::Map;
     use crate::core::side::Side;
@@ -391,10 +391,10 @@ mod tests {
         let loc = Loc::new(0, 0);
         let piece = Piece::new(Unit::Zombie, Side::S0, loc);
         board.add_piece(piece);
-        assert!(board.get_piece(&loc).is_some());
+        assert!(board.get_piece(&loc).is_ok());
         let removed = board.remove_piece(&loc);
         assert!(removed.is_some());
-        assert!(board.get_piece(&loc).is_none());
+        assert!(board.get_piece(&loc).is_ok());
     }
 
     #[test]

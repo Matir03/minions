@@ -45,7 +45,7 @@ impl<'a> fmt::Display for GameState<'a> {
             if !s0_units.is_empty() {
                 writeln!(f, "{}", "Blue units:".bright_blue())?;
                 for piece in s0_units {
-                    let state = piece.state.borrow();
+                    let state = piece.state;
                     let defense = piece.unit.stats().defense - state.damage_taken;
                     let status = if state.can_act() {
                         "Ready".green()
@@ -67,7 +67,7 @@ impl<'a> fmt::Display for GameState<'a> {
             if !s1_units.is_empty() {
                 writeln!(f, "{}", "Red units:".bright_red())?;
                 for piece in s1_units {
-                    let state = piece.state.borrow();
+                    let state = piece.state;
                     let defense = piece.unit.stats().defense - state.damage_taken;
                     let status = if state.can_act() {
                         "Ready".green()
@@ -113,7 +113,7 @@ impl<'a> fmt::Display for Board<'a> {
 
             for x in 0..10 {
                 let loc = Loc::new(x, y);
-                if let Some(piece) = self.get_piece(&loc) {
+                if let Ok(piece) = self.get_piece(&loc) {
                     write!(f, " {} ", piece)?;
                 } else {
                     let tile_type = self.map.spec().tiles.get(&loc).unwrap_or(&TileType::Ground);
@@ -146,7 +146,7 @@ impl<'a> fmt::Display for Board<'a> {
 impl fmt::Display for Piece {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let symbol = self.unit.to_fen_char().to_string();
-        let state = self.state.borrow();
+        let state = self.state;
 
         let mut colored_symbol = match self.side {
             Side::S0 => symbol.bright_blue(),
