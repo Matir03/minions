@@ -84,6 +84,7 @@ pub fn generate_move_from_model<'ctx>(
     model: &Model<'ctx>,
     graph: &CombatGraph,
     variables: &Variables<'ctx>,
+    board: &Board,
 ) -> Vec<AttackAction> {
     let mut actions = Vec::new();
     let mut moves = HashMap::new();
@@ -107,7 +108,7 @@ pub fn generate_move_from_model<'ctx>(
 
     for ((attacker, defender), num_attacks_var) in &variables.num_attacks {
         let val = model.eval(num_attacks_var, true).unwrap()
-            .as_i64().unwrap();
+            .as_u64().unwrap();
 
         if val > 0 {
             attacks.entry(*attacker)
@@ -132,6 +133,9 @@ pub fn generate_move_from_model<'ctx>(
         }
         grouped_movers.last_mut().unwrap().insert(mover);
     }
+
+    let mut defender_damage = HashMap::new();
+    let mut defenders_dead = HashSet::new();
 
     for mover_group in grouped_movers {
         let mut visited = HashSet::new();
@@ -170,14 +174,46 @@ pub fn generate_move_from_model<'ctx>(
             }
 
             for original_attacker in chain_movers {
+                let attack = board.get_piece(&original_attacker)
+                    .unwrap()
+                    .unit
+                    .stats()
+                    .attack;
+
                 if let Some(attacks) = attacks.get(&original_attacker) {
                     let attacker_new_loc = moves.get(&original_attacker).unwrap();
                     for (defender, num_attacks) in attacks {
+                        if defenders_dead.contains(defender) {
+                            continue;
+                        }
+
+                        let defender_stats = board.get_piece(defender)
+                            .unwrap()
+                            .unit
+                            .stats();
+
+                        let dmg_val = match attack {
+                            Attack::Damage(damage) => damage,
+                            Attack::Unsummon if defender_stats.persistent => 1,
+                            _ => defender_stats.defense,
+                        };
+
+                        println!("{} attacks {} {} times", original_attacker, defender, num_attacks);
                         for _ in 0..*num_attacks {
                             actions.push(AttackAction::Attack { 
                                 attacker_loc: *attacker_new_loc, 
                                 target_loc: *defender 
                             });
+
+
+                            defender_damage.entry(*defender)
+                                .and_modify(|dmg| *dmg += dmg_val)
+                                .or_insert(dmg_val);
+
+                            if defender_damage[defender] >= defender_stats.defense {
+                                defenders_dead.insert(*defender);
+                                break;
+                            }
                         }
                     }
                 }
@@ -230,7 +266,7 @@ mod tests {
         }
         .expect("Should find a solution");
 
-        let actions = generate_move_from_model(&model, &solver.graph, &solver.variables);
+        let actions = generate_move_from_model(&model, &solver.graph, &solver.variables, &board);
 
         assert_eq!(actions.len(), 1, "Expected a single MoveCyclic action");
 
@@ -303,7 +339,7 @@ mod tests {
         }
         .expect("Should find a solution");
 
-        let actions = generate_move_from_model(&model, &solver.graph, &solver.variables);
+        let actions = generate_move_from_model(&model, &solver.graph, &solver.variables, &board);
 
         // Expected action: Rat at (2,0) moves to (1,0) and attacks rat at (0,0).
         let expected_move = AttackAction::Move {
@@ -356,7 +392,7 @@ mod tests {
             _ => None,
         }
         .expect("Should find a solution");
-        let actions = generate_move_from_model(&model, &solver.graph, &solver.variables);
+        let actions = generate_move_from_model(&model, &solver.graph, &solver.variables, &board);
 
         // Expected action: Rat at (1,0) attacks rat at (0,0). No move.
         let expected_attack = AttackAction::Attack {

@@ -395,7 +395,7 @@ mod tests {
         assert!(board.get_piece(&loc).is_ok());
         let removed = board.remove_piece(&loc);
         assert!(removed.is_some());
-        assert!(board.get_piece(&loc).is_ok());
+        assert!(board.get_piece(&loc).is_err());
     }
 
     #[test]

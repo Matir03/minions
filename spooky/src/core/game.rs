@@ -378,7 +378,9 @@ impl<'a> GameState<'a> {
             for action in board_turn.spawn_actions {
                 board.do_spawn_action(self.side_to_move, &mut self.money[self.side_to_move], action)?;
             }
+            board.end_turn(self.side_to_move)?;
         }
+        self.end_turn();
 
         Ok(())
     }

@@ -64,7 +64,7 @@ pub fn handle_command<'a>(cmd: &str, engine: &mut Engine<'a>) -> Result<Option<G
                 _ => bail!("invalid position command")
             }
         }
-        "go" | "play" => {
+        cmd@("go" | "play") => {
             let args = parts[1..].join(" ");
             let search_options = args.parse::<SearchOptions>()?;
 
@@ -76,8 +76,11 @@ pub fn handle_command<'a>(cmd: &str, engine: &mut Engine<'a>) -> Result<Option<G
             println!("info nps {} nodes {} time {}", nps, nodes_explored, time);
 
             println!("{}", turn);
-            engine.take_turn(turn)?;
-            engine.end_turn()?;
+
+            if cmd == "play" {
+                engine.take_turn(turn).unwrap();
+            }
+
             if let Some(winner) = engine.state.winner() {
                 println!("info result winner {}", winner);
             }
@@ -133,12 +136,10 @@ pub fn handle_command<'a>(cmd: &str, engine: &mut Engine<'a>) -> Result<Option<G
                 println!("\nRunning search for player {:?}...", engine.state.side_to_move);
                 let (_, turn, _, time) = engine.go(&search_options);
                 println!("Best turn found in {:.2}s:\n{}", time, turn);
-                engine.take_turn(turn)?;
-                engine.end_turn()?;
+                engine.take_turn(turn).unwrap();
                 if let Some(winner) = engine.state.winner() {
                     println!("Game over! Winner: {}", winner);
-                } else {
-                    println!("\nNew board state:");
+                    break;
                 }
                 engine.display();
             }

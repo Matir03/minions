@@ -30,5 +30,5 @@ fn test_propose_move_integration() {
 
     // Basic sanity checks
     assert!(!turn.attack_actions.is_empty() || !turn.spawn_actions.is_empty());
-    assert_eq!(new_state.side_to_move, side);
+    assert_eq!(new_state.side_to_move, !side);
 }

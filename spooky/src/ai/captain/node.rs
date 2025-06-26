@@ -23,7 +23,7 @@ use super::{
         solver::{block_solution, generate_move_from_model},
         stage::CombatStage,
     },
-    reposition::RepositioningStage,
+    positioning::PositioningStage,
     spawn::generate_heuristic_spawn_actions,
 };
 
@@ -99,7 +99,7 @@ impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
         let combat_solver = combat_stage.add_constraints(&self.board, self.side_to_move);
 
         // --- Repositioning Stage ---
-        let reposition_stage = RepositioningStage::new(&ctx, &optimizer);
+        let reposition_stage = PositioningStage::new(&ctx, &optimizer);
         reposition_stage.add_constraints(
             &self.board,
             self.side_to_move,
@@ -109,9 +109,14 @@ impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
 
         let combat_result = optimizer.check(&[]);
         let attack_actions = match combat_result {
-            SatResult::Sat => generate_move_from_model(&optimizer.get_model().unwrap(), &combat_solver.graph, &combat_solver.variables),
-            SatResult::Unsat => Vec::new(),
-            SatResult::Unknown => panic!("Z3 solver returned unknown"),
+            SatResult::Sat => generate_move_from_model(
+                &optimizer.get_model().unwrap(),
+                &combat_solver.graph,
+                &combat_solver.variables,
+                &self.board,
+            ),
+            SatResult::Unknown | SatResult::Unsat => 
+                panic!("[BoardNodeState] Z3 solver returned {:?}", combat_result),
         };
 
         let mut new_board = self.board.clone();

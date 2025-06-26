@@ -200,12 +200,19 @@ fn add_attacker_constraints<'ctx>(
             solver.assert(&moved.implies(&is_attacking.not()));
         }
 
-        // Units cannot exceed their number of attacks.
+        // Units cannot exceed their number of attacks
+        let max_attacks = BV::from_u64(ctx, attacker_stats.num_attacks as u64, BV_SIZE);
         let total_attacks: BV<'ctx> = defenders.iter()
-            .map(|defender| &variables.num_attacks[&(*attacker, *defender)])
+            .map(|defender| {
+                let num_attacks = &variables.num_attacks[&(*attacker, *defender)];
+                // assertion here to prevent overflow solutions
+                solver.assert(&num_attacks.bvule(&max_attacks));
+                
+                num_attacks
+            })
             .fold(BV::from_u64(ctx, 0, BV_SIZE), |acc, attack_count| acc.bvadd(attack_count));
 
-        solver.assert(&total_attacks.bvule(&BV::from_u64(ctx, attacker_stats.num_attacks as u64, BV_SIZE)))   
+        solver.assert(&total_attacks.bvule(&max_attacks));   
     }
 }
 
