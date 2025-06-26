@@ -5,9 +5,7 @@ use anyhow::{bail, ensure, Context, Result};
 use spooky::{
     core::{
         GameConfig,
-
         GameAction,
-
         Spell,
     },
     engine::{Engine, SearchOptions}

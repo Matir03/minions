@@ -67,36 +67,35 @@ impl<'a> NodeState<GameTurn> for GameNodeState<'a> {
 
     fn propose_move(&self, rng: &mut impl Rng, args_tuple: &Self::Args) -> (GameTurn, Self) {
         let (search_args, arena) = args_tuple;
+
         let current_side = self.game_state.side_to_move;
 
-        let mut general_mcts_node_borrowed = self.general_node.borrow_mut();
-        
         let total_money_current_side = self.game_state.money[current_side];
         let (money_for_general, money_for_boards) = distribute_money(total_money_current_side, self.game_state.boards.len(), rng);
         
+        let mut general_mcts_node_borrowed = self.general_node.borrow_mut();
         let general_args = (money_for_general, search_args.config.clone());
         let (_g_is_new, g_child_idx) = general_mcts_node_borrowed.poll(&search_args, rng, general_args);
-        let tech_assignment = general_mcts_node_borrowed.edges[g_child_idx].turn.clone();
+        let general_turn = general_mcts_node_borrowed.edges[g_child_idx].turn.clone();
         let next_general_state_ref = general_mcts_node_borrowed.edges[g_child_idx].child;
         let next_general_node_state_snapshot = next_general_state_ref.borrow().state.clone(); 
 
-        let mut next_tech_state = self.game_state.tech_state.clone();
-        next_tech_state.assign_techs(tech_assignment.clone(), current_side, &search_args.config.techline).unwrap();
-
+        let next_tech_state = next_general_node_state_snapshot.tech_state;
         let general_delta_money = next_general_node_state_snapshot.delta_money[current_side];
 
         let mut board_turns = StdVec::with_capacity(self.board_nodes.len());
         let mut next_board_states_for_gamestate = StdVec::with_capacity(self.board_nodes.len());
         let mut next_board_mcts_node_refs = BumpVec::new_in(arena); 
-
         let mut total_board_delta_money = SideArray::new(0,0);
         let mut total_board_delta_points = SideArray::new(0,0);
 
         for (i, board_mcts_node_ref) in self.board_nodes.iter().enumerate() {
             let mut board_mcts_node_borrowed = board_mcts_node_ref.borrow_mut();
-            let board_money = *money_for_boards.get(i).unwrap();
 
-            let board_args = (board_money, next_tech_state.clone(), search_args.config, i, self.game_state.ply);
+            let board_money = *money_for_boards.get(i).unwrap();
+            let cur_tech_state = self.game_state.tech_state.clone();
+            let board_args = (board_money, cur_tech_state, search_args.config, i, self.game_state.ply);
+
             let (_b_is_new, b_child_idx) = board_mcts_node_borrowed.poll(&search_args, rng, board_args);
             
             let board_turn = board_mcts_node_borrowed.edges[b_child_idx].turn.clone();
@@ -104,11 +103,11 @@ impl<'a> NodeState<GameTurn> for GameNodeState<'a> {
             let next_board_node_state_snapshot = next_board_state_ref.borrow().state.clone(); 
 
             board_turns.push(board_turn);
-            next_board_states_for_gamestate.push(next_board_node_state_snapshot.board.clone());
+            next_board_mcts_node_refs.push(next_board_state_ref); 
+
             total_board_delta_money.add_assign(&next_board_node_state_snapshot.delta_money);
             total_board_delta_points.add_assign(&next_board_node_state_snapshot.delta_points);
-            
-            next_board_mcts_node_refs.push(next_board_state_ref); 
+            next_board_states_for_gamestate.push(next_board_node_state_snapshot.board);
         }
 
         let mut next_money = self.game_state.money.clone();
@@ -125,13 +124,13 @@ impl<'a> NodeState<GameTurn> for GameNodeState<'a> {
             boards: next_board_states_for_gamestate,
             board_points: next_board_points,
             money: next_money,
-            ply: self.game_state.ply,
+            ply: self.game_state.ply + 1,
             winner: self.game_state.winner,
         };
 
         let num_boards = self.game_state.config.num_boards;
         let game_turn = GameTurn {
-            tech_assignment,
+            tech_assignment: general_turn,
             board_turns,
             spells: HashBag::new(),
             spell_assignment: vec![Spell::Blank; num_boards],

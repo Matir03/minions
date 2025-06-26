@@ -26,7 +26,7 @@ impl Default for BoardState {
 }
 
 /// Represents a single Minions board
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Board<'a> {
     pub map: &'a Map,
     pub pieces: HashMap<Loc, Piece>,
@@ -37,19 +37,19 @@ pub struct Board<'a> {
     pub bitboards: Bitboards,
 }
 
-impl<'a> PartialEq for Board<'a> {
-    fn eq(&self, other: &Self) -> bool {
-        self.map == other.map
-            && self.pieces == other.pieces
-            && self.reinforcements == other.reinforcements
-            && self.spells == other.spells
-            && self.winner == other.winner
-            && self.state == other.state
-            && self.bitboards == other.bitboards
-    }
-}
+// impl<'a> PartialEq for Board<'a> {
+//     fn eq(&self, other: &Self) -> bool {
+//         self.map == other.map
+//             && self.pieces == other.pieces
+//             && self.reinforcements == other.reinforcements
+//             && self.spells == other.spells
+//             && self.winner == other.winner
+//             && self.state == other.state
+//             && self.bitboards == other.bitboards
+//     }
+// }
 
-impl<'a> Eq for Board<'a> {}
+// impl<'a> Eq for Board<'a> {}
 
 impl<'a> Board<'a> {
     pub const START_FEN: &'static str = "0/2ZZ6/1ZNZ6/1ZZ7/0/0/7zz1/6znz1/6zz2/0";

@@ -86,8 +86,8 @@ impl<'a> BoardNodeState<'a> {
 impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
     type Args = (i32, TechState, &'a GameConfig, usize, i32); // Added usize for current_board_idx and i32 for turn_num
 
-    fn propose_move(&self, _rng: &mut impl Rng, args: &<Self as NodeState<BoardTurn>>::Args) -> (BoardTurn, Self) {
-        println!("[BoardNodeState] Proposing move for side {}", self.side_to_move);
+    fn propose_move(&self, _rng: &mut impl Rng, args: &Self::Args) -> (BoardTurn, Self) {
+        // println!("[BoardNodeState] Proposing move for side {}", self.side_to_move);
         let (money, ref tech_state, _config, _current_board_idx, turn_num) = *args;
 
         let z3_cfg = Config::new();
@@ -139,11 +139,12 @@ impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
             spawn_actions,
         ));
 
-        let income = new_board.get_income(self.side_to_move);
+        let (income, winner) = new_board.end_turn(self.side_to_move)
+            .expect("[BoardNodeState] Failed to end turn");
 
-        let mut proposed_turn_delta_money = SideArray::new(0, 0);
-        proposed_turn_delta_money[self.side_to_move] = money_after_spawn - money + income;
-        proposed_turn_delta_money[!self.side_to_move] = rebate;
+        let mut delta_money = SideArray::new(0, 0);
+        delta_money[self.side_to_move] = money_after_spawn - money + income;
+        delta_money[!self.side_to_move] = rebate;
 
         let turn_taken = BoardTurn {
             setup_action: None,
@@ -152,14 +153,14 @@ impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
         };
 
         let mut delta_points = SideArray::new(0, 0);
-        if let Some(winner) = new_board.winner {
+        if let Some(winner) = winner {
             delta_points[winner] = 1;
         }
 
         let new_state = Self {
             board: new_board,
-            side_to_move: self.side_to_move,
-            delta_money: proposed_turn_delta_money,
+            side_to_move: !self.side_to_move,
+            delta_money,
             delta_points,
         };
 

@@ -30,7 +30,7 @@ impl Default for GameConfig {
         Self {
             num_boards: NUM_BOARDS,
             points_to_win: 2,
-            maps: vec![Map::default(); NUM_BOARDS],
+            maps: vec![Map::BlackenedShores, Map::MidnightLake],
             techline: Techline::default(),
             start_money: 12,
         }

@@ -196,16 +196,18 @@ impl<'a> Board<'a> {
         if let Some(saved_unit) = action.saved_unit {
             self.add_reinforcement(saved_unit, side);
         }
+
+        self.add_reinforcement(Unit::Initiate, side);
         
         Ok(())
     }
 
+    // returns rebate
     pub fn do_attack_action(
         &mut self,
         side: Side,
         action: AttackAction,
     ) -> Result<i32> {
-        println!("[Board] Performing attack action: {}", action);
         match action {
             AttackAction::Move { from_loc, to_loc } => {
                 let piece = self.get_piece(&from_loc).context("No piece to move")?;
@@ -266,6 +268,7 @@ impl<'a> Board<'a> {
         }
     }
 
+    // returns total rebate
     pub fn do_attacks(&mut self, side: Side, attack_actions: &[AttackAction]) -> Result<i32> {
         let mut rebate = 0;
         for action in attack_actions {
@@ -275,6 +278,7 @@ impl<'a> Board<'a> {
         Ok(rebate)
     }
 
+    // mutates money
     pub fn do_spawn_action(&mut self, side: Side, money: &mut i32, action: SpawnAction) -> Result<()> {
         match action {
             SpawnAction::Buy { unit } => {
@@ -305,6 +309,7 @@ impl<'a> Board<'a> {
         Ok(())
     }
      
+    // returns money left after spawns
     pub fn do_spawns(&mut self, side: Side, money: i32, spawn_actions: &[SpawnAction]) -> Result<i32> {
         let mut money = money;
         for action in spawn_actions {

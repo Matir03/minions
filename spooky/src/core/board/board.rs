@@ -297,6 +297,7 @@ impl<'a> Board<'a> {
         self.winner = Some(side.opponent());
     }
 
+    // Returns (income, winner)
     pub fn end_turn(
         &mut self,
         side_to_move: Side,
