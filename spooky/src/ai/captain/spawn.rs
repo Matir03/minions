@@ -14,15 +14,14 @@ pub fn generate_heuristic_spawn_actions(
     board: &Board,
     side: Side,
     tech_state: &TechState,
-    money: &mut i32,
-    actions: &mut Vec<SpawnAction>,
-) {
-
+    mut money: i32,
+) -> Vec<SpawnAction> {
+    let mut actions = Vec::new();
 
     // Part 1: Decide what to buy and create `Buy` actions
-    let units_to_buy = purchase_heuristic(side, tech_state, *money);
+    let units_to_buy = purchase_heuristic(side, tech_state, money);
     for &unit in &units_to_buy {
-        *money -= unit.stats().cost;
+        money -= unit.stats().cost;
         actions.push(SpawnAction::Buy { unit });
     }
 
@@ -61,6 +60,7 @@ pub fn generate_heuristic_spawn_actions(
         }
     }
 
+    actions
 }
 
 /// Decides which units to buy based on available money and technology.
@@ -228,8 +228,7 @@ mod tests {
 
         let tech_state = new_all_unlocked_tech_state();
         let mut money = 4;
-        let mut actions = Vec::new();
-        generate_heuristic_spawn_actions(&board, Side::S0, &tech_state, &mut money, &mut actions);
+        let actions = generate_heuristic_spawn_actions(&board, Side::S0, &tech_state, money);
 
         // It should generate 2 Buy actions and 2 Spawn actions.
         assert_eq!(actions.len(), 4);

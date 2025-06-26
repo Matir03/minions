@@ -321,5 +321,10 @@ impl<'a> Board<'a> {
     pub fn get_spawn_locs(&self, side: Side, flying: bool) -> Vec<Loc> {
         self.bitboards.get_spawn_locs(side, flying).to_locs()
     }
+
+    pub fn get_income(&self, side: Side) -> i32 {
+        // TODO: correctly count souls from necromancers
+        self.units_on_graveyards(side) + 3
+    }
 }
     

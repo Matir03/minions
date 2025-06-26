@@ -62,7 +62,7 @@ impl GameTurn {
                 self.spell_assignment[board_index] = spell;
             }
             GameAction::BoardSetupAction(board_index, action) => {
-                self.board_turns[board_index].setup_actions.push(action);
+                self.board_turns[board_index].setup_action = Some(action);
             }
             GameAction::BoardAttackAction(board_index, action) => {
                 self.board_turns[board_index].attack_actions.push(action);
@@ -104,7 +104,7 @@ impl Display for GameTurn {
 
         // Board turns
         for (i, board_turn) in self.board_turns.iter().enumerate() {
-            for action in &board_turn.setup_actions {
+            if let Some(action) = &board_turn.setup_action {
                 out.push_str(&format!("action b_setup {} {}\n", i, action));
             }
             for action in &board_turn.attack_actions {

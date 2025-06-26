@@ -18,9 +18,9 @@ use super::{
 
 impl<'a> Board<'a> {
     /// Create a new empty board
-        pub fn new(map: &'a Map) -> Self {
+    pub fn new(map: &'a Map) -> Self {
         Self {
-                        map,
+            map,
             pieces: HashMap::new(),
             reinforcements: SideArray::new(HashBag::new(), HashBag::new()),
             spells: SideArray::new(HashBag::new(), HashBag::new()),
@@ -235,7 +235,7 @@ impl<'a> Board<'a> {
         Ok(())
     }
 
-    pub fn attack_piece(&mut self, attacker_loc: Loc, target_loc: Loc) -> Result<Option<(Side, i32)>> {
+    pub fn attack_piece(&mut self, attacker_loc: Loc, target_loc: Loc) -> Result<i32> {
         let (damage_amount, bounce) = {
             let attacker = self.get_piece(&attacker_loc).context("No attacker")?;
             let target = self.get_piece(&target_loc).context("No target")?;
@@ -275,7 +275,6 @@ impl<'a> Board<'a> {
             target_state.damage_taken >= target_piece.unit.stats().defense
         };
 
-        let mut rebate = None;
         if target_is_dead || bounce {
             let target = self.remove_piece(&target_loc).unwrap();
             if bounce {
@@ -285,12 +284,12 @@ impl<'a> Board<'a> {
                 if target.unit.stats().necromancer {
                     self.winner = Some(target.side.opponent());
                 } else {
-                    rebate = Some((target.side, target.unit.stats().rebate));
+                    return Ok(target.unit.stats().rebate);
                 }
             }
         }
 
-        Ok(rebate)
+        Ok(0)
     }
 
     pub fn resign(&mut self, side: Side) {

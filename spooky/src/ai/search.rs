@@ -85,7 +85,7 @@ impl<'a> SearchTree<'a> {
     }
 
     pub fn best_turn(&self) -> GameTurn {
-        self.root.borrow().best_turn() 
+        self.root.borrow().construct_best_turn() 
     }
 
     pub fn eval(&self) -> Eval {

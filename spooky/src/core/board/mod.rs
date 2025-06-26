@@ -23,7 +23,7 @@ use super::{
     units::{Unit, Attack},
 };
 
-mod board_impl;
+mod board;
 
 #[cfg(test)]
 mod tests {

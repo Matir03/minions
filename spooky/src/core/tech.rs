@@ -141,9 +141,9 @@ impl TechState {
         }
     }
 
-    pub fn acquirable(&self, tech_index: usize) -> bool {
-        self.status[Side::S0][tech_index] != TechStatus::Acquired &&
-        self.status[Side::S1][tech_index] != TechStatus::Acquired
+    pub fn acquirable(&self, tech_index: usize, side: Side) -> bool {
+        self.status[side][tech_index] == TechStatus::Unlocked &&
+        self.status[!side][tech_index] != TechStatus::Acquired
     }
 
     pub fn assign_techs(&mut self, assignment: TechAssignment, side: Side, techline: &Techline) -> Result<()> {

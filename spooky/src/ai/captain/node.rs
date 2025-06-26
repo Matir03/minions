@@ -48,47 +48,46 @@ impl<'a> BoardNodeState<'a> {
         }
     }
 
-    fn apply_turn_to_board<'b>(
-        original_board: &Board<'b>,
-        setup_actions: &[SetupAction],
-        attack_actions: &[AttackAction],
-        spawn_actions: &[SpawnAction],
-        side_to_move: Side,
-        money: &mut i32,
-        rebates: &mut SideArray<i32>,
-    ) -> Board<'b> {
-        let mut new_board = original_board.clone();
+    // fn apply_turn_to_board<'b>(
+    //     original_board: &Board<'b>,
+    //     setup_actions: &[SetupAction],
+    //     attack_actions: &[AttackAction],
+    //     spawn_actions: &[SpawnAction],
+    //     side_to_move: Side,
+    //     rebates: &mut SideArray<i32>,
+    // ) -> Board<'b> {
+    //     let mut new_board = original_board.clone();
 
-        for action in setup_actions {
-            if let Err(e) = new_board.do_setup_action(side_to_move, action.clone()) {
-                eprintln!("[BoardNodeState] Error applying setup action: {:?}: {}", action, e);
-            }
-        }
-        for action in attack_actions {
-            match new_board.do_attack_action(side_to_move, action.clone()) {
-                Ok(Some((side, amount))) => {
-                    rebates[side] += amount;
-                }
-                Ok(None) => (),
-                Err(e) => {
-                    eprintln!("[BoardNodeState] Error applying attack action: {:?}: {}", action, e);
-                }
-            }
-        }
-        for action in spawn_actions {
-            if let Err(e) = new_board.do_spawn_action(side_to_move, money, action.clone()) {
-                eprintln!("[BoardNodeState] Error applying spawn action: {:?}: {}", action, e);
-            }
-        }
-        new_board
-    }
+    //     for action in setup_actions {
+    //         if let Err(e) = new_board.do_setup_action(side_to_move, action.clone()) {
+    //             eprintln!("[BoardNodeState] Error applying setup action: {:?}: {}", action, e);
+    //         }
+    //     }
+    //     for action in attack_actions {
+    //         match new_board.do_attack_action(side_to_move, action.clone()) {
+    //             Ok(Some((side, amount))) => {
+    //                 rebates[side] += amount;
+    //             }
+    //             Ok(None) => (),
+    //             Err(e) => {
+    //                 eprintln!("[BoardNodeState] Error applying attack action: {:?}: {}", action, e);
+    //             }
+    //         }
+    //     }
+    //     for action in spawn_actions {
+    //         if let Err(e) = new_board.do_spawn_action(side_to_move, money, action.clone()) {
+    //             eprintln!("[BoardNodeState] Error applying spawn action: {:?}: {}", action, e);
+    //         }
+    //     }
+    //     new_board
+    // }
 }
 
 impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
     type Args = (i32, TechState, &'a GameConfig, usize, i32); // Added usize for current_board_idx and i32 for turn_num
 
     fn propose_move(&self, _rng: &mut impl Rng, args: &<Self as NodeState<BoardTurn>>::Args) -> (BoardTurn, Self) {
-        let (money_allocation, ref tech_state, _config, _current_board_idx, turn_num) = *args;
+        let (money, ref tech_state, _config, _current_board_idx, turn_num) = *args;
 
         let z3_cfg = Config::new();
         let ctx = Context::new(&z3_cfg);
@@ -114,55 +113,44 @@ impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
             SatResult::Unknown => panic!("Z3 solver returned unknown"),
         };
 
-        let mut money_after_attack = money_allocation;
-        let mut rebates = SideArray::new(0, 0);
-        let board_after_attack = BoardNodeState::apply_turn_to_board(
-            &self.board,
-            &[],
-            &attack_actions,
-            &[],
+        let mut new_board = self.board.clone();
+        let rebate = new_board.do_attacks(
             self.side_to_move,
-            &mut money_after_attack,
-            &mut rebates,
-        );
+            &attack_actions,
+        ).expect("[BoardNodeState] Failed to perform attack phase actions");
 
-        let mut spawn_actions = Vec::new();
-        generate_heuristic_spawn_actions(
-            &board_after_attack,
+        let spawn_actions = generate_heuristic_spawn_actions(
+            &new_board,
             self.side_to_move,
             tech_state,
-            &mut money_after_attack,
-            &mut spawn_actions,
+            money,
         );
 
-        let mut money_after_spawn = money_after_attack;
-        let final_board_state = BoardNodeState::apply_turn_to_board(
-            &board_after_attack,
-            &[],
-            &[],
-            &spawn_actions,
+        let money_after_spawn = new_board.do_spawns(
             self.side_to_move,
-            &mut money_after_spawn,
-            &mut rebates,
-        );
+            money,
+            &spawn_actions,
+        ).expect("[BoardNodeState] Failed to perform spawn phase actions");
+
+        let income = new_board.get_income(self.side_to_move);
 
         let mut proposed_turn_delta_money = SideArray::new(0, 0);
-        proposed_turn_delta_money[self.side_to_move] = money_after_spawn - money_allocation;
-        proposed_turn_delta_money += rebates;
+        proposed_turn_delta_money[self.side_to_move] = money_after_spawn - money + income;
+        proposed_turn_delta_money[!self.side_to_move] = rebate;
 
         let turn_taken = BoardTurn {
-            setup_actions: vec![],
+            setup_action: None,
             attack_actions,
             spawn_actions,
         };
 
         let mut delta_points = SideArray::new(0, 0);
-        if let Some(winner) = final_board_state.winner {
+        if let Some(winner) = new_board.winner {
             delta_points[winner] = 1;
         }
 
         let new_state = Self {
-            board: final_board_state,
+            board: new_board,
             side_to_move: self.side_to_move,
             delta_money: proposed_turn_delta_money,
             delta_points,

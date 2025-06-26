@@ -78,7 +78,9 @@ pub fn handle_command<'a>(cmd: &str, engine: &mut Engine<'a>) -> Result<Option<G
             println!("info nps {} nodes {} time {}", nps, nodes_explored, time);
 
             println!("{}", turn);
-            if let Some(winner) = engine.take_turn(turn)? {
+            engine.take_turn(turn)?;
+            engine.end_turn()?;
+            if let Some(winner) = engine.state.winner() {
                 println!("info result winner {}", winner);
             }
             Ok(None)
@@ -133,7 +135,9 @@ pub fn handle_command<'a>(cmd: &str, engine: &mut Engine<'a>) -> Result<Option<G
                 println!("\nRunning search for player {:?}...", engine.state.side_to_move);
                 let (_, turn, _, time) = engine.go(&search_options);
                 println!("Best turn found in {:.2}s:\n{}", time, turn);
-                if let Some(winner) = engine.take_turn(turn)? {
+                engine.take_turn(turn)?;
+                engine.end_turn()?;
+                if let Some(winner) = engine.state.winner() {
                     println!("Game over! Winner: {}", winner);
                 } else {
                     println!("\nNew board state:");

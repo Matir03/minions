@@ -10,7 +10,8 @@ use hashbag::HashBag;
 use crate::ai::mcts::{MCTSNode, NodeState, NodeStats, MCTSEdge};
 use crate::ai::general::{GeneralNodeState, GeneralNode, GeneralNodeRef}; 
 use crate::ai::captain::node::{BoardNode, BoardNodeRef, BoardNodeState};
-use crate::core::board::actions::BoardTurn; 
+use crate::core::board::actions::BoardTurn;
+use crate::core::spells::Spell; 
 use crate::ai::eval::Eval;
 
 use crate::ai::search::SearchArgs;
@@ -79,7 +80,9 @@ impl<'a> NodeState<GameTurn> for GameNodeState<'a> {
         let next_general_state_ref = general_mcts_node_borrowed.edges[g_child_idx].child;
         let next_general_node_state_snapshot = next_general_state_ref.borrow().state.clone(); 
 
-        let tech_state = self.game_state.tech_state.clone();
+        let mut next_tech_state = self.game_state.tech_state.clone();
+        next_tech_state.assign_techs(tech_assignment.clone(), current_side, &search_args.config.techline).unwrap();
+
         let general_delta_money = next_general_node_state_snapshot.delta_money[current_side];
 
         let mut board_turns = StdVec::with_capacity(self.board_nodes.len());
@@ -93,7 +96,7 @@ impl<'a> NodeState<GameTurn> for GameNodeState<'a> {
             let mut board_mcts_node_borrowed = board_mcts_node_ref.borrow_mut();
             let board_money = *money_for_boards.get(i).unwrap();
 
-            let board_args = (board_money, tech_state.clone(), search_args.config, i, self.game_state.ply);
+            let board_args = (board_money, next_tech_state.clone(), search_args.config, i, self.game_state.ply);
             let (_b_is_new, b_child_idx) = board_mcts_node_borrowed.poll(&search_args, rng, board_args);
             
             let board_turn = board_mcts_node_borrowed.edges[b_child_idx].turn.clone();
@@ -117,7 +120,7 @@ impl<'a> NodeState<GameTurn> for GameNodeState<'a> {
 
         let next_game_state = GameState {
             config: self.game_state.config,
-            tech_state, 
+            tech_state: next_tech_state, 
             side_to_move: !current_side,
             boards: next_board_states_for_gamestate,
             board_points: next_board_points,
@@ -126,11 +129,12 @@ impl<'a> NodeState<GameTurn> for GameNodeState<'a> {
             winner: self.game_state.winner,
         };
 
+        let num_boards = self.game_state.config.num_boards;
         let game_turn = GameTurn {
             tech_assignment,
             board_turns,
             spells: HashBag::new(),
-            spell_assignment: Vec::new(),
+            spell_assignment: vec![Spell::Blank; num_boards],
         };
 
         let next_game_node_state = GameNodeState {
@@ -145,6 +149,25 @@ impl<'a> NodeState<GameTurn> for GameNodeState<'a> {
 
 pub type GameNode<'a> = MCTSNode<'a, GameNodeState<'a>, GameTurn>;
 pub type GameNodeRef<'a> = &'a RefCell<GameNode<'a>>;
+
+impl<'a> GameNode<'a> {
+    pub fn construct_best_turn(&self) -> GameTurn {
+        let tech_assignment = self.state.general_node.borrow().best_turn();
+
+        let board_turns = self.state.board_nodes
+            .iter()
+            .map(|board_node_ref| board_node_ref.borrow().best_turn())
+            .collect();
+
+        let num_boards = self.state.game_state.config.num_boards;
+        GameTurn {
+            tech_assignment,
+            board_turns,
+            spells: HashBag::new(),
+            spell_assignment: vec![Spell::Blank; num_boards],
+        }
+    }
+}
 /*
 pub struct GameTree<'a> {
     pub mcts_node_ref: &'a RefCell<MCTSNode<'a, GameNodeState<'a>, GameTurn>>,

@@ -344,7 +344,7 @@ impl<'a> GameState<'a> {
         let spells_bought = turn.tech_assignment.num_spells() - 1;
         ensure!(spells_bought >= 0, "Must assign all techs");
 
-        let total_spell_cost = spells_bought * (self.boards.len() as i32) * self.config.spell_cost();
+        let total_spell_cost = spells_bought * self.config.spell_cost();
         ensure!(self.money[self.side_to_move] >= total_spell_cost);
         self.money[self.side_to_move] -= total_spell_cost;
 
@@ -369,7 +369,7 @@ impl<'a> GameState<'a> {
 
         for (board_idx, board_turn) in turn.board_turns.into_iter().enumerate() {
             let board = &mut self.boards[board_idx];
-            for action in board_turn.setup_actions {
+            if let Some(action) = board_turn.setup_action {
                 board.do_setup_action(self.side_to_move, action)?;
             }
             for action in board_turn.attack_actions {

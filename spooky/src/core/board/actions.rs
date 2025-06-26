@@ -57,7 +57,7 @@ pub enum SpawnAction {
 /// Represents the actions taken during a single board's turn phase.
 #[derive(Debug, Default, Clone)]
 pub struct BoardTurn {
-    pub setup_actions: Vec<SetupAction>,
+    pub setup_action: Option<SetupAction>,
     pub attack_actions: Vec<AttackAction>,
     pub spawn_actions: Vec<SpawnAction>,
 }
@@ -204,7 +204,7 @@ impl<'a> Board<'a> {
         &mut self,
         side: Side,
         action: AttackAction,
-    ) -> Result<Option<(Side, i32)>> {
+    ) -> Result<i32> {
         match action {
             AttackAction::Move { from_loc, to_loc } => {
                 let piece = self.get_piece(&from_loc).context("No piece to move")?;
@@ -224,11 +224,11 @@ impl<'a> Board<'a> {
                 piece_to_move.loc = to_loc;
                 self.add_piece(piece_to_move);
 
-                Ok(None)
+                Ok(0)
             }
             AttackAction::MoveCyclic { locs } => {
                 self.move_pieces_cyclic(side, &locs)?;
-                Ok(None)
+                Ok(0)
             }
             AttackAction::Attack {
                 attacker_loc,
@@ -264,17 +264,26 @@ impl<'a> Board<'a> {
                     self.remove_piece(&piece_to_bounce.loc);
                     self.add_reinforcement(piece_to_bounce.unit, piece_to_bounce.side);
                 }
-                Ok(None)
+                Ok(0)
             }
             AttackAction::Cast { spell_cast } => {
                 spell_cast.cast(self, side)?;
-                Ok(None)
+                Ok(0)
             }
             AttackAction::Resign => {
                 self.resign(side);
-                Ok(None)
+                Ok(0)
             }
         }
+    }
+
+    pub fn do_attacks(&mut self, side: Side, attack_actions: &[AttackAction]) -> Result<i32> {
+        let mut rebate = 0;
+        for action in attack_actions {
+            let amount = self.do_attack_action(side, action.clone())?;
+            rebate += amount;
+        }
+        Ok(rebate)
     }
 
     pub fn do_spawn_action(&mut self, side: Side, money: &mut i32, action: SpawnAction) -> Result<()> {
@@ -305,5 +314,13 @@ impl<'a> Board<'a> {
         }
 
         Ok(())
+    }
+     
+    pub fn do_spawns(&mut self, side: Side, money: i32, spawn_actions: &[SpawnAction]) -> Result<i32> {
+        let mut money = money;
+        for action in spawn_actions {
+            self.do_spawn_action(side, &mut money, action.clone())?;
+        }
+        Ok(money)
     }
 }
