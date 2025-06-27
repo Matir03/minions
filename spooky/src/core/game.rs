@@ -149,8 +149,8 @@ impl GameConfig {
 /// State of a Minions game (excluding the static configuration)
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GameState<'a> {
-        pub config: &'a GameConfig,
-        pub boards: Vec<Board<'a>>,
+    pub config: &'a GameConfig,
+    pub boards: Vec<Board<'a>>,
     pub side_to_move: Side,
     pub ply: i32,
     pub board_points: SideArray<i32>,

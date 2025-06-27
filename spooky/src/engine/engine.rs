@@ -96,6 +96,8 @@ impl<'a> Engine<'a> {
     }
 
     pub fn display(&self) {
+        // Clears the terminal screen and moves the cursor to the top left.
+        print!("\x1B[2J\x1B[1;1H");
         println!("{}", self.state);
     }
 

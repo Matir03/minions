@@ -20,6 +20,16 @@ pub enum TileType {
     NativeTerrain(Terrain),
 }
 
+impl TileType {
+    pub fn to_display_char(&self) -> char {
+        match self {
+            TileType::Ground => '.',
+            TileType::Graveyard => '$',
+            TileType::NativeTerrain(t) => '.',
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Terrain {
     Flood,
@@ -47,6 +57,15 @@ impl Terrain {
             'E' => Some(Terrain::Earthquake),
             'F' => Some(Terrain::Firestorm),
             _ => None,
+        }
+    }
+
+    pub fn to_display_char(&self) -> char {
+        match self {
+            Terrain::Flood => '~',
+            Terrain::Earthquake => 'E',
+            Terrain::Whirlwind => 'W',
+            Terrain::Firestorm => 'F',
         }
     }
 }
