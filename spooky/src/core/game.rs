@@ -341,9 +341,7 @@ impl<'a> GameState<'a> {
 
     pub fn take_turn(&mut self, turn: GameTurn) -> Result<()> {
         // Process tech assignments
-        let spells_bought = turn.tech_assignment.num_spells() - 1;
-        ensure!(spells_bought >= 0, "Must assign all techs");
-
+        let spells_bought = (turn.tech_assignment.num_spells() - 1).min(0);
         let total_spell_cost = spells_bought * self.config.spell_cost();
         ensure!(self.money[self.side_to_move] >= total_spell_cost);
         self.money[self.side_to_move] -= total_spell_cost;
@@ -378,7 +376,6 @@ impl<'a> GameState<'a> {
             for action in board_turn.spawn_actions {
                 board.do_spawn_action(self.side_to_move, &mut self.money[self.side_to_move], action)?;
             }
-            board.end_turn(self.side_to_move)?;
         }
         self.end_turn();
 
