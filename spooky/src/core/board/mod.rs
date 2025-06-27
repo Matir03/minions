@@ -40,7 +40,7 @@ mod tests {
         let map = Map::default();
         let mut board = Board::new(&map);
         let loc = Loc::new(0, 0);
-        let piece = Piece::new(Unit::Zombie, Side::S0, loc);
+        let piece = Piece::new(Unit::Zombie, Side::Yellow, loc);
         board.add_piece(piece);
         assert_eq!(board.get_piece(&loc).unwrap().unit, Unit::Zombie);
         let removed = board.remove_piece(&loc).unwrap();
@@ -53,16 +53,16 @@ mod tests {
         let map = Map::default();
         let mut board = Board::new(&map);
 
-        board.add_piece(Piece::new(Unit::Zombie, Side::S0, Loc::new(0, 0)));
-        board.add_piece(Piece::new(Unit::Zombie, Side::S1, Loc::new(1, 1)));
+        board.add_piece(Piece::new(Unit::Zombie, Side::Yellow, Loc::new(0, 0)));
+        board.add_piece(Piece::new(Unit::Zombie, Side::Blue, Loc::new(1, 1)));
         board.add_piece(Piece::new(
             Unit::BasicNecromancer,
-            Side::S0,
+            Side::Yellow,
             Loc::new(2, 2),
         ));
         board.add_piece(Piece::new(
             Unit::BasicNecromancer,
-            Side::S1,
+            Side::Blue,
             Loc::new(3, 3),
         ));
 
@@ -109,17 +109,17 @@ mod tests {
         let map = Map::default();
         let mut board = Board::new(&map);
 
-        board.add_piece(Piece::new(Unit::Initiate, Side::S0, Loc::new(0, 0)));
-        board.add_piece(Piece::new(Unit::Skeleton, Side::S1, Loc::new(5, 6)));
+        board.add_piece(Piece::new(Unit::Initiate, Side::Yellow, Loc::new(0, 0)));
+        board.add_piece(Piece::new(Unit::Skeleton, Side::Blue, Loc::new(5, 6)));
 
         board.reset();
 
         assert_eq!(board.pieces.len(), 14);
 
-        assert_eq!(board.reinforcements[Side::S0].len(), 1);
-        assert_eq!(board.reinforcements[Side::S0].contains(&Unit::Initiate), 1);
+        assert_eq!(board.reinforcements[Side::Yellow].len(), 1);
+        assert_eq!(board.reinforcements[Side::Yellow].contains(&Unit::Initiate), 1);
 
-        assert_eq!(board.reinforcements[Side::S1].len(), 1);
-        assert_eq!(board.reinforcements[Side::S1].contains(&Unit::Skeleton), 1);
+        assert_eq!(board.reinforcements[Side::Blue].len(), 1);
+        assert_eq!(board.reinforcements[Side::Blue].contains(&Unit::Skeleton), 1);
     }
 }

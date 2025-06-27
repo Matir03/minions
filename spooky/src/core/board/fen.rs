@@ -34,7 +34,7 @@ impl<'a> Board<'a> {
                         empty_count = 0;
                     }
                     let mut c = piece.unit.to_fen_char();
-                    if piece.side == Side::S1 {
+                    if piece.side == Side::Blue {
                         c = c.to_ascii_lowercase();
                     }
                     fen.push(c);
@@ -73,7 +73,7 @@ impl<'a> Board<'a> {
                         ensure!(digit != 0, "FEN digit cannot be 0 unless it's the only char in the row");
                         x += digit as i32;
                     } else {
-                        let side = if c.is_uppercase() { Side::S0 } else { Side::S1 };
+                        let side = if c.is_uppercase() { Side::Yellow } else { Side::Blue };
                         let unit_char = c.to_ascii_lowercase();
                         let unit = Unit::from_fen_char(unit_char)
                             .ok_or_else(|| anyhow!("Invalid unit char: {}", unit_char))?;

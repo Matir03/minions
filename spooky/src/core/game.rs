@@ -185,7 +185,7 @@ impl<'a> GameState<'a> {
         let start_money = config.start_money;
         Self {
             config,
-            side_to_move: Side::S0,
+            side_to_move: Side::Yellow,
             ply: 1,
             boards,
             board_points: SideArray::new(0, 0),
@@ -218,8 +218,8 @@ impl<'a> GameState<'a> {
         fen.push(' ');
         let winner_char = match self.winner {
             None => '_',
-            Some(Side::S0) => '0',
-            Some(Side::S1) => '1',
+            Some(Side::Yellow) => '0',
+            Some(Side::Blue) => '1',
         };
         fen.push(winner_char);
 
@@ -230,8 +230,8 @@ impl<'a> GameState<'a> {
         // Money
         fen.push(' ');
         fen.push_str(&format!("{}|{}",
-            self.money.get(Side::S0)?,
-            self.money.get(Side::S1)?
+            self.money.get(Side::Yellow)?,
+            self.money.get(Side::Blue)?
         ));
 
         Ok(fen)
@@ -272,8 +272,8 @@ impl<'a> GameState<'a> {
             .chars().next().context("Empty winner string")?;
         let winner = match winner_char {
             '_' => None,
-            '0' => Some(Side::S0),
-            '1' => Some(Side::S1),
+            '0' => Some(Side::Yellow),
+            '1' => Some(Side::Blue),
             _ => bail!("Invalid winner char"),
         };
 
@@ -421,7 +421,7 @@ fn test_empty_spaces_fen() {
         .collect();
     let state = GameState::new(
         &config,
-        Side::S0,
+        Side::Yellow,
         1,
         boards,
         TechState::new(),
@@ -468,10 +468,10 @@ assert!(GameState::from_fen(&fen6, &config).is_err());
 fn test_win_condition() {
     let config = GameConfig::default();
     let mut state = GameState::new_default(&config);
-    state.board_points[Side::S0] = config.points_to_win;
+    state.board_points[Side::Yellow] = config.points_to_win;
 
     state.end_turn().unwrap();
-    assert_eq!(state.winner(), Some(Side::S0));
+    assert_eq!(state.winner(), Some(Side::Yellow));
 }
 
 #[test]
@@ -488,9 +488,9 @@ fn test_load_fen_from_file() {
 
     assert_eq!(config.num_boards, 2);
     assert_eq!(config.points_to_win, 2);
-    assert_eq!(state.side_to_move, Side::S0);
+    assert_eq!(state.side_to_move, Side::Yellow);
     assert_eq!(state.ply, 1);
-    assert_eq!(state.money[Side::S0], 12);
-    assert_eq!(state.money[Side::S1], 12);
+    assert_eq!(state.money[Side::Yellow], 12);
+    assert_eq!(state.money[Side::Blue], 12);
 }
 }

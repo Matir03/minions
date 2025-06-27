@@ -18,14 +18,14 @@ impl<'a> fmt::Display for GameState<'a> {
         writeln!(
             f,
             "Points: {} | {}",
-            self.board_points[Side::S0].to_string().bright_blue(),
-            self.board_points[Side::S1].to_string().bright_red()
+            self.board_points[Side::Yellow].to_string().bright_blue(),
+            self.board_points[Side::Blue].to_string().bright_red()
         )?;
         writeln!(
             f,
             "Money: {} | {}",
-            self.money[Side::S0].to_string().bright_blue(),
-            self.money[Side::S1].to_string().bright_red()
+            self.money[Side::Yellow].to_string().bright_blue(),
+            self.money[Side::Blue].to_string().bright_red()
         )?;
         writeln!(f)?;
 
@@ -37,8 +37,8 @@ impl<'a> fmt::Display for GameState<'a> {
             writeln!(f, "Board {}:", i)?;
             write!(f, "{}", board)?;
 
-            let mut s0_units: Vec<_> = board.pieces.values().filter(|p| p.side == Side::S0).collect();
-            let mut s1_units: Vec<_> = board.pieces.values().filter(|p| p.side == Side::S1).collect();
+            let mut s0_units: Vec<_> = board.pieces.values().filter(|p| p.side == Side::Yellow).collect();
+            let mut s1_units: Vec<_> = board.pieces.values().filter(|p| p.side == Side::Blue).collect();
             s0_units.sort_by_key(|p| p.loc);
             s1_units.sort_by_key(|p| p.loc);
 
@@ -149,8 +149,8 @@ impl fmt::Display for Piece {
         let state = self.state;
 
         let mut colored_symbol = match self.side {
-            Side::S0 => symbol.bright_blue(),
-            Side::S1 => symbol.bright_red(),
+            Side::Yellow => symbol.bright_blue(),
+            Side::Blue => symbol.bright_red(),
         };
 
         if !state.can_act() {
@@ -164,8 +164,8 @@ impl fmt::Display for Piece {
 impl fmt::Display for Side {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Side::S0 => write!(f, "{}", "Blue".bright_blue()),
-            Side::S1 => write!(f, "{}", "Red".bright_red()),
+            Side::Yellow => write!(f, "{}", "Blue".bright_blue()),
+            Side::Blue => write!(f, "{}", "Red".bright_red()),
         }
     }
 }
@@ -173,13 +173,13 @@ impl fmt::Display for Side {
 impl fmt::Display for TechState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", "Blue Tech: ".bright_blue())?;
-        for (i, tech) in self.status[Side::S0].iter().enumerate() {
+        for (i, tech) in self.status[Side::Yellow].iter().enumerate() {
             write!(f, "{:?} ", tech)?;
         }
         writeln!(f)?;
 
         write!(f, "{}", "Red Tech: ".bright_red())?;
-        for (i, tech) in self.status[Side::S1].iter().enumerate() {
+        for (i, tech) in self.status[Side::Blue].iter().enumerate() {
             write!(f, "{:?} ", tech)?;
         }
         writeln!(f)?;

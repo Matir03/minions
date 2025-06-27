@@ -357,7 +357,7 @@ mod tests {
         let map = Map::default();
         let mut board = Board::new(&map);
         let loc = Loc::new(0, 0);
-        let piece = Piece::new(Unit::Zombie, Side::S0, loc);
+        let piece = Piece::new(Unit::Zombie, Side::Yellow, loc);
         board.add_piece(piece);
         assert!(board.get_piece(&loc).is_ok());
         let removed = board.remove_piece(&loc);
@@ -412,8 +412,8 @@ mod tests {
         let map = Map::default();
         let mut board = Board::from_fen(Board::START_FEN, &map).unwrap();
         let num_pieces = board.pieces.len();
-        board.winner = Some(Side::S0);
-        board.end_turn(Side::S0).unwrap();
+        board.winner = Some(Side::Yellow);
+        board.end_turn(Side::Yellow).unwrap();
         assert_eq!(board.pieces.len(), num_pieces);
         assert_eq!(board.state, BoardState::Reset0);
     }

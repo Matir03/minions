@@ -241,15 +241,15 @@ mod tests {
         // Three rats in a triangle, each wanting to move to the next one's spot.
         let map = Map::AllLand;
         let board = create_board_with_pieces(&map, vec![
-            (Unit::Rat, Side::S0, Loc::new(0, 0)),
-            (Unit::Zombie, Side::S0, Loc::new(1, 0)),
-            (Unit::Skeleton, Side::S0, Loc::new(0, 1)),
+            (Unit::Rat, Side::Yellow, Loc::new(0, 0)),
+            (Unit::Zombie, Side::Yellow, Loc::new(1, 0)),
+            (Unit::Skeleton, Side::Yellow, Loc::new(0, 1)),
         ]);
 
         let z3_cfg = Config::new();
         let ctx = Context::new(&z3_cfg);
         let optimizer = Optimize::new(&ctx);
-        let graph = board.combat_graph(Side::S0);
+        let graph = board.combat_graph(Side::Yellow);
         let solver = CombatSolver::new(&ctx, &optimizer, graph, &board);
 
 
@@ -272,7 +272,7 @@ mod tests {
 
         // Apply the action and verify the board state
         let mut board_after_move = board.clone();
-        let result = board_after_move.do_attack_action(Side::S0, actions[0].clone());
+        let result = board_after_move.do_attack_action(Side::Yellow, actions[0].clone());
         assert!(result.is_ok(), "Cyclic move failed: {:?}", result);
 
         assert_eq!(board_after_move.get_piece(&Loc::new(0, 0)).unwrap().unit, Unit::Skeleton);
@@ -320,14 +320,14 @@ mod tests {
         // Rat has move=1, range=1. It can move to (1,0) and then attack (0,0).
         let map = Map::AllLand;
         let board = create_board_with_pieces(&map, vec![
-            (Unit::Rat, Side::S0, Loc::new(2, 0)),
-            (Unit::Rat, Side::S1, Loc::new(0, 0)),
+            (Unit::Rat, Side::Yellow, Loc::new(2, 0)),
+            (Unit::Rat, Side::Blue, Loc::new(0, 0)),
         ]);
 
         let z3_cfg = Config::new();
         let ctx = Context::new(&z3_cfg);
         let optimizer = Optimize::new(&ctx);
-        let graph = board.combat_graph(Side::S0);
+        let graph = board.combat_graph(Side::Yellow);
 
         assert_eq!(graph.friends.len(), 1);
         assert_eq!(graph.defenders.len(), 1);
@@ -368,14 +368,14 @@ mod tests {
         // Distance is 1, which is within range. No move needed.
         let map = Map::AllLand;
         let board = create_board_with_pieces(&map, vec![
-            (Unit::Rat, Side::S0, Loc::new(1, 0)),
-            (Unit::Rat, Side::S1, Loc::new(0, 0)),
+            (Unit::Rat, Side::Yellow, Loc::new(1, 0)),
+            (Unit::Rat, Side::Blue, Loc::new(0, 0)),
         ]);
 
         let z3_cfg = Config::new();
         let ctx = Context::new(&z3_cfg);
         let optimizer = Optimize::new(&ctx);
-        let graph = board.combat_graph(Side::S0);
+        let graph = board.combat_graph(Side::Yellow);
         let solver = CombatSolver::new(&ctx, &optimizer, graph, &board);
         let assumption = Bool::new_const(&ctx, "kill_defender");
         optimizer.assert(&assumption._eq(

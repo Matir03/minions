@@ -47,17 +47,17 @@ impl Eval {
         let c_t = 4.0 * state.boards.len() as f32;
 
         // Board points to win
-        let w0 = state.board_points[Side::S0] as f32;
-        let w1 = state.board_points[Side::S1] as f32;
+        let w0 = state.board_points[Side::Yellow] as f32;
+        let w1 = state.board_points[Side::Blue] as f32;
 
         // Money
-        let m0 = state.money[Side::S0] as f32;
-        let m1 = state.money[Side::S1] as f32;
+        let m0 = state.money[Side::Yellow] as f32;
+        let m1 = state.money[Side::Blue] as f32;
 
         // Tech score
         let tech_state = &state.tech_state;
-        let a0 = tech_state.unlock_index[Side::S0] as f32;
-        let a1 = tech_state.unlock_index[Side::S1] as f32;
+        let a0 = tech_state.unlock_index[Side::Yellow] as f32;
+        let a1 = tech_state.unlock_index[Side::Blue] as f32;
         let max_advancement = a0.max(a1);
         let gamma: f32 = 0.98;
 
@@ -65,10 +65,10 @@ impl Eval {
         let mut t1 = 0.0;
 
         // Calculate tech scores for each side
-        for tech in tech_state.acquired_techs[Side::S0].iter() {
+        for tech in tech_state.acquired_techs[Side::Yellow].iter() {
             t0 += gamma.powf(max_advancement - tech.to_index().unwrap() as f32);
         }
-        for tech in tech_state.acquired_techs[Side::S1].iter() {
+        for tech in tech_state.acquired_techs[Side::Blue].iter() {
             t1 += gamma.powf(max_advancement - tech.to_index().unwrap() as f32);
         }
 
@@ -81,8 +81,8 @@ impl Eval {
             for piece in board.pieces.values() {
                 let value = piece.unit.stats().cost as f32;
                 board_value += match piece.side {
-                    Side::S0 => value,
-                    Side::S1 => -value,
+                    Side::Yellow => value,
+                    Side::Blue => -value,
                 };
             }
             board_score += board_value;

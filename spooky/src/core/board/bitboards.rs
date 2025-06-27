@@ -215,7 +215,7 @@ impl Bitboards {
     }
 
     pub fn empty(&self) -> Bitboard {
-        !(self.pieces[Side::S0] | self.pieces[Side::S1])
+        !(self.pieces[Side::Yellow] | self.pieces[Side::Blue])
     }
 
     pub fn get_valid_moves(&self, loc: &Loc, side: Side, speed: i32, is_flying: bool) -> Bitboard {

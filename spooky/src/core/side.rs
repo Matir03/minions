@@ -3,30 +3,38 @@ use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::{FromPrimitive, ToPrimitive};
 use super::convert::{FromIndex, ToIndex};
 use std::ops::{Index, IndexMut, Not, Add};
+use colored::Color;
 
 /// Side/player in the game
 #[derive(Debug, Clone, Copy, PartialEq, Eq, FromPrimitive, ToPrimitive)]
 pub enum Side {
-    S0,
-    S1,
+    Yellow,
+    Blue,
 }
 
 impl Side {
     pub fn all() -> [Side; 2] {
-        [Side::S0, Side::S1]
+        [Side::Yellow, Side::Blue]
     }
 
     pub fn sign(&self) -> i32 {
         match self {
-            Side::S0 => 1,
-            Side::S1 => -1,
+            Side::Yellow => 1,
+            Side::Blue => -1,
         }
     }
 
     pub fn opponent(self) -> Self {
         match self {
-            Side::S0 => Side::S1,
-            Side::S1 => Side::S0,
+            Side::Yellow => Side::Blue,
+            Side::Blue => Side::Yellow,
+        }
+    }
+
+    pub fn color(&self) -> Color {
+        match self {
+            Side::Yellow => Color::Yellow,
+            Side::Blue => Color::Blue,
         }
     }
 }
@@ -50,8 +58,8 @@ impl Not for Side {
 
     fn not(self) -> Self::Output {
         match self {
-            Side::S0 => Side::S1,
-            Side::S1 => Side::S0,
+            Side::Yellow => Side::Blue,
+            Side::Blue => Side::Yellow,
         }
     }
 }   
@@ -130,15 +138,15 @@ mod tests {
 
     #[test]
     fn test_side_from_index() {
-        assert_eq!(Side::from_index(0).unwrap(), Side::S0);
-        assert_eq!(Side::from_index(1).unwrap(), Side::S1);
+        assert_eq!(Side::from_index(0).unwrap(), Side::Yellow);
+        assert_eq!(Side::from_index(1).unwrap(), Side::Blue);
         assert!(Side::from_index(2).is_err());
     }
 
     #[test]
     fn test_side_to_index() {
-        assert_eq!(Side::S0.to_index().unwrap(), 0);
-        assert_eq!(Side::S1.to_index().unwrap(), 1);
+        assert_eq!(Side::Yellow.to_index().unwrap(), 0);
+        assert_eq!(Side::Blue.to_index().unwrap(), 1);
     }
 
     #[test]
@@ -146,12 +154,12 @@ mod tests {
         let mut array = SideArray::new(5, 10);
         
         // Test get
-        assert_eq!(*array.get(Side::S0).unwrap(), 5);
-        assert_eq!(*array.get(Side::S1).unwrap(), 10);
+        assert_eq!(*array.get(Side::Yellow).unwrap(), 5);
+        assert_eq!(*array.get(Side::Blue).unwrap(), 10);
         
         // Test get_mut
-        *array.get_mut(Side::S0).unwrap() = 15;
-        assert_eq!(*array.get(Side::S0).unwrap(), 15);
+        *array.get_mut(Side::Yellow).unwrap() = 15;
+        assert_eq!(*array.get(Side::Yellow).unwrap(), 15);
         
         // Test iter
         let values: Vec<_> = array.iter().copied().collect();
@@ -161,7 +169,7 @@ mod tests {
         for v in array.iter_mut() {
             *v *= 2;
         }
-        assert_eq!(*array.get(Side::S0).unwrap(), 30);
-        assert_eq!(*array.get(Side::S1).unwrap(), 20);
+        assert_eq!(*array.get(Side::Yellow).unwrap(), 30);
+        assert_eq!(*array.get(Side::Blue).unwrap(), 20);
     }
 }

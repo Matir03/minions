@@ -14,7 +14,7 @@ use crate::{
 fn test_propose_move_integration() {
     let map = Map::default();
     let board = Board::new(&map);
-    let side = Side::S0;
+    let side = Side::Yellow;
     let node_state = BoardNodeState::new(board, side);
     let mut rng = make_rng();
     let mut tech_state = TechState::new();

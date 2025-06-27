@@ -210,10 +210,10 @@ mod tests {
         let assignment_s1 = TechAssignment::new(techline.len(), acquire_indices);
 
         tech_state
-            .assign_techs(assignment_s0, Side::S0, &techline)
+            .assign_techs(assignment_s0, Side::Yellow, &techline)
             .unwrap();
         // Don't unwrap, as some techs may have been acquired by S0 already
-        let _ = tech_state.assign_techs(assignment_s1, Side::S1, &techline);
+        let _ = tech_state.assign_techs(assignment_s1, Side::Blue, &techline);
 
         tech_state
     }
@@ -225,7 +225,7 @@ mod tests {
         let mut rng = thread_rng();
         let tech_state = new_all_unlocked_tech_state();
         let config = GameConfig::default();
-        let node_state = BoardNodeState::new(board, Side::S0);
+        let node_state = BoardNodeState::new(board, Side::Yellow);
 
         let (turn, _new_state) = node_state.propose_move(&mut rng, &(12, tech_state, &config, 0, 0));
 

@@ -124,10 +124,10 @@ mod tests {
         let assignment_s1 = TechAssignment::new(techline.len(), acquire_indices);
 
         tech_state
-            .assign_techs(assignment_s0, Side::S0, &techline)
+            .assign_techs(assignment_s0, Side::Yellow, &techline)
             .unwrap();
         // Don't unwrap, as some techs may have been acquired by S0 already
-        let _ = tech_state.assign_techs(assignment_s1, Side::S1, &techline);
+        let _ = tech_state.assign_techs(assignment_s1, Side::Blue, &techline);
 
         tech_state
     }
@@ -136,7 +136,7 @@ mod tests {
     fn test_purchase_heuristic_basic() {
         let tech_state = new_all_unlocked_tech_state();
         let money = 100;
-        let units = purchase_heuristic(Side::S0, &tech_state, money);
+        let units = purchase_heuristic(Side::Yellow, &tech_state, money);
         // With 100 money, we should buy 50 Initiates (cost 2).
         assert_eq!(units.len(), 50);
         assert!(units.iter().all(|&u| u == Unit::Initiate));
@@ -146,7 +146,7 @@ mod tests {
     fn test_purchase_heuristic_not_enough_money() {
         let tech_state = new_all_unlocked_tech_state();
         let money = 0;
-        let units = purchase_heuristic(Side::S0, &tech_state, money);
+        let units = purchase_heuristic(Side::Yellow, &tech_state, money);
         assert!(units.is_empty());
     }
 
@@ -154,7 +154,7 @@ mod tests {
     fn test_purchase_heuristic_exact_money() {
         let tech_state = new_all_unlocked_tech_state();
         let money = 1; // Not enough for an Initiate (cost 2)
-        let units = purchase_heuristic(Side::S0, &tech_state, money);
+        let units = purchase_heuristic(Side::Yellow, &tech_state, money);
         assert_eq!(units.len(), 0);
     }
 
@@ -172,11 +172,11 @@ mod tests {
         // Advance far enough to unlock Initiate, then acquire it.
         let assignment = TechAssignment::new(initiate_tech_index + 1, vec![initiate_tech_index]);
         tech_state
-            .assign_techs(assignment, Side::S0, &techline)
+            .assign_techs(assignment, Side::Yellow, &techline)
             .unwrap();
 
         let money = 100;
-        let units = purchase_heuristic(Side::S0, &tech_state, money);
+        let units = purchase_heuristic(Side::Yellow, &tech_state, money);
         // Only Initiates are unlocked.
         assert_eq!(units.len(), 50);
         assert!(units.iter().all(|&u| u == Unit::Initiate));
@@ -187,8 +187,8 @@ mod tests {
         let map = Map::BlackenedShores;
         let mut board = Board::new(&map);
         // Add a spawner unit
-        board.add_piece(Piece::new(Unit::BasicNecromancer, Side::S0, Loc::new(1, 1)));
-        let locs = board.get_spawn_locs(Side::S0, true);
+        board.add_piece(Piece::new(Unit::BasicNecromancer, Side::Yellow, Loc::new(1, 1)));
+        let locs = board.get_spawn_locs(Side::Yellow, true);
         // Necromancer at (1,1) can spawn at 6 adjacent hexes in the spawn zone.
         assert_eq!(locs.len(), 6);
         assert!(locs.iter().all(|loc| loc.y <= 2));
@@ -198,8 +198,8 @@ mod tests {
     fn test_get_spawn_locs_s1() {
         let map = Map::BlackenedShores;
         let mut board = Board::new(&map);
-        board.add_piece(Piece::new(Unit::BasicNecromancer, Side::S1, Loc::new(1, 8)));
-        let locs = board.get_spawn_locs(Side::S1, true);
+        board.add_piece(Piece::new(Unit::BasicNecromancer, Side::Blue, Loc::new(1, 8)));
+        let locs = board.get_spawn_locs(Side::Blue, true);
         assert_eq!(locs.len(), 6);
         assert!(locs.iter().all(|loc| loc.y >= 7));
     }
@@ -209,13 +209,13 @@ mod tests {
         let map = Map::BlackenedShores;
         let mut board = Board::new(&map);
         // Add a spawner
-        board.add_piece(Piece::new(Unit::BasicNecromancer, Side::S0, Loc::new(1, 1)));
+        board.add_piece(Piece::new(Unit::BasicNecromancer, Side::Yellow, Loc::new(1, 1)));
 
         // Block one of the spawn locations
         let blocked_loc = Loc::new(1, 0);
-        board.add_piece(Piece::new(Unit::Zombie, Side::S0, blocked_loc));
+        board.add_piece(Piece::new(Unit::Zombie, Side::Yellow, blocked_loc));
 
-        let locs = board.get_spawn_locs(Side::S0, true);
+        let locs = board.get_spawn_locs(Side::Yellow, true);
         assert_eq!(locs.len(), 5);
         assert!(!locs.contains(&blocked_loc));
     }
@@ -224,11 +224,11 @@ mod tests {
     fn test_generate_heuristic_spawn_actions_full() {
         let map = Map::BlackenedShores;
         let mut board = Board::new(&map);
-        board.add_piece(Piece::new(Unit::BasicNecromancer, Side::S0, Loc::new(4, 1)));
+        board.add_piece(Piece::new(Unit::BasicNecromancer, Side::Yellow, Loc::new(4, 1)));
 
         let tech_state = new_all_unlocked_tech_state();
         let mut money = 4;
-        let actions = generate_heuristic_spawn_actions(&board, Side::S0, &tech_state, money);
+        let actions = generate_heuristic_spawn_actions(&board, Side::Yellow, &tech_state, money);
 
         // It should generate 2 Buy actions and 2 Spawn actions.
         assert_eq!(actions.len(), 4);
