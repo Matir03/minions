@@ -100,7 +100,10 @@ impl<'a> Board<'a> {
 
         ensure!(
             !attacker_state.moved || !attacker_stats.lumbering,
-            "Lumbering piece cannot move and attack on the same turn"
+            format!(
+                "Lumbering piece cannot move and attack on the same turn: {:#?}",
+                attacker,
+            )
         );
 
         ensure!(

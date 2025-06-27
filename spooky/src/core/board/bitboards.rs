@@ -234,8 +234,9 @@ impl Bitboards {
     }
 
     pub fn get_unobstructed_moves(&self, loc: &Loc, side: Side, speed: i32, is_flying: bool) -> Bitboard {
-        let mut prop_mask = !self.pieces[!side];
+        let mut prop_mask = !0;
         if !is_flying {
+            prop_mask &= !self.pieces[!side];
             prop_mask &= !self.water;
         }
 

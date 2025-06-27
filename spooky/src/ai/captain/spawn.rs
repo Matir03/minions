@@ -1,11 +1,9 @@
 use crate::core::{  
-    board::{Board, BitboardOps}, 
-    loc::Loc, 
-    side::Side, 
-    tech::TechState, 
-    units::Unit, 
-    convert::FromIndex,
-    board::actions::SpawnAction
+    board::{actions::SpawnAction, BitboardOps, Board}, convert::FromIndex, loc::Loc, side::Side, tech::TechState, units::Unit, Tech, ToIndex
+};
+use rand::{
+    distributions::WeightedIndex,
+    prelude::*,
 };
 
 /// Given the current board state and available money, this function decides which units to
@@ -15,11 +13,12 @@ pub fn generate_heuristic_spawn_actions(
     side: Side,
     tech_state: &TechState,
     mut money: i32,
+    rng: &mut impl Rng,
 ) -> Vec<SpawnAction> {
     let mut actions = Vec::new();
 
     // Part 1: Decide what to buy and create `Buy` actions
-    let units_to_buy = purchase_heuristic(side, tech_state, money);
+    let units_to_buy = purchase_heuristic(side, tech_state, money, rng);
     for &unit in &units_to_buy {
         money -= unit.stats().cost;
         actions.push(SpawnAction::Buy { unit });
@@ -63,41 +62,57 @@ pub fn generate_heuristic_spawn_actions(
     actions
 }
 
+const WEIGHT_FACTOR: f64 = 1.2;
 /// Decides which units to buy based on available money and technology.
 /// A simple greedy approach: keep buying the cheapest available unit.
-fn purchase_heuristic(side: Side, tech_state: &TechState, mut money: i32) -> Vec<Unit> {
-    let mut units_to_spawn = Vec::new();
-    let mut available_units: Vec<_> = (0..Unit::NUM_UNITS)
-        .map(|i| Unit::from_index(i).unwrap())
-        .filter(|u| tech_state.can_buy(side, *u))
+fn purchase_heuristic(side: Side, tech_state: &TechState, mut money: i32, rng: &mut impl Rng) -> Vec<Unit> {
+    let mut available_units: Vec<_> = tech_state
+        .acquired_techs[side]
+        .iter()
+        .filter_map(|tech| {
+            if let Tech::UnitTech(unit) = tech {
+                Some(*unit)
+            } else {
+                None
+            }
+        })
+        .chain(std::iter::once(Unit::Zombie))
         .collect();
-    available_units.sort_by_key(|u| u.stats().cost);
 
-    if available_units.is_empty() {
-        return units_to_spawn;
+    let mut units_with_weights = available_units
+        .iter()
+        .map(|u| (u, WEIGHT_FACTOR.powi(u.to_index().unwrap() as i32)))
+        .collect::<Vec<_>>();
+
+    let mut units_to_buy = Vec::new();
+
+    loop {
+        units_with_weights = units_with_weights
+            .into_iter()
+            .filter(|(u, _)| money >= u.stats().cost)
+            .collect();
+        
+        if units_with_weights.is_empty() {
+            break;
+        }
+
+        let weights: Vec<f64> = units_with_weights.iter().map(|(_, w)| *w).collect();
+        let distr = WeightedIndex::new(&weights).unwrap();
+        let idx = distr.sample(rng);
+        let unit = units_with_weights[idx].0;
+
+        units_to_buy.push(*unit);
+        money -= unit.stats().cost;
     }
 
-    // Greedily buy the cheapest unit.
-    let cheapest_unit = available_units[0];
-    let cost = cheapest_unit.stats().cost;
-
-    if cost <= 0 {
-        return units_to_spawn;
-    }
-
-    while money >= cost {
-        units_to_spawn.push(cheapest_unit);
-        money -= cost;
-    }
-    units_to_spawn
+    units_to_buy
 }
 
 
 #[cfg(test)]
 mod tests {
-
-
     use super::*;
+    use crate::ai::rng::make_rng;
     use crate::core::board::{Board, Piece};
     use crate::core::map::Map;
     use crate::core::loc::Loc;
@@ -136,7 +151,7 @@ mod tests {
     fn test_purchase_heuristic_basic() {
         let tech_state = new_all_unlocked_tech_state();
         let money = 100;
-        let units = purchase_heuristic(Side::Yellow, &tech_state, money);
+        let units = purchase_heuristic(Side::Yellow, &tech_state, money, &mut make_rng());
         // With 100 money, we should buy 50 Initiates (cost 2).
         assert_eq!(units.len(), 50);
         assert!(units.iter().all(|&u| u == Unit::Initiate));
@@ -146,7 +161,7 @@ mod tests {
     fn test_purchase_heuristic_not_enough_money() {
         let tech_state = new_all_unlocked_tech_state();
         let money = 0;
-        let units = purchase_heuristic(Side::Yellow, &tech_state, money);
+        let units = purchase_heuristic(Side::Yellow, &tech_state, money, &mut make_rng());
         assert!(units.is_empty());
     }
 
@@ -154,7 +169,7 @@ mod tests {
     fn test_purchase_heuristic_exact_money() {
         let tech_state = new_all_unlocked_tech_state();
         let money = 1; // Not enough for an Initiate (cost 2)
-        let units = purchase_heuristic(Side::Yellow, &tech_state, money);
+        let units = purchase_heuristic(Side::Yellow, &tech_state, money, &mut make_rng());
         assert_eq!(units.len(), 0);
     }
 
@@ -176,7 +191,7 @@ mod tests {
             .unwrap();
 
         let money = 100;
-        let units = purchase_heuristic(Side::Yellow, &tech_state, money);
+        let units = purchase_heuristic(Side::Yellow, &tech_state, money, &mut make_rng());
         // Only Initiates are unlocked.
         assert_eq!(units.len(), 50);
         assert!(units.iter().all(|&u| u == Unit::Initiate));
@@ -228,7 +243,7 @@ mod tests {
 
         let tech_state = new_all_unlocked_tech_state();
         let mut money = 4;
-        let actions = generate_heuristic_spawn_actions(&board, Side::Yellow, &tech_state, money);
+        let actions = generate_heuristic_spawn_actions(&board, Side::Yellow, &tech_state, money, &mut make_rng());
 
         // It should generate 2 Buy actions and 2 Spawn actions.
         assert_eq!(actions.len(), 4);

@@ -49,40 +49,6 @@ impl<'a> BoardNodeState<'a> {
             delta_points: SideArray::new(0, 0),
         }
     }
-
-    // fn apply_turn_to_board<'b>(
-    //     original_board: &Board<'b>,
-    //     setup_actions: &[SetupAction],
-    //     attack_actions: &[AttackAction],
-    //     spawn_actions: &[SpawnAction],
-    //     side_to_move: Side,
-    //     rebates: &mut SideArray<i32>,
-    // ) -> Board<'b> {
-    //     let mut new_board = original_board.clone();
-
-    //     for action in setup_actions {
-    //         if let Err(e) = new_board.do_setup_action(side_to_move, action.clone()) {
-    //             eprintln!("[BoardNodeState] Error applying setup action: {:?}: {}", action, e);
-    //         }
-    //     }
-    //     for action in attack_actions {
-    //         match new_board.do_attack_action(side_to_move, action.clone()) {
-    //             Ok(Some((side, amount))) => {
-    //                 rebates[side] += amount;
-    //             }
-    //             Ok(None) => (),
-    //             Err(e) => {
-    //                 eprintln!("[BoardNodeState] Error applying attack action: {:?}: {}", action, e);
-    //             }
-    //         }
-    //     }
-    //     for action in spawn_actions {
-    //         if let Err(e) = new_board.do_spawn_action(side_to_move, money, action.clone()) {
-    //             eprintln!("[BoardNodeState] Error applying spawn action: {:?}: {}", action, e);
-    //         }
-    //     }
-    //     new_board
-    // }
 }
 
 pub fn setup_phase(side: Side, board: &Board<'_>) -> SetupAction {
@@ -97,10 +63,10 @@ pub fn setup_phase(side: Side, board: &Board<'_>) -> SetupAction {
 }
 
 impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
-    type Args = (i32, TechState, &'a GameConfig, usize, i32); // Added usize for current_board_idx and i32 for turn_num
+    // Args: (money, tech_state, config, current_board_idx, turn_num)
+    type Args = (i32, TechState, &'a GameConfig, usize, i32);
 
-    fn propose_move(&self, _rng: &mut impl Rng, args: &Self::Args) -> (BoardTurn, Self) {
-        // println!("[BoardNodeState] Proposing move for side {}", self.side_to_move);
+    fn propose_move(&self, rng: &mut impl Rng, args: &Self::Args) -> (BoardTurn, Self) {
         let (money, ref tech_state, _config, _current_board_idx, turn_num) = *args;
 
         let z3_cfg = Config::new();
@@ -144,7 +110,7 @@ impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
             self.side_to_move,
             &attack_actions,
         ).expect(&format!(
-            "[BoardNodeState] Failed to perform attack phase actions: {:?}",
+            "[BoardNodeState] Failed to perform attack phase actions: {:#?}",
             attack_actions,
         ));
 
@@ -154,6 +120,7 @@ impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
                 self.side_to_move,
                 tech_state,
                 money,
+                rng,
             )
         } else {
             Vec::new()

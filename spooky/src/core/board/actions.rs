@@ -212,6 +212,7 @@ impl<'a> Board<'a> {
             AttackAction::Move { from_loc, to_loc } => {
                 let piece = self.get_piece(&from_loc).context("No piece to move")?;
                 if piece.side != side {
+                    println!("{:#?}", self);
                     bail!("Cannot move opponent's piece");
                 }
                 if !piece.state.can_act() {
@@ -219,6 +220,7 @@ impl<'a> Board<'a> {
                     bail!("Piece has already moved or attacked");
                 }
                 if self.get_piece(&to_loc).is_ok() {
+                    println!("{:#?}", self);
                     bail!("Destination square is occupied");
                 }
 
@@ -243,12 +245,15 @@ impl<'a> Board<'a> {
             AttackAction::Blink { blink_loc } => {
                 let piece = self.get_piece(&blink_loc).context("No piece to blink")?.clone();
                 if piece.side != side {
+                    println!("{:#?}", self);
                     bail!("Cannot blink opponent's piece");
                 }
                 if !piece.unit.stats().blink {
+                    println!("{:#?}", self);
                     bail!("Piece cannot blink");
                 }
                 if !piece.state.can_act() {
+                    println!("{:#?}", self);
                     bail!("Blinking piece has already moved or attacked");
                 }
 
