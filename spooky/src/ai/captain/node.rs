@@ -4,6 +4,8 @@ use std::ops::AddAssign;
 
 use rand::prelude::*;
 
+use crate::core::board::definitions::Phase;
+use crate::core::Unit;
 use crate::{
     core::{
         board::{
@@ -83,6 +85,17 @@ impl<'a> BoardNodeState<'a> {
     // }
 }
 
+pub fn setup_phase(side: Side, board: &Board<'_>) -> SetupAction {
+    let saved_unit = board.reinforcements[side].iter()
+        .max_by_key(|unit| unit.stats().cost)
+        .cloned();
+
+    SetupAction {
+        necromancer_choice: Unit::ArcaneNecromancer,
+        saved_unit,
+    }
+}
+
 impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
     type Args = (i32, TechState, &'a GameConfig, usize, i32); // Added usize for current_board_idx and i32 for turn_num
 
@@ -93,6 +106,13 @@ impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
         let z3_cfg = Config::new();
         let ctx = Context::new(&z3_cfg);
         let optimizer = Optimize::new(&ctx);
+
+        // --- Setup Stage ---
+        let setup_action = if self.board.state.phases().contains(&Phase::Setup) {
+            Some(setup_phase(self.side_to_move, &self.board))
+        } else {
+            None
+        };
 
         // --- Combat Stage ---
         let combat_stage = CombatStage::new(&ctx, &optimizer);
@@ -128,12 +148,16 @@ impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
             attack_actions,
         ));
 
-        let spawn_actions = generate_heuristic_spawn_actions(
-            &new_board,
-            self.side_to_move,
-            tech_state,
-            money,
-        );
+        let spawn_actions = if self.board.state.phases().contains(&Phase::Spawn) {
+            generate_heuristic_spawn_actions(
+                &new_board,
+                self.side_to_move,
+                tech_state,
+                money,
+            )
+        } else {
+            Vec::new()
+        };
 
         let money_after_spawn = new_board.do_spawns(
             self.side_to_move,

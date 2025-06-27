@@ -295,18 +295,13 @@ impl<'a> Board<'a> {
 
         self.state = match self.state {
             BoardState::Normal | BoardState::FirstTurn | BoardState::Reset2 => BoardState::Normal,
-            BoardState::Reset0 => BoardState::Reset1,
             BoardState::Reset1 => BoardState::Reset2,
         };
 
         if let Some(winning_side) = self.winner {
             self.reset();
-            self.state = if winning_side == side_to_move {
-                BoardState::Reset0
-            } else {
-                BoardState::Reset1
-            };
-            
+            self.state = BoardState::Reset1;            
+
             return Ok((income, Some(winning_side)));
         } 
 
@@ -415,6 +410,6 @@ mod tests {
         board.winner = Some(Side::Yellow);
         board.end_turn(Side::Yellow).unwrap();
         assert_eq!(board.pieces.len(), num_pieces);
-        assert_eq!(board.state, BoardState::Reset0);
+        assert_eq!(board.state, BoardState::Reset1);
     }
 }

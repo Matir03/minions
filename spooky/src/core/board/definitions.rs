@@ -11,10 +11,16 @@ use crate::core::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Phase {
+    Setup,
+    Attack,
+    Spawn,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BoardState {
     FirstTurn,
     Normal,
-    Reset0,
     Reset1,
     Reset2,
 }
@@ -22,6 +28,17 @@ pub enum BoardState {
 impl Default for BoardState {
     fn default() -> Self {
         Self::FirstTurn
+    }
+}
+
+impl BoardState {
+    pub fn phases(&self) -> &'static [Phase] {
+        match self {
+            BoardState::FirstTurn => &[Phase::Attack],
+            BoardState::Normal => &[Phase::Attack, Phase::Spawn],
+            BoardState::Reset1 => &[Phase::Setup, Phase::Attack], // just ended, going first
+            BoardState::Reset2 => &[Phase::Setup, Phase::Attack, Phase::Spawn], // just ended, going second
+        }
     }
 }
 

@@ -1,9 +1,5 @@
 use crate::core::{
-    loc::Loc, 
-    spells::{Spell, SpellCast}, 
-    units::Unit,
-    side::Side,
-    board::{Board, BitboardOps},
+    board::{definitions::Phase, BitboardOps, Board}, loc::Loc, side::Side, spells::{Spell, SpellCast}, units::Unit
 };
 use anyhow::{bail, ensure, Result, Context};
 use std::fmt::Display;
@@ -187,6 +183,8 @@ impl SpawnAction {
 
 impl<'a> Board<'a> {
     pub fn do_setup_action(&mut self, side: Side, action: SetupAction) -> Result<()> {
+        ensure!(self.state.phases().contains(&Phase::Setup), "invalid setup phase");
+
         let necromancer_unit = action.necromancer_choice;
         ensure!(necromancer_unit.stats().necromancer, "Cannot choose non-necromancer unit as necromancer");
 
@@ -208,6 +206,8 @@ impl<'a> Board<'a> {
         side: Side,
         action: AttackAction,
     ) -> Result<i32> {
+        ensure!(self.state.phases().contains(&Phase::Attack), "invalid attack phase");
+
         match action {
             AttackAction::Move { from_loc, to_loc } => {
                 let piece = self.get_piece(&from_loc).context("No piece to move")?;
@@ -279,6 +279,8 @@ impl<'a> Board<'a> {
 
     // mutates money
     pub fn do_spawn_action(&mut self, side: Side, money: &mut i32, action: SpawnAction) -> Result<()> {
+        ensure!(self.state.phases().contains(&Phase::Spawn), "invalid spawn phase");
+
         match action {
             SpawnAction::Buy { unit } => {
                 let cost = unit.stats().cost;
