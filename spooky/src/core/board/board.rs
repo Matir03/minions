@@ -70,6 +70,7 @@ impl<'a> Board<'a> {
 
         ensure!(piece.side == side_to_move, "Cannot move opponent's piece");
         ensure!(!piece.state.moved, "Cannot move piece twice");
+        ensure!(piece.state.attacks_used == 0, "Cannot move piece after attacking");
 
         let valid_moves = self.get_valid_move_hexes(*from_loc);
         ensure!(
@@ -144,7 +145,6 @@ impl<'a> Board<'a> {
             }
         }
 
-        attacker_state.moved = true;
         attacker_state.attacks_used += 1;
 
         let mut target_state = target.state.clone();

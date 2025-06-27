@@ -198,7 +198,7 @@ pub fn generate_move_from_model<'ctx>(
                             _ => defender_stats.defense,
                         };
 
-                        println!("{} attacks {} {} times", original_attacker, defender, num_attacks);
+                        // println!("{} attacks {} {} times", original_attacker, defender, num_attacks);
                         for _ in 0..*num_attacks {
                             actions.push(AttackAction::Attack { 
                                 attacker_loc: *attacker_new_loc, 
