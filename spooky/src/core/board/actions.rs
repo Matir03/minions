@@ -238,8 +238,7 @@ impl<'a> Board<'a> {
                 attacker_loc,
                 target_loc,
             } => {
-                self.try_attack(attacker_loc, target_loc, side)?;
-                self.attack_piece(attacker_loc, target_loc)
+                self.attack_piece(attacker_loc, target_loc, side)
             }
             AttackAction::Blink { blink_loc } => {
                 let piece = self.get_piece(&blink_loc).context("No piece to blink")?.clone();
@@ -301,7 +300,6 @@ impl<'a> Board<'a> {
                 }
 
                 self.spawn_piece(side, spawn_loc, unit)?;
-                *money -= unit.stats().cost;
             }
             SpawnAction::Discard { .. } => todo!(),
         }

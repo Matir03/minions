@@ -89,7 +89,8 @@ impl<'a> Board<'a> {
         self.add_piece(piece);
     }
 
-    pub fn try_attack(&mut self, attacker_loc: Loc, target_loc: Loc, side_to_move: Side) -> Result<(bool, bool)> {
+    // returns (removed, bounce)
+    fn try_attack(&mut self, attacker_loc: Loc, target_loc: Loc, side_to_move: Side) -> Result<(bool, bool)> {
         let attacker = self.get_piece(&attacker_loc)?;
 
         ensure!(attacker.side == side_to_move, "Cannot attack with opponent's piece");
@@ -233,60 +234,26 @@ impl<'a> Board<'a> {
         Ok(())
     }
 
-    pub fn attack_piece(&mut self, attacker_loc: Loc, target_loc: Loc) -> Result<i32> {
-        let (damage_amount, bounce) = {
-            let attacker = self.get_piece(&attacker_loc).context("No attacker")?;
-            let target = self.get_piece(&target_loc).context("No target")?;
-            let attack = attacker.unit.stats().attack;
-
-            let mut damage_effect: i32 = 0;
-            let mut bounce = false;
-
-            match attack {
-                Attack::Damage(damage) => {
-                    damage_effect = damage;
-                }
-                Attack::Deathtouch => {
-                    ensure!(
-                        !target.unit.stats().necromancer,
-                        "Deathtouch cannot be used on necromancer"
-                    );
-                    damage_effect = target.unit.stats().defense;
-                }
-                Attack::Unsummon => {
-                    if target.unit.stats().persistent {
-                        damage_effect = 1
-                    } else {
-                        bounce = true;
-                    }
-                }
-            }
-            (damage_effect, bounce)
-        };
+    // returns rebate
+    pub fn attack_piece(&mut self, attacker_loc: Loc, target_loc: Loc, side_to_move: Side) -> Result<i32> {
+        let (removed, bounce) = self.try_attack(attacker_loc, target_loc, side_to_move)?;
 
         self.get_piece_mut(&attacker_loc)
             .context("No attacker")?
             .state
             .exhausted = true;
 
-        let target_is_dead = {
-            let target_piece = self.get_piece_mut(&target_loc).context("No target")?;
-            let mut target_state = target_piece.state.borrow_mut();
-            target_state.damage_taken += damage_amount;
-            target_state.damage_taken >= target_piece.unit.stats().defense
-        };
-
-        if target_is_dead || bounce {
+        if removed {
             let target = self.remove_piece(&target_loc).unwrap();
             if bounce {
                 self.add_reinforcement(target.unit, target.side);
             } else {
-                // Not a bounce, so it's a "death".
+                // death
                 if target.unit.stats().necromancer {
                     self.winner = Some(target.side.opponent());
-                } else {
-                    return Ok(target.unit.stats().rebate);
                 }
+
+                return Ok(target.unit.stats().rebate);
             }
         }
 
