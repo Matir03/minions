@@ -10,17 +10,11 @@ use z3::{
 use super::combat::CombatGraph;
 use super::constraints::{add_all_constraints, Variables};
 
-// A helper to convert Loc to a unique i64 for Z3.
-fn loc_to_i64(loc: &Loc) -> i64 {
-    (loc.x as i64) << 32 | (loc.y as i64 & 0xFFFFFFFF)
-}
-
 // A helper to convert i64 from Z3 back to Loc.
-fn i64_to_loc(val: i64) -> Loc {
-    Loc::new((val >> 32) as i32, (val & 0xFFFFFFFF) as i32)
+fn u64_to_loc(val: u64) -> Loc {
+    Loc::new((val >> 4) as i32, (val & 0xF) as i32)
 }
 
-/// Z3-based constraint solver for combat resolution.
 /// Z3-based constraint solver for combat resolution.
 pub struct CombatSolver<'ctx> {
     ctx: &'ctx Context,
@@ -95,13 +89,14 @@ pub fn generate_move_from_model<'ctx>(
     for friend in &graph.friends {
         let z3_hex_var = &variables.move_hex[friend];
         let val = model.eval(z3_hex_var, true).unwrap()
-            .as_i64().unwrap();
-        let to_loc = i64_to_loc(val);
+            .as_u64().unwrap();
+
+        let to_loc = u64_to_loc(val);
         moves.insert(*friend, to_loc);
 
         let z3_time_var = &variables.move_time[friend];
         let val = model.eval(z3_time_var, true).unwrap()
-            .as_i64().unwrap();
+            .as_u64().unwrap();
 
         move_times.insert(*friend, val);
     }
@@ -383,7 +378,7 @@ mod tests {
                 &[
                     &solver.variables.attacks[&(Loc::new(1, 0), Loc::new(0, 0))], 
                     &solver.variables.move_hex[&Loc::new(1, 0)].
-                        _eq(&Int::from_i64(&ctx, loc_to_i64(&Loc::new(1, 0))))
+                        _eq(&Loc::new(1, 0).as_z3(&ctx))
                 ]
             )
         ));

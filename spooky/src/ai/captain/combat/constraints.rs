@@ -4,19 +4,26 @@ use super::combat::{CombatGraph, CombatTriple};
 use z3::{Context, ast::{Ast, Bool, Int, BV}};
 
 // A helper to convert Loc to a unique i64 for Z3.
-fn loc_to_i64(loc: &Loc) -> i64 {
-    (loc.x as i64) << 32 | (loc.y as i64 & 0xFFFFFFFF)
+fn loc_to_u8(loc: &Loc) -> u8 {
+    if loc.in_bounds() {
+        (loc.x as u8) << 4 | (loc.y as u8)
+    } else {
+        u8::MAX
+    }
 }
 
-const BV_SIZE: u32 = 10;
+const BV_HP_SIZE: u32 = 10;
 type Z3HP<'ctx> = BV<'ctx>; // BV_SIZE bits
 
-type Z3Time<'ctx> = Int<'ctx>; // for theory of inequality
+const BV_TIME_SIZE: u32 = 4;
+type Z3Time<'ctx> = BV<'ctx>; // BV_TIME_SIZE bits
 
-type Z3Loc<'ctx> = Int<'ctx>;
+const BV_LOC_SIZE: u32 = 8;
+type Z3Loc<'ctx> = BV<'ctx>; // BV_LOC_SIZE bits
+
 impl Loc {
     pub fn as_z3<'ctx>(self, ctx: &'ctx Context) -> Z3Loc<'ctx> {
-        Int::from_i64(ctx, loc_to_i64(&self))
+        BV::from_u64(ctx, loc_to_u8(&self) as u64, BV_LOC_SIZE)
     }
 }
 
@@ -52,20 +59,20 @@ impl<'ctx> Variables<'ctx> {
 
         for defender in &graph.defenders {
             vars.removed.insert(*defender, Bool::new_const(ctx, format!("removed_{}", defender)));
-            vars.removal_time.insert(*defender, Z3Time::new_const(ctx, format!("removal_time_{}", defender)));
+            vars.removal_time.insert(*defender, Z3Time::new_const(ctx, format!("removal_time_{}", defender), BV_TIME_SIZE));
             // vars.killed.insert(*defender, Bool::new_const(ctx, format!("killed_{}", loc_to_i64(defender))));
             // vars.unsummoned.insert(*defender, Bool::new_const(ctx, format!("unsummoned_{}", loc_to_i64(defender))));
         }
 
         for attacker in &graph.friends {
-            vars.move_time.insert(*attacker, Z3Time::new_const(ctx, format!("move_time_{}", attacker)));
-            vars.move_hex.insert(*attacker, Z3Loc::new_const(ctx, format!("move_hex_{}", attacker)));
+            vars.move_time.insert(*attacker, Z3Time::new_const(ctx, format!("move_time_{}", attacker), BV_TIME_SIZE));
+            vars.move_hex.insert(*attacker, Z3Loc::new_const(ctx, format!("move_hex_{}", attacker), BV_LOC_SIZE));
         }
 
         for pair in &graph.triples {
             let key = (pair.attacker_pos, pair.defender_pos);
-            vars.attacks.insert(key, Bool::new_const(ctx, format!("attacked_{}_{}", &key.0, &key.1)));
-            vars.num_attacks.insert(key, Z3HP::new_const(ctx, format!("damage_{}_{}", &key.0, &key.1), BV_SIZE));
+            vars.attacks.insert(key, Bool::new_const(ctx, format!("attacked_{}{}", key.0, key.1)));
+            vars.num_attacks.insert(key, Z3HP::new_const(ctx, format!("damage_{}{}", key.0, key.1), BV_HP_SIZE));
         }
 
         vars
@@ -75,7 +82,7 @@ impl<'ctx> Variables<'ctx> {
 
 fn loc_var_in_hexes<'ctx>(
     ctx: &'ctx z3::Context,
-    var: &Int<'ctx>,
+    var: &Z3Loc<'ctx>,
     hexes: &[Loc],
 ) -> Bool<'ctx> {
     if hexes.is_empty() {
@@ -96,7 +103,7 @@ fn bvsum<'ctx>(
     vars: &[BV<'ctx>],
 ) -> BV<'ctx> {
     vars.iter()
-        .fold(BV::from_u64(ctx, 0, BV_SIZE), 
+        .fold(BV::from_u64(ctx, 0, BV_HP_SIZE), 
             |acc, var| acc.bvadd(var))
 }
 
@@ -128,7 +135,7 @@ fn add_movement_constraints<'ctx>(
         for (to_hex, dnf) in &graph.move_hex_map[from_hex] {
             if graph.friends.contains(to_hex) {
                 solver.assert(&variables.move_hex[from_hex]._eq(&to_hex.as_z3(ctx))
-                    .implies(&variables.move_time[from_hex].ge(&variables.move_time[to_hex])));
+                    .implies(&variables.move_time[from_hex].bvuge(&variables.move_time[to_hex])));
             }
 
             if let Some(dnf) = dnf {
@@ -139,7 +146,7 @@ fn add_movement_constraints<'ctx>(
                                 if graph.defenders.contains(loc) {
                                     Bool::and(ctx, &[
                                         &variables.removed[loc],
-                                        &variables.move_time[from_hex].gt(&variables.removal_time[loc])
+                                        &variables.move_time[from_hex].bvugt(&variables.removal_time[loc])
                                     ])
                                 } else {
                                     Bool::from_bool(ctx, false)
@@ -184,7 +191,7 @@ fn add_attacker_constraints<'ctx>(
                 solver.assert(
                     &variables.attacks[&(*attacker, *defender)]._eq(
                         &variables.num_attacks[&(*attacker, *defender)].bvugt(
-                            &BV::from_u64(ctx, 0, BV_SIZE)
+                            &BV::from_u64(ctx, 0, BV_HP_SIZE)
                         )
                     )
                 );
@@ -207,7 +214,7 @@ fn add_attacker_constraints<'ctx>(
         }
 
         // Units cannot exceed their number of attacks
-        let max_attacks = BV::from_u64(ctx, attacker_stats.num_attacks as u64, BV_SIZE);
+        let max_attacks = BV::from_u64(ctx, attacker_stats.num_attacks as u64, BV_HP_SIZE);
         let total_attacks: BV<'ctx> = defenders.iter()
             .map(|defender| {
                 let num_attacks = &variables.num_attacks[&(*attacker, *defender)];
@@ -216,7 +223,7 @@ fn add_attacker_constraints<'ctx>(
                 
                 num_attacks
             })
-            .fold(BV::from_u64(ctx, 0, BV_SIZE), |acc, attack_count| acc.bvadd(attack_count));
+            .fold(BV::from_u64(ctx, 0, BV_HP_SIZE), |acc, attack_count| acc.bvadd(attack_count));
 
         solver.assert(&total_attacks.bvule(&max_attacks));   
     }
@@ -255,11 +262,11 @@ fn add_defender_constraints<'ctx>(
                 let num_attacks = &variables.num_attacks[&(*attacker, *defender)];
 
                 // force removal time to be after all attacks
-                solver.assert(&num_attacks.bvugt(&BV::from_u64(ctx, 0, BV_SIZE))
-                    .implies(&removal_time.ge(&variables.move_time[attacker]))
+                solver.assert(&num_attacks.bvugt(&BV::from_u64(ctx, 0, BV_HP_SIZE))
+                    .implies(&removal_time.bvuge(&variables.move_time[attacker]))
                 );
 
-                let damage = num_attacks.bvmul(&BV::from_u64(ctx, damage_value as u64, BV_SIZE));
+                let damage = num_attacks.bvmul(&BV::from_u64(ctx, damage_value as u64, BV_HP_SIZE));
 
                 Some(damage)
             })
@@ -267,7 +274,7 @@ fn add_defender_constraints<'ctx>(
 
         let total_damage = bvsum(ctx, &damages);
 
-        let removed = total_damage.bvuge(&BV::from_u64(ctx, defense as u64, BV_SIZE));
+        let removed = total_damage.bvuge(&BV::from_u64(ctx, defense as u64, BV_HP_SIZE));
 
         solver.assert(&variables.removed[defender]._eq(&removed));
     }

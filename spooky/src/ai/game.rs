@@ -149,24 +149,24 @@ impl<'a> NodeState<GameTurn> for GameNodeState<'a> {
 pub type GameNode<'a> = MCTSNode<'a, GameNodeState<'a>, GameTurn>;
 pub type GameNodeRef<'a> = &'a RefCell<GameNode<'a>>;
 
-impl<'a> GameNode<'a> {
-    pub fn construct_best_turn(&self) -> GameTurn {
-        let tech_assignment = self.state.general_node.borrow().best_turn();
+// impl<'a> GameNode<'a> {
+//     pub fn construct_best_turn(&self) -> GameTurn {
+//         let tech_assignment = self.state.general_node.borrow().best_turn();
 
-        let board_turns = self.state.board_nodes
-            .iter()
-            .map(|board_node_ref| board_node_ref.borrow().best_turn())
-            .collect();
+//         let board_turns = self.state.board_nodes
+//             .iter()
+//             .map(|board_node_ref| board_node_ref.borrow().best_turn())
+//             .collect();
 
-        let num_boards = self.state.game_state.config.num_boards;
-        GameTurn {
-            tech_assignment,
-            board_turns,
-            spells: HashBag::new(),
-            spell_assignment: vec![Spell::Blank; num_boards],
-        }
-    }
-}
+//         let num_boards = self.state.game_state.config.num_boards;
+//         GameTurn {
+//             tech_assignment,
+//             board_turns,
+//             spells: HashBag::new(),
+//             spell_assignment: vec![Spell::Blank; num_boards],
+//         }
+//     }
+// }
 /*
 pub struct GameTree<'a> {
     pub mcts_node_ref: &'a RefCell<MCTSNode<'a, GameNodeState<'a>, GameTurn>>,

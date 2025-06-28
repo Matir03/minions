@@ -1,3 +1,4 @@
+use std::io::Write;
 /// MCTS Node representing the state of a single board and its turn processing (attack + spawn).
 use std::{cell::RefCell, fmt};
 use std::ops::AddAssign;
@@ -75,15 +76,25 @@ impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
         let mut new_board = self.board.clone();
 
         // --- Setup Stage ---
+        let setup_phase_start = std::time::Instant::now();
+        print!("Setup phase: ");
         let setup_action = if self.board.state.phases().contains(&Phase::Setup) {
             let action = setup_phase(self.side_to_move, &self.board);
             new_board.do_setup_action(self.side_to_move, &action).unwrap();
+            print!("done");
             Some(action)
         } else {
+            print!("skipped");
             None
         };
+        println!(" ({:.2?})", setup_phase_start.elapsed());
+
 
         // --- Combat Stage ---
+        let constraints_start = std::time::Instant::now();
+        print!("Attack phase: adding constraints ");
+        std::io::stdout().flush().unwrap();
+
         let combat_stage = CombatStage::new(&ctx, &optimizer);
         let combat_solver = combat_stage.add_constraints(&new_board, self.side_to_move);
 
@@ -95,8 +106,17 @@ impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
             &combat_solver.graph,
             &combat_solver.variables,
         );
+        println!(" ({:.2?})", constraints_start.elapsed());
 
+        let solve_start = std::time::Instant::now();
+        print!("Attack phase: solving ");
+        std::io::stdout().flush().unwrap();
         let combat_result = optimizer.check(&[]);
+        println!(" ({:.2?})", solve_start.elapsed());
+
+        let model_start = std::time::Instant::now();
+        print!("Attack phase: generating actions ");
+        std::io::stdout().flush().unwrap();
         let attack_actions = match combat_result {
             SatResult::Sat => generate_move_from_model(
                 &optimizer.get_model().unwrap(),
@@ -118,7 +138,11 @@ impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
                 e,
             );
         });
+        println!(" ({:.2?})", model_start.elapsed());
 
+        let spawn_start = std::time::Instant::now();
+        print!("Spawn phase: ");
+        std::io::stdout().flush().unwrap();
         let spawn_actions = if new_board.state.phases().contains(&Phase::Spawn) {
             generate_heuristic_spawn_actions(
                 &new_board,
@@ -139,6 +163,7 @@ impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
             "[BoardNodeState] Failed to perform spawn phase actions: {:#?}",
             spawn_actions,
         ));
+        println!("done ({:.2?})", spawn_start.elapsed());
 
         let (income, winner) = new_board.end_turn(self.side_to_move)
             .expect("[BoardNodeState] Failed to end turn");

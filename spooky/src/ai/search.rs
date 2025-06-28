@@ -41,7 +41,7 @@ impl<'a> SearchTree<'a> {
         Self {
             args: search_args_for_init,
             rng: make_rng(),
-            root: root,
+            root,
         }
     }
 
@@ -85,7 +85,7 @@ impl<'a> SearchTree<'a> {
     }
 
     pub fn best_turn(&self) -> GameTurn {
-        self.root.borrow().construct_best_turn() 
+        self.root.borrow().best_turn() 
     }
 
     pub fn eval(&self) -> Eval {
