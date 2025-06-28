@@ -1,5 +1,6 @@
 use crate::core::{
-    board::{definitions::Phase, BitboardOps, Board}, loc::Loc, side::Side, spells::{Spell, SpellCast}, units::Unit
+    board::{definitions::Phase, BitboardOps, Board, BoardState, Modifiers, Piece, PieceState}, 
+    loc::Loc, side::Side, spells::{Spell, SpellCast}, units::Unit
 };
 use anyhow::{bail, ensure, Result, Context};
 use std::fmt::Display;
@@ -91,7 +92,7 @@ impl SetupAction {
 impl Display for AttackAction {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            AttackAction::Move { from_loc, to_loc } => write!(f, "move {} {}", from_loc, to_loc),
+            AttackAction::Move { from_loc, to_loc } => write!(f, "move {}{}", from_loc, to_loc),
             AttackAction::MoveCyclic { locs } => {
                 let locs_str: Vec<String> = locs.iter().map(|l| l.to_string()).collect();
                 write!(f, "move_cyclic {}", locs_str.join(" "))
@@ -99,7 +100,7 @@ impl Display for AttackAction {
             AttackAction::Attack {
                 attacker_loc,
                 target_loc,
-            } => write!(f, "attack {} {}", attacker_loc, target_loc),
+            } => write!(f, "attack {}{}", attacker_loc, target_loc),
             AttackAction::Blink { blink_loc } => write!(f, "blink {}", blink_loc),
             AttackAction::Cast { spell_cast } => write!(f, "cast {}", spell_cast),
             AttackAction::Resign => write!(f, "resign"),
@@ -182,16 +183,23 @@ impl SpawnAction {
 }
 
 impl<'a> Board<'a> {
-    pub fn do_setup_action(&mut self, side: Side, action: SetupAction) -> Result<()> {
-        ensure!(self.state.phases().contains(&Phase::Setup), "invalid setup phase");
-
+    pub fn do_setup_action(&mut self, side: Side, action: &SetupAction) -> Result<()> {
         let necromancer_unit = action.necromancer_choice;
         ensure!(necromancer_unit.stats().necromancer, "Cannot choose non-necromancer unit as necromancer");
 
         let necromancer_loc = Board::NECROMANCER_START_LOC[side];
-        self.spawn_piece(side, necromancer_loc, necromancer_unit)?;
+        self.remove_piece(&necromancer_loc);
+        self.add_piece(Piece {
+            loc: necromancer_loc,
+            side,
+            unit: necromancer_unit,
+            modifiers: Modifiers::default(),
+            state: PieceState::default(),
+        });
 
         if let Some(saved_unit) = action.saved_unit {
+            ensure!(self.reinforcements[side].contains(&saved_unit) > 0, "Saved unit not in reinforcements");
+            self.reinforcements[side].clear();
             self.add_reinforcement(saved_unit, side);
         }
 
@@ -212,16 +220,15 @@ impl<'a> Board<'a> {
             AttackAction::Move { from_loc, to_loc } => {
                 let piece = self.get_piece(&from_loc).context("No piece to move")?;
                 if piece.side != side {
-                    println!("{:#?}", self);
+                    println!("{:#?}", action);
                     bail!("Cannot move opponent's piece");
                 }
                 if !piece.state.can_act() {
-                    println!("{:#?}", self);
+                    println!("{:#?}", action);
                     bail!("Piece has already moved or attacked");
                 }
                 if self.get_piece(&to_loc).is_ok() {
-                    println!("{:#?}", self);
-                    bail!("Destination square is occupied");
+                    bail!(format!("Destination square is occupied: {}", action));
                 }
 
                 let mut piece_to_move = self.remove_piece(&from_loc)
@@ -297,13 +304,13 @@ impl<'a> Board<'a> {
             }
             SpawnAction::Spawn { spawn_loc, unit } => {
                 if !self.bitboards.get_spawn_locs(side, unit.stats().flying).get(spawn_loc) {
-                    bail!("Can only spawn units on keeps");
+                    bail!(format!("invalid spawn location: {:?}", spawn_loc));
                 }
                 if self.get_piece(&spawn_loc).is_ok() {
-                    bail!("Cannot spawn on occupied location");
+                    bail!(format!("Cannot spawn on occupied location: {:?}", spawn_loc));
                 }
                 if self.reinforcements[side].remove(&unit) == 0 {
-                    bail!("Unit not in reinforcements");
+                    bail!(format!("Unit not in reinforcements: {:?}", unit));
                 }
 
                 self.spawn_piece(side, spawn_loc, unit)?;
@@ -322,4 +329,64 @@ impl<'a> Board<'a> {
         }
         Ok(money)
     }
+
+    // returns (money left, rebate)
+    pub fn take_turn(&mut self, side: Side, board_turn: BoardTurn, money: i32) -> Result<(i32, i32)> {
+        if self.state.phases().contains(&Phase::Setup) {
+            ensure!(board_turn.setup_action.is_some(), "Setup action required");
+            self.do_setup_action(side, &board_turn.setup_action.unwrap())?;
+        } else {
+            ensure!(board_turn.setup_action.is_none(), "Setup action not allowed");
+        }
+        
+        let rebate = self.do_attacks(side, &board_turn.attack_actions)?;
+        let money = self.do_spawns(side, money, &board_turn.spawn_actions)?;
+
+        Ok((money, rebate))
+    }
+
+        // Returns (income, winner)
+    pub fn end_turn(
+        &mut self,
+        side_to_move: Side,
+    ) -> Result<(i32, Option<Side>)> {
+        for piece in self.pieces.values_mut() {
+            piece.state.reset();
+        }
+
+        // Income
+        let units_on_graveyards = self.units_on_graveyards(side_to_move);
+        let soul_necromancer_income = if let Some(necro) = self.find_necromancer(side_to_move) {
+            let necromancer = self.get_piece(&necro).unwrap();
+            if matches!(necromancer.unit, Unit::BasicNecromancer | Unit::ArcaneNecromancer) {
+                1
+            } else {
+                0
+            }
+        } else {
+            0
+        };
+
+        let income = units_on_graveyards + 2 + soul_necromancer_income;
+
+        // Check for graveyard control loss
+        if self.units_on_graveyards(!side_to_move) >= Board::GRAVEYARDS_TO_WIN {
+            self.winner = Some(!side_to_move);
+        }
+
+        self.state = match self.state {
+            BoardState::Normal | BoardState::FirstTurn | BoardState::Reset2 => BoardState::Normal,
+            BoardState::Reset1 => BoardState::Reset2,
+        };
+
+        let winner = self.winner;
+
+        if let Some(winning_side) = winner {
+            self.reset();
+            self.state = BoardState::Reset1;            
+        } 
+
+        Ok((income, winner))
+    }
+
 }

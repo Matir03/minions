@@ -307,10 +307,6 @@ impl<'a> GameState<'a> {
     }
 
     pub fn end_turn(&mut self) -> Result<()> {
-        if self.winner.is_some() {
-            return Ok(());
-        }
-
         // End turn on all boards
         for board in &mut self.boards {
             let (income, winner) = board.end_turn(self.side_to_move)?;
@@ -340,6 +336,10 @@ impl<'a> GameState<'a> {
     }
 
     pub fn take_turn(&mut self, turn: GameTurn) -> Result<()> {
+        if self.winner.is_some() {
+            bail!("Game is already over");
+        }
+
         // Process tech assignments
         let spells_bought = (turn.tech_assignment.num_spells() - 1).min(0);
         let total_spell_cost = spells_bought * self.config.spell_cost();
@@ -367,15 +367,9 @@ impl<'a> GameState<'a> {
 
         for (board_idx, board_turn) in turn.board_turns.into_iter().enumerate() {
             let board = &mut self.boards[board_idx];
-            if let Some(action) = board_turn.setup_action {
-                board.do_setup_action(self.side_to_move, action)?;
-            }
-            for action in board_turn.attack_actions {
-                board.do_attack_action(self.side_to_move, action)?;
-            }
-            for action in board_turn.spawn_actions {
-                board.do_spawn_action(self.side_to_move, &mut self.money[self.side_to_move], action)?;
-            }
+            let (money, rebate) = board.take_turn(self.side_to_move, board_turn, self.money[self.side_to_move])?;
+            self.money[self.side_to_move] = money;
+            self.money[!self.side_to_move] += rebate;
         }
         self.end_turn();
 

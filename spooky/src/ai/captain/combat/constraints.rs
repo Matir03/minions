@@ -51,21 +51,21 @@ impl<'ctx> Variables<'ctx> {
         };
 
         for defender in &graph.defenders {
-            vars.removed.insert(*defender, Bool::new_const(ctx, format!("removed_{}", loc_to_i64(defender))));
-            vars.removal_time.insert(*defender, Int::new_const(ctx, format!("removal_time_{}", loc_to_i64(defender))));
+            vars.removed.insert(*defender, Bool::new_const(ctx, format!("removed_{}", defender)));
+            vars.removal_time.insert(*defender, Z3Time::new_const(ctx, format!("removal_time_{}", defender)));
             // vars.killed.insert(*defender, Bool::new_const(ctx, format!("killed_{}", loc_to_i64(defender))));
             // vars.unsummoned.insert(*defender, Bool::new_const(ctx, format!("unsummoned_{}", loc_to_i64(defender))));
         }
 
         for attacker in &graph.friends {
-            vars.move_time.insert(*attacker, Int::new_const(ctx, format!("attack_time_{}", loc_to_i64(attacker))));
-            vars.move_hex.insert(*attacker, Int::new_const(ctx, format!("attack_hex_{}", loc_to_i64(attacker))));
+            vars.move_time.insert(*attacker, Z3Time::new_const(ctx, format!("move_time_{}", attacker)));
+            vars.move_hex.insert(*attacker, Z3Loc::new_const(ctx, format!("move_hex_{}", attacker)));
         }
 
         for pair in &graph.triples {
             let key = (pair.attacker_pos, pair.defender_pos);
-            vars.attacks.insert(key, Bool::new_const(ctx, format!("attack_{}_{}", loc_to_i64(&key.0), loc_to_i64(&key.1))));
-            vars.num_attacks.insert(key, Z3HP::new_const(ctx, format!("damage_{}_{}", loc_to_i64(&key.0), loc_to_i64(&key.1)), BV_SIZE));
+            vars.attacks.insert(key, Bool::new_const(ctx, format!("attacked_{}_{}", &key.0, &key.1)));
+            vars.num_attacks.insert(key, Z3HP::new_const(ctx, format!("damage_{}_{}", &key.0, &key.1), BV_SIZE));
         }
 
         vars

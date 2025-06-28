@@ -72,22 +72,25 @@ impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
         let z3_cfg = Config::new();
         let ctx = Context::new(&z3_cfg);
         let optimizer = Optimize::new(&ctx);
+        let mut new_board = self.board.clone();
 
         // --- Setup Stage ---
         let setup_action = if self.board.state.phases().contains(&Phase::Setup) {
-            Some(setup_phase(self.side_to_move, &self.board))
+            let action = setup_phase(self.side_to_move, &self.board);
+            new_board.do_setup_action(self.side_to_move, &action).unwrap();
+            Some(action)
         } else {
             None
         };
 
         // --- Combat Stage ---
         let combat_stage = CombatStage::new(&ctx, &optimizer);
-        let combat_solver = combat_stage.add_constraints(&self.board, self.side_to_move);
+        let combat_solver = combat_stage.add_constraints(&new_board, self.side_to_move);
 
         // --- Repositioning Stage ---
         let reposition_stage = PositioningStage::new(&ctx, &optimizer);
         reposition_stage.add_constraints(
-            &self.board,
+            &new_board,
             self.side_to_move,
             &combat_solver.graph,
             &combat_solver.variables,
@@ -99,22 +102,24 @@ impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
                 &optimizer.get_model().unwrap(),
                 &combat_solver.graph,
                 &combat_solver.variables,
-                &self.board,
+                &new_board,
             ),
             SatResult::Unknown | SatResult::Unsat => 
                 panic!("[BoardNodeState] Z3 solver returned {:?}", combat_result),
         };
 
-        let mut new_board = self.board.clone();
         let rebate = new_board.do_attacks(
             self.side_to_move,
             &attack_actions,
-        ).expect(&format!(
-            "[BoardNodeState] Failed to perform attack phase actions: {:#?}",
-            attack_actions,
-        ));
+        ).unwrap_or_else(|e| {
+            panic!("[BoardNodeState] Failed to perform attack phase actions: {:#?}\n{:#?}\n{:#?}",
+                &attack_actions,
+                &optimizer.get_model().unwrap(),
+                e,
+            );
+        });
 
-        let spawn_actions = if self.board.state.phases().contains(&Phase::Spawn) {
+        let spawn_actions = if new_board.state.phases().contains(&Phase::Spawn) {
             generate_heuristic_spawn_actions(
                 &new_board,
                 self.side_to_move,
@@ -143,7 +148,7 @@ impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
         delta_money[!self.side_to_move] = rebate;
 
         let turn_taken = BoardTurn {
-            setup_action: None,
+            setup_action,
             attack_actions,
             spawn_actions,
         };

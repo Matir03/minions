@@ -57,7 +57,7 @@ impl<'a> Board<'a> {
     }
 
     /// Create a board from FEN notation
-        pub fn from_fen(fen: &str, map: &'a Map) -> Result<Self> {
+    pub fn from_fen(fen: &str, map: &'a Map) -> Result<Self> {
         let mut board = Self::new(map);
         let parts: Vec<&str> = fen.split('/').collect();
 

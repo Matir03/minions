@@ -188,7 +188,7 @@ impl<'a> Board<'a> {
     pub fn spawn_piece(&mut self, side: Side, loc: Loc, unit: Unit) -> Result<()> {
         ensure!(
             self.pieces.get(&loc).is_none(),
-            "Cannot spawn on occupied location"
+            "spawn_piece called on occupied location"
         );
         let mut piece = Piece::new(unit, side, loc);
         piece.state = PieceState::spawned();
@@ -267,50 +267,6 @@ impl<'a> Board<'a> {
         self.winner = Some(side.opponent());
     }
 
-    // Returns (income, winner)
-    pub fn end_turn(
-        &mut self,
-        side_to_move: Side,
-    ) -> Result<(i32, Option<Side>)> {
-        for piece in self.pieces.values_mut() {
-            piece.state.reset();
-        }
-
-        // Income
-        let units_on_graveyards = self.units_on_graveyards(side_to_move);
-        let soul_necromancer_income = if let Some(necro) = self.find_necromancer(side_to_move) {
-            let necromancer = self.get_piece(&necro).unwrap();
-            if matches!(necromancer.unit, Unit::BasicNecromancer | Unit::ArcaneNecromancer) {
-                1
-            } else {
-                0
-            }
-        } else {
-            0
-        };
-
-        let income = units_on_graveyards + 2 + soul_necromancer_income;
-
-        // Check for graveyard control loss
-        if self.units_on_graveyards(!side_to_move) >= Board::GRAVEYARDS_TO_WIN {
-            self.winner = Some(!side_to_move);
-        }
-
-        self.state = match self.state {
-            BoardState::Normal | BoardState::FirstTurn | BoardState::Reset2 => BoardState::Normal,
-            BoardState::Reset1 => BoardState::Reset2,
-        };
-
-        if let Some(winning_side) = self.winner {
-            self.reset();
-            self.state = BoardState::Reset1;            
-
-            return Ok((income, Some(winning_side)));
-        } 
-
-        Ok((income, None))
-    }
-
     pub fn assign_spell(&mut self, spell: Spell, side: Side) -> Result<()> {
         self.spells[side].insert(spell);
         Ok(())
@@ -322,7 +278,7 @@ impl<'a> Board<'a> {
                 .filter(|(_, piece)| !piece.unit.stats().necromancer)
                 .collect::<Vec<_>>();
 
-                let new_board = Board::from_fen(Self::START_FEN, self.map).unwrap();
+        let new_board = Board::from_fen(Self::START_FEN, self.map).unwrap();
         self.pieces = new_board.pieces;
         self.winner = new_board.winner;
         self.state = new_board.state;
@@ -334,7 +290,7 @@ impl<'a> Board<'a> {
         }
     }
 
-    fn find_necromancer(&self, side: Side) -> Option<Loc> {
+    pub fn find_necromancer(&self, side: Side) -> Option<Loc> {
         self.pieces.values()
             .find(|p| p.side == side && p.unit.stats().necromancer)
             .map(|p| p.loc)

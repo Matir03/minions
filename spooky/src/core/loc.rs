@@ -82,7 +82,7 @@ impl FromStr for Loc {
 
 impl Display for Loc {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{},{}", self.x, self.y)
+        write!(f, "{}{}", (self.x as u8 + b'a') as char, self.y)
     }
 }
 

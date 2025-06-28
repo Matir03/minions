@@ -1,5 +1,6 @@
 use std::fmt::{self, Display, Formatter, Result};
 use colored::{Color, ColoredString, Colorize};
+use hashbag::HashBag;
 
 use crate::core::{tech::NUM_TECHS, SideArray};
 
@@ -92,8 +93,23 @@ impl<'a> Display for GameState<'a> {
     }
 }
 
+fn fmt_reinforcements(reinforcements: &HashBag<Unit>, f: &mut Formatter<'_>) -> Result {
+    for unit in reinforcements.iter() {
+        write!(f, "{} ", unit.to_fen_char())?;
+    }
+    Ok(())
+}
+
 impl<'a> Display for Board<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        // board stage
+        writeln!(f, "Board state: {:?}", self.state)?;
+
+        // yellow reinforcements
+        write!(f, "{}", "Yellow reinforcements: ".yellow())?;
+        fmt_reinforcements(&self.reinforcements[Side::Yellow], f)?;
+        writeln!(f)?;
+
         // Print column numbers with proper spacing for hex grid
         // a to j
         write!(f, "    ")?;
@@ -131,6 +147,12 @@ impl<'a> Display for Board<'a> {
         // Bottom border with proper hex spacing
         write!(f, "    {}", " ".repeat(9))?;
         writeln!(f, "{}", "─".repeat(32))?;
+
+        // blue reinforcements
+        write!(f, "{}", "Blue reinforcements: ".blue())?;
+        fmt_reinforcements(&self.reinforcements[Side::Blue], f)?;
+        writeln!(f)?;
+
         Ok(())
     }
 }
