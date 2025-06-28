@@ -78,7 +78,7 @@ pub trait BitboardOps {
 
     fn neighbors(&self) -> Self;
     fn propagate_masked(&self, mask: Bitboard) -> Self;
-    fn all_movements(&self, speed: i32, prop: Bitboard, vacant: Bitboard) -> Self;
+    fn all_movements(&self, speed: i32, prop: Bitboard, dest: Bitboard) -> Self;
 
     fn get(&self, loc: Loc) -> bool;
     fn set(&mut self, loc: Loc, value: bool);
@@ -113,14 +113,14 @@ impl BitboardOps for Bitboard {
         self.neighbors() & mask
     }
 
-    fn all_movements(&self, speed: i32, prop: Bitboard, vacant: Bitboard) -> Self {
+    fn all_movements(&self, speed: i32, prop: Bitboard, dest: Bitboard) -> Self {
         let mut moves: Bitboard = *self;
 
         for _ in 0..speed {
             moves |= moves.propagate_masked(prop);
         }
 
-        moves & vacant
+        moves & dest
     }
 
     fn get(&self, loc: Loc) -> bool {
@@ -218,6 +218,7 @@ impl Bitboards {
         !(self.pieces[Side::Yellow] | self.pieces[Side::Blue])
     }
 
+    // moves that can be executed right now on the board
     pub fn get_valid_moves(&self, loc: &Loc, side: Side, speed: i32, is_flying: bool) -> Bitboard {
         let mut prop_mask = !self.pieces[!side];
         if !is_flying {
@@ -233,6 +234,7 @@ impl Bitboards {
         start.all_movements(speed, prop_mask, dest_mask)
     }
 
+    // moves assuming no enemy unit is removed
     pub fn get_unobstructed_moves(&self, loc: &Loc, side: Side, speed: i32, is_flying: bool) -> Bitboard {
         let mut prop_mask = !0;
         if !is_flying {
@@ -240,7 +242,7 @@ impl Bitboards {
             prop_mask &= !self.water;
         }
 
-        let mut dest_mask = !0;
+        let mut dest_mask = !self.pieces[!side];
 
         let mut start = Bitboard::new();
         start.set(*loc, true);
@@ -248,6 +250,7 @@ impl Bitboards {
         start.all_movements(speed, prop_mask, dest_mask)
     }
 
+    // all moves assuming the board has no other pieces
     pub fn get_theoretical_moves(&self, loc: &Loc, side: Side, speed: i32, is_flying: bool) -> Bitboard {
         let mut prop_mask = if is_flying { !0 } else { !self.water };
         let dest_mask = !0;

@@ -135,10 +135,16 @@ fn add_movement_constraints<'ctx>(
                 let bool_vars: Vec<_> = dnf.iter()
                     .map(|conjunct|
                         conjunct.iter()
-                            .map(|loc| Bool::and(ctx, &[
-                                &variables.removed[loc],
-                                &variables.move_time[from_hex].gt(&variables.removal_time[loc])
-                            ]))
+                            .map(|loc| {
+                                if graph.defenders.contains(loc) {
+                                    Bool::and(ctx, &[
+                                        &variables.removed[loc],
+                                        &variables.move_time[from_hex].gt(&variables.removal_time[loc])
+                                    ])
+                                } else {
+                                    Bool::from_bool(ctx, false)
+                                }
+                            })
                             .collect::<Vec<_>>()
                         )
                     .collect();
