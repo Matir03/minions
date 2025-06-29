@@ -26,9 +26,9 @@ use crate::{
 
 use super::{
     combat::{
+        constraints::{generate_move_from_sat_model, ConstraintManager},
         generation::CombatGenerationSystem,
         graph::CombatGraph,
-        manager::{generate_move_from_sat_model, CombatManager},
         prophet::DeathProphet,
     },
     positioning::SatPositioningSystem,
@@ -102,7 +102,7 @@ impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
         std::io::stdout().flush().unwrap();
 
         let graph = new_board.combat_graph(self.side_to_move);
-        let mut manager = CombatManager::new(&ctx, graph, &new_board);
+        let mut manager = ConstraintManager::new(&ctx, graph, &new_board);
         println!(" ({:.2?})", combat_start.elapsed());
 
         // --- Death Prophet (reused) ---
@@ -121,17 +121,6 @@ impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
         let sat_result = manager.solver.check();
         println!("done ({:.2?})", sat_start.elapsed());
 
-        // --- Combat Generation (add death prophet assumptions) ---
-        let generation_start = std::time::Instant::now();
-        print!("Combat generation: ");
-        std::io::stdout().flush().unwrap();
-
-        combat_generation
-            .generate_combat(&mut manager, &new_board, self.side_to_move)
-            .unwrap();
-        print!("done");
-        println!(" ({:.2?})", generation_start.elapsed());
-
         // --- Generate move candidates ---
         let candidate_gen = std::time::Instant::now();
         print!("Generating move candidates: ");
@@ -140,22 +129,71 @@ impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
             positioning_system.generate_move_candidates(rng, &new_board, self.side_to_move);
         println!("done ({:.2?})", candidate_gen.elapsed());
 
-        // --- Piece Positioning (add positioning constraints) ---
+        // try combat generation + attack reconciliation until we succeed
+        loop {
+            // --- Combat Generation (add death prophet assumptions) ---
+            let generation_start = std::time::Instant::now();
+            print!("Combat generation: ");
+            std::io::stdout().flush().unwrap();
+
+            manager.solver.push();
+            combat_generation
+                .generate_combat(&mut manager, &new_board, self.side_to_move)
+                .unwrap();
+            println!("done ({:.2?})", generation_start.elapsed());
+
+            // --- Attack Reconciliation ---
+            let reconciliation_start = std::time::Instant::now();
+            print!("Attack reconciliation: ");
+            std::io::stdout().flush().unwrap();
+
+            let result = positioning_system
+                .attack_reconciliation(
+                    &mut manager,
+                    &new_board,
+                    self.side_to_move,
+                    &move_candidates,
+                )
+                .expect("Attack reconciliation error");
+
+            if result.is_none() {
+                // no conflicts, proceed to attack positioning
+                println!("success ({:.2?})", reconciliation_start.elapsed());
+                break;
+            }
+
+            // no legal way to resolve the conflicts, backtrack
+            manager.solver.pop(1);
+
+            // and add the new constraints to the solver
+            for constraint in result.unwrap() {
+                manager.solver.assert(&constraint);
+            }
+
+            println!("backtracking ({:.2?})", reconciliation_start.elapsed());
+        }
+
+        // --- Attack Positioning ---
         let positioning_start = std::time::Instant::now();
-        print!("Piece positioning: ");
+        print!("Attack positioning: ");
         std::io::stdout().flush().unwrap();
 
-        positioning_system.position_pieces_with_sat(
-            &mut manager,
-            &new_board,
-            self.side_to_move,
-            &move_candidates,
-        );
+        positioning_system
+            .attack_positioning(
+                &mut manager,
+                &new_board,
+                self.side_to_move,
+                &move_candidates,
+            )
+            .expect("Attack positioning error");
 
         print!("done");
         println!(" ({:.2?})", positioning_start.elapsed());
 
         // --- Extract all moves from the combined model ---
+        let extract_start = std::time::Instant::now();
+        print!("Extracting combat actions: ");
+        std::io::stdout().flush().unwrap();
         let combat_actions = match manager.solver.check() {
             z3::SatResult::Sat => {
                 let model = manager
@@ -167,6 +205,7 @@ impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
             }
             _ => panic!("Failed to generate combat actions"),
         };
+        println!("done ({:.2?})", extract_start.elapsed());
 
         // --- Apply combat actions ---
         let combat_start = std::time::Instant::now();
@@ -187,7 +226,6 @@ impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
             self.side_to_move,
             move_candidates,
         );
-        println!("{:?}", positioning_actions);
         new_board
             .do_attacks(self.side_to_move, &positioning_actions)
             .unwrap();

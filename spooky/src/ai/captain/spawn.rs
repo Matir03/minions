@@ -71,8 +71,9 @@ pub fn generate_heuristic_spawn_actions(
     actions
 }
 
-/// Decides which units to buy based on available money and technology.
-/// A simple greedy approach: keep buying the cheapest available unit.
+const WEIGHT_FACTOR: f64 = 1.2;
+/// Decides which units to buy based on available money and tech
+/// weight units by their tech index, buy later units at a higher rate
 fn purchase_heuristic(
     side: Side,
     tech_state: &TechState,
@@ -91,24 +92,28 @@ fn purchase_heuristic(
         .chain(std::iter::once(Unit::Zombie))
         .collect();
 
-    // Sort by cost to ensure deterministic greedy selection
-    available_units.sort_by_key(|u| u.stats().cost);
+    let mut units_with_weights = available_units
+        .iter()
+        .map(|u| (u, WEIGHT_FACTOR.powi(u.to_index().unwrap() as i32)))
+        .collect::<Vec<_>>();
 
     let mut units_to_buy = Vec::new();
 
     loop {
-        // Find the cheapest unit we can afford
-        let affordable_units: Vec<_> = available_units
-            .iter()
-            .filter(|u| money >= u.stats().cost)
+        units_with_weights = units_with_weights
+            .into_iter()
+            .filter(|(u, _)| money >= u.stats().cost)
             .collect();
 
-        if affordable_units.is_empty() {
+        if units_with_weights.is_empty() {
             break;
         }
 
-        // Always buy the cheapest unit (first in sorted list)
-        let unit = affordable_units[0];
+        let weights: Vec<f64> = units_with_weights.iter().map(|(_, w)| *w).collect();
+        let distr = WeightedIndex::new(&weights).unwrap();
+        let idx = distr.sample(rng);
+        let unit = units_with_weights[idx].0;
+
         units_to_buy.push(*unit);
         money -= unit.stats().cost;
     }

@@ -26,6 +26,7 @@ type Z3Loc<'ctx> = BV<'ctx>;
 
 /// Variables for the new SAT-based constraint satisfaction problem
 /// Focused on attacking pieces with preprocessed constraints on movement/attack
+#[derive(Debug)]
 pub struct SatVariables<'ctx> {
     // Passive variables - only for pieces that could attack
     pub passive: HashMap<Loc, Bool<'ctx>>, // whether the piece is engaged in combat
@@ -46,11 +47,6 @@ pub struct SatVariables<'ctx> {
     // Only included post hoc for friendly units whose movements end up being relevant to combat
     pub move_hex: HashMap<Loc, Z3Loc<'ctx>>, // what hex friendly unit is moving to
     pub move_time: HashMap<Loc, Z3Time<'ctx>>, // when the friendly unit moves
-
-    // Sets of locations
-    pub friendly_locs: HashSet<Loc>, // friendly pieces that need to move out of the way (initially empty)
-    pub attacker_locs: HashSet<Loc>, // all pieces that could attack some enemy piece
-    pub defender_locs: HashSet<Loc>, // all pieces that could be attacked by some enemy piece
 }
 
 impl<'ctx> SatVariables<'ctx> {
@@ -65,23 +61,10 @@ impl<'ctx> SatVariables<'ctx> {
             removal_time: HashMap::new(),
             move_hex: HashMap::new(),
             move_time: HashMap::new(),
-            friendly_locs: HashSet::new(),
-            attacker_locs: HashSet::new(),
-            defender_locs: HashSet::new(),
         };
 
-        // Identify attackers (pieces that could attack some enemy piece)
-        for triple in &graph.triples {
-            vars.attacker_locs.insert(triple.attacker_pos);
-        }
-
-        // Identify defenders (pieces that could be attacked by some enemy piece)
-        for defender in &graph.defenders {
-            vars.defender_locs.insert(*defender);
-        }
-
         // Create variables for attackers only
-        for attacker in &vars.attacker_locs {
+        for attacker in &graph.attackers {
             // Passive variable
             vars.passive.insert(
                 *attacker,
@@ -113,7 +96,7 @@ impl<'ctx> SatVariables<'ctx> {
         }
 
         // Create variables for all defenders
-        for defender in &vars.defender_locs {
+        for defender in &graph.defenders {
             vars.removed.insert(
                 *defender,
                 Bool::new_const(ctx, format!("removed_{}", defender)),
@@ -128,64 +111,57 @@ impl<'ctx> SatVariables<'ctx> {
     }
 
     /// Add movement variables for a friendly unit that needs to move out of the way
-    pub fn add_friendly_movement_variables(&mut self, ctx: &'ctx Context, loc: Loc) {
-        if !self.friendly_locs.contains(&loc) {
-            self.friendly_locs.insert(loc);
-            self.move_hex.insert(
-                loc,
-                Z3Loc::new_const(ctx, format!("move_hex_{}", loc), BV_LOC_SIZE),
-            );
-            self.move_time.insert(
-                loc,
-                Z3Time::new_const(ctx, format!("move_time_{}", loc), BV_TIME_SIZE),
-            );
+    pub fn add_friendly_movement_variable(&mut self, ctx: &'ctx Context, loc: Loc) {
+        if self.move_hex.contains_key(&loc) {
+            return;
         }
+
+        self.move_hex.insert(
+            loc,
+            Z3Loc::new_const(ctx, format!("move_hex_{}", loc), BV_LOC_SIZE),
+        );
+        self.move_time.insert(
+            loc,
+            Z3Time::new_const(ctx, format!("move_time_{}", loc), BV_TIME_SIZE),
+        );
     }
 }
 
 /// SAT-based combat solver with constraints
-pub struct CombatManager<'ctx> {
+pub struct ConstraintManager<'ctx> {
     pub ctx: &'ctx Context,
     pub solver: Solver<'ctx>,
     pub variables: SatVariables<'ctx>,
     pub graph: CombatGraph,
 }
 
-impl<'ctx> CombatManager<'ctx> {
+impl<'ctx> ConstraintManager<'ctx> {
     pub fn new(ctx: &'ctx Context, graph: CombatGraph, board: &Board) -> Self {
         let solver = Solver::new(ctx);
         let variables = SatVariables::new(ctx, &graph);
 
-        let mut sat_solver = CombatManager {
+        let mut manager = ConstraintManager {
             ctx,
             solver,
             variables,
             graph,
         };
 
-        sat_solver.add_constraints(board);
-        sat_solver
+        manager.add_constraints(board);
+        manager
     }
 
     fn add_constraints(&mut self, board: &Board) {
         self.add_passive_constraints(board);
         self.add_attack_constraints(board);
         self.add_defender_constraints(board);
-        self.add_location_constraints(board);
+        self.add_triple_constraints(board);
     }
 
     fn add_passive_constraints(&mut self, board: &Board) {
         // Passive constraint: passive[attacker_loc] => !attacked[attacker_loc][any_defender_loc]
-        for attacker in &self.variables.attacker_locs {
+        for (attacker, defenders) in &self.graph.attacker_to_defenders_map {
             let passive_var = &self.variables.passive[attacker];
-
-            // Get all defenders this attacker could attack
-            let empty_vec = Vec::new();
-            let defenders = self
-                .graph
-                .attacker_to_defenders_map
-                .get(attacker)
-                .unwrap_or(&empty_vec);
 
             for defender in defenders {
                 let attacked_var = &self.variables.attacked[&(*attacker, *defender)];
@@ -197,41 +173,22 @@ impl<'ctx> CombatManager<'ctx> {
     }
 
     fn add_attack_constraints(&mut self, board: &Board) {
-        for attacker in &self.variables.attacker_locs {
+        for (attacker, defenders) in &self.graph.attacker_to_defenders_map {
             let attacker_piece = board.get_piece(attacker).unwrap();
             let attacker_stats = attacker_piece.unit.stats();
             let passive_var = &self.variables.passive[attacker];
             let attack_hex_var = &self.variables.attack_hex[attacker];
             let attack_time_var = &self.variables.attack_time[attacker];
 
-            // Get all defenders this attacker could attack
-            let empty_vec = Vec::new();
-            let defenders = self
-                .graph
-                .attacker_to_defenders_map
-                .get(attacker)
-                .unwrap_or(&empty_vec);
+            let valid_attack_hexes = self.graph.attack_hex_map.get(attacker).unwrap();
+            assert!(!valid_attack_hexes.is_empty());
 
-            // Attack hex constraints: must be a possible hex unit could attack from
-            // Only apply if not passive
-            let mut valid_attack_hexes = Vec::new();
-            for defender in defenders {
-                for triple in &self.graph.triples {
-                    if triple.attacker_pos == *attacker && triple.defender_pos == *defender {
-                        valid_attack_hexes.extend(triple.attack_hexes.clone());
-                    }
-                }
-            }
-
-            if !valid_attack_hexes.is_empty() {
-                let hex_constraint =
-                    loc_var_in_hexes(self.ctx, attack_hex_var, &valid_attack_hexes);
-                self.solver
-                    .assert(&passive_var.not().implies(&hex_constraint));
-            }
+            let hex_constraint = loc_var_in_hexes(self.ctx, attack_hex_var, &valid_attack_hexes);
+            self.solver
+                .assert(&passive_var.not().implies(&hex_constraint));
 
             // No two non-passive attackers can have the same attack_hex
-            for other_attacker in &self.variables.attacker_locs {
+            for other_attacker in &self.graph.attackers {
                 if other_attacker != attacker {
                     let other_passive_var = &self.variables.passive[other_attacker];
                     let other_attack_hex_var = &self.variables.attack_hex[other_attacker];
@@ -239,30 +196,22 @@ impl<'ctx> CombatManager<'ctx> {
                     let same_hex = attack_hex_var._eq(other_attack_hex_var);
                     let both_active =
                         Bool::and(self.ctx, &[&passive_var.not(), &other_passive_var.not()]);
+
                     self.solver.assert(&both_active.implies(&same_hex.not()));
                 }
             }
 
-            // DNF pathing constraints for attack_hex with attack_time as timing variable
-            // This is similar to the old movement constraints but for attack positions
-            for defender in defenders {
-                for triple in &self.graph.triples {
-                    if triple.attacker_pos == *attacker && triple.defender_pos == *defender {
-                        for attack_hex in &triple.attack_hexes {
-                            // Check if this attack hex requires enemy removal
-                            if let Some(dnf) =
-                                self.get_removal_dnf_for_attack(*attacker, *attack_hex)
-                            {
-                                let path_constraint = self.create_dnf_constraint(
-                                    &dnf,
-                                    attack_time_var,
-                                    &attack_hex_var._eq(&attack_hex.as_z3(self.ctx)),
-                                );
-                                self.solver
-                                    .assert(&passive_var.not().implies(&path_constraint));
-                            }
-                        }
-                    }
+            for attack_hex in valid_attack_hexes {
+                let dnf = &self.graph.move_hex_map[attacker][&attack_hex];
+
+                if let Some(dnf) = dnf {
+                    let path_constraint = self.create_dnf_constraint(
+                        &dnf,
+                        attack_time_var,
+                        &attack_hex_var._eq(&attack_hex.as_z3(self.ctx)),
+                    );
+                    self.solver
+                        .assert(&passive_var.not().implies(&path_constraint));
                 }
             }
 
@@ -320,7 +269,7 @@ impl<'ctx> CombatManager<'ctx> {
     }
 
     fn add_defender_constraints(&mut self, board: &Board) {
-        for defender in &self.variables.defender_locs {
+        for defender in &self.graph.defenders {
             let defender_piece = board.get_piece(defender).unwrap();
             let defender_stats = defender_piece.unit.stats();
             let defense = defender_stats.defense;
@@ -377,48 +326,22 @@ impl<'ctx> CombatManager<'ctx> {
         }
     }
 
-    fn add_location_constraints(&mut self, board: &Board) {
-        // Movement constraints for friendly units that need to move out of the way
-        for friendly_loc in &self.variables.friendly_locs {
-            let move_hex_var = &self.variables.move_hex[friendly_loc];
-            let move_time_var = &self.variables.move_time[friendly_loc];
+    fn add_triple_constraints(&mut self, board: &Board) {
+        for triple in &self.graph.triples {
+            let CombatTriple {
+                attacker_pos,
+                defender_pos,
+                attack_hexes,
+            } = triple;
 
-            // Must move to a valid hex
-            let valid_move_hexes = board.get_theoretical_move_hexes(*friendly_loc);
-            self.solver
-                .assert(&loc_var_in_hexes(self.ctx, move_hex_var, &valid_move_hexes));
+            let attack_hex_var = &self.variables.attack_hex[attacker_pos];
+            let attack_time_var = &self.variables.attack_time[attacker_pos];
 
-            // Cannot be the same as the attack_hex of any non-passive attacker
-            for attacker in &self.variables.attacker_locs {
-                let passive_var = &self.variables.passive[attacker];
-                let attack_hex_var = &self.variables.attack_hex[attacker];
-
-                let same_hex = move_hex_var._eq(attack_hex_var);
-                let attacker_active = passive_var.not();
-                self.solver
-                    .assert(&attacker_active.implies(&same_hex.not()));
-            }
-
-            // Cannot be the same as the move_hex of any other friendly unit
-            for other_friendly in &self.variables.friendly_locs {
-                if other_friendly != friendly_loc {
-                    let other_move_hex_var = &self.variables.move_hex[other_friendly];
-                    self.solver
-                        .assert(&move_hex_var._eq(other_move_hex_var).not());
-                }
-            }
-
-            // DNF pathing constraints with move_time as timing constraint
-            for (to_hex, dnf) in &self.graph.move_hex_map[friendly_loc] {
-                if let Some(dnf) = dnf {
-                    let path_constraint = self.create_dnf_constraint(
-                        dnf,
-                        move_time_var,
-                        &move_hex_var._eq(&to_hex.as_z3(self.ctx)),
-                    );
-                    self.solver.assert(&path_constraint);
-                }
-            }
+            let attack_hex_constraint = loc_var_in_hexes(self.ctx, attack_hex_var, attack_hexes);
+            self.solver.assert(
+                &self.variables.attacked[&(*attacker_pos, *defender_pos)]
+                    .implies(&attack_hex_constraint),
+            );
         }
     }
 
@@ -430,7 +353,7 @@ impl<'ctx> CombatManager<'ctx> {
     }
 
     /// Helper method to create DNF constraints
-    fn create_dnf_constraint<'a>(
+    pub fn create_dnf_constraint<'a>(
         &self,
         dnf: &Vec<Vec<Loc>>,
         timing_var: &Z3Time<'ctx>,
@@ -442,7 +365,7 @@ impl<'ctx> CombatManager<'ctx> {
                 conjunct
                     .iter()
                     .map(|loc| {
-                        if self.variables.defender_locs.contains(loc) {
+                        if self.graph.defenders.contains(loc) {
                             Bool::and(
                                 self.ctx,
                                 &[
@@ -474,6 +397,19 @@ impl<'ctx> CombatManager<'ctx> {
 
         condition.implies(&disjunct)
     }
+
+    pub fn untouched(&self, loc: &Loc) -> bool {
+        !self.variables.move_hex.contains_key(loc) && !self.graph.attackers.contains(loc)
+    }
+
+    pub fn untouched_friendly_units(&self) -> HashSet<Loc> {
+        self.graph
+            .friends
+            .iter()
+            .filter(|loc| self.untouched(loc))
+            .cloned()
+            .collect()
+    }
 }
 
 /// Generate a sequence of AttackActions from a satisfying SAT model
@@ -492,7 +428,7 @@ pub fn generate_move_from_sat_model<'ctx>(
     // This includes both attack moves (for non-passive attackers) and friendly moves (for units that need to move out of the way)
 
     // Collect attack moves for non-passive attackers
-    for attacker in &variables.attacker_locs {
+    for (attacker, defenders) in &graph.attacker_to_defenders_map {
         let passive_var = &variables.passive[attacker];
         let is_passive = model.eval(passive_var, true).unwrap().as_bool().unwrap();
 
@@ -511,7 +447,7 @@ pub fn generate_move_from_sat_model<'ctx>(
         moves.insert(*attacker, to_loc);
         move_times.insert(*attacker, time_val);
 
-        for defender in &variables.defender_locs {
+        for defender in defenders {
             let key = (*attacker, *defender);
             if let Some(num_attacks_var) = variables.num_attacks.get(&key) {
                 let val = model.eval(num_attacks_var, true).unwrap().as_u64().unwrap();
@@ -527,13 +463,12 @@ pub fn generate_move_from_sat_model<'ctx>(
     }
 
     // Collect moves for friendly units that needed to move out of the way
-    for friendly_loc in &variables.friendly_locs {
+    for (friendly_loc, move_hex_var) in &variables.move_hex {
         // Skip if already processed as an attacker
         if moves.contains_key(friendly_loc) {
             continue;
         }
 
-        let move_hex_var = &variables.move_hex[friendly_loc];
         let move_time_var = &variables.move_time[friendly_loc];
 
         let hex_val = model.eval(move_hex_var, true).unwrap().as_u64().unwrap();

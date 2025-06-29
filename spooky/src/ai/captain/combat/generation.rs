@@ -1,6 +1,6 @@
 use crate::ai::captain::combat::{
+    constraints::ConstraintManager,
     graph::CombatGraph,
-    manager::CombatManager,
     prophet::{DeathProphet, RemovalAssumption},
 };
 use crate::core::{board::Board, side::Side};
@@ -22,7 +22,7 @@ impl CombatGenerationSystem {
     /// Generate combat actions using the new architecture
     pub fn generate_combat<'ctx>(
         &mut self,
-        manager: &mut CombatManager<'ctx>,
+        manager: &mut ConstraintManager<'ctx>,
         board: &Board,
         side: Side,
     ) -> Result<()> {
@@ -67,7 +67,7 @@ impl CombatGenerationSystem {
     /// Create a Z3 constraint for a removal assumption
     fn create_assumption_constraint<'ctx>(
         &self,
-        variables: &crate::ai::captain::combat::manager::SatVariables<'ctx>,
+        variables: &crate::ai::captain::combat::constraints::SatVariables<'ctx>,
         assumption: &RemovalAssumption,
         ctx: &'ctx z3::Context,
     ) -> Bool<'ctx> {
@@ -111,7 +111,7 @@ mod tests {
         let board = Board::new(&map);
         let ctx = Context::new(&z3::Config::new());
         let graph = board.combat_graph(Side::Yellow);
-        let mut solver = CombatManager::new(&ctx, graph, &board);
+        let mut solver = ConstraintManager::new(&ctx, graph, &board);
 
         let mut system = CombatGenerationSystem::new();
 

@@ -1,4 +1,4 @@
-use crate::ai::captain::combat::manager::{CombatManager, SatVariables};
+use crate::ai::captain::combat::constraints::{ConstraintManager, SatVariables};
 use crate::core::{
     board::{actions::AttackAction, Board},
     Loc, Side,
@@ -23,73 +23,73 @@ pub struct MoveCandidate {
 pub struct SatPositioningSystem {}
 
 impl SatPositioningSystem {
-    pub fn position_pieces_with_sat<'ctx>(
-        &self,
-        manager: &mut CombatManager<'ctx>,
-        board: &Board,
-        side: Side,
-        move_candidates: &[MoveCandidate],
-    ) -> Result<()> {
-        self.attack_reconciliation(manager, board, side, move_candidates)?;
-        self.attack_positioning(manager, board, side, move_candidates)?;
-
-        Ok(())
-    }
-
     /// Stage 1: Attack reconciliation - ensuring friendly pieces in the way of attacking pieces can get out of the way
-    fn attack_reconciliation<'ctx>(
+    /// returns whether the attack is at all possible
+    /// if it is, it will return true and the solver will be in a state where the attack can be positioned
+    /// if it is not, it will return false and the caller can try a different attack
+    pub fn attack_reconciliation<'ctx>(
         &self,
-        manager: &mut CombatManager<'ctx>,
+        manager: &mut ConstraintManager<'ctx>,
         board: &Board,
         side: Side,
         move_candidates: &[MoveCandidate],
-    ) -> Result<()> {
+    ) -> Result<Option<Vec<Bool<'ctx>>>> {
+        let mut constraints = Vec::new();
+
         loop {
             // Generate a model for the combat
             let model = match manager.solver.check() {
                 z3::SatResult::Sat => manager.solver.get_model().context("Failed to get model")?,
-                z3::SatResult::Unsat => bail!("Combat solver is unsatisfiable"),
+                z3::SatResult::Unsat => {
+                    // results in backtracking
+                    // return the constraints that should be added after backtracking
+                    return Ok(Some(constraints));
+                }
                 z3::SatResult::Unknown => {
-                    bail!(
+                    // this should never happen
+                    panic!(
                         "Unknown result from SAT solver: {:?}",
                         manager.solver.get_reason_unknown().unwrap()
                     );
                 }
             };
 
-            // First, collect all the data we need from the model without borrowing solver mutably
+            // Compute the untouched friendly units and the overlapping units
+            let untouched_friendly_units = manager.untouched_friendly_units();
             let overlapping_units =
-                self.collect_overlapping_units_data(manager, &model, board, side);
+                self.compute_overlapping_units(manager, &model, &untouched_friendly_units);
 
             if overlapping_units.is_empty() {
                 // No conflicts, proceed to attack positioning
                 break;
             }
 
-            // Extract all data we need from solver before doing mutable operations
-            let solver_data = self.extract_solver_data(manager, board, side, &overlapping_units);
+            // add movement variables and constraints for the overlapping units
+            // don't add constraints on where the overlapping units can move to
+            // because we want to check the strong assumptions first
+            let new_constraints =
+                self.add_variables_and_constraints(manager, board, &overlapping_units)?;
 
-            // Now do all the mutable operations on solver in a separate scope
-            self.add_variables_and_constraints(manager, board, &overlapping_units)?;
+            constraints.extend(new_constraints);
 
-            // Create assumptions using the extracted data
-            let assumptions =
-                self.create_assumptions_from_data(manager, &solver_data, &overlapping_units);
+            // assumptions that force the overlapping units to move in a way that causes no further conflicts
+            let strong_move_assumptions = self.strong_move_assumptions(
+                manager,
+                &untouched_friendly_units,
+                &overlapping_units,
+                board,
+            );
+            // check the strong assumptions
+            let is_sat = manager.solver.check_assumptions(&strong_move_assumptions);
 
-            manager.solver.push();
-            for assumption in &assumptions {
-                manager.solver.assert(assumption);
-            }
-
-            match manager.solver.check() {
+            match is_sat {
                 z3::SatResult::Sat => {
-                    // Assumptions can be satisfied, make them permanent and proceed
+                    // we can safely proceed to attack positioning
                     break;
                 }
                 z3::SatResult::Unsat => {
-                    // Need to weaken assumptions
-                    manager.solver.pop(1);
-                    self.weaken_assumptions(manager, board, side, &overlapping_units)?;
+                    // we need to resolve the potential conflicts that will be caused by the weaker assumptions
+                    continue;
                 }
                 z3::SatResult::Unknown => {
                     bail!(
@@ -100,82 +100,58 @@ impl SatPositioningSystem {
             }
         }
 
-        Ok(())
+        Ok(None)
     }
 
     /// Collect overlapping units data without borrowing solver mutably
-    fn collect_overlapping_units_data<'ctx>(
+    fn compute_overlapping_units<'ctx>(
         &self,
-        solver: &CombatManager<'ctx>,
+        manager: &ConstraintManager<'ctx>,
         model: &z3::Model<'ctx>,
-        board: &Board,
-        side: Side,
+        untouched_friendly_units: &HashSet<Loc>,
     ) -> Vec<Loc> {
         let mut overlapping_units = Vec::new();
-        let mut occupied_hexes = HashSet::new();
 
         // Collect all hexes that will be occupied by non-passive attackers
-        for attacker in &solver.variables.attacker_locs {
-            let passive_var = &solver.variables.passive[attacker];
+        for attacker in &manager.graph.attackers {
+            let passive_var = &manager.variables.passive[attacker];
             let is_passive = model.eval(passive_var, true).unwrap().as_bool().unwrap();
 
-            if !is_passive {
-                let attack_hex_var = &solver.variables.attack_hex[attacker];
-                let hex_val = model.eval(attack_hex_var, true).unwrap().as_u64().unwrap();
-                let attack_hex = Loc::from_z3(hex_val);
-                occupied_hexes.insert(attack_hex);
+            if is_passive {
+                continue;
             }
-        }
 
-        // Find friendly units that are in the way
-        for (loc, piece) in &board.pieces {
-            if piece.side == side && occupied_hexes.contains(loc) {
-                // This unit is in the way and needs to move
-                overlapping_units.push(*loc);
+            let attack_hex_var = &manager.variables.attack_hex[attacker];
+            let hex_val = model.eval(attack_hex_var, true).unwrap().as_u64().unwrap();
+            let attack_hex = Loc::from_z3(hex_val);
+
+            if untouched_friendly_units.contains(&attack_hex) {
+                overlapping_units.push(*attacker);
             }
         }
 
         overlapping_units
     }
 
-    /// Extract all data needed from solver without borrowing it mutably
-    fn extract_solver_data(
+    /// create assumptions for moves avoiding non-combat friendly units
+    fn strong_move_assumptions<'ctx>(
         &self,
-        solver: &CombatManager,
+        manager: &ConstraintManager<'ctx>,
+        untouched_friendly_units: &HashSet<Loc>,
+        overlapping_units: &[Loc],
         board: &Board,
-        side: Side,
-        overlapping_units: &[Loc],
-    ) -> SolverData {
-        let untouched_friendly_units: HashSet<_> = board
-            .pieces
-            .iter()
-            .filter(|(_, piece)| piece.side == side)
-            .map(|(loc, _)| *loc)
-            .filter(|loc| !solver.variables.friendly_locs.contains(loc))
-            .collect();
-
-        SolverData {
-            untouched_friendly_units,
-        }
-    }
-
-    /// Create assumptions using extracted data
-    fn create_assumptions_from_data<'ctx>(
-        &self,
-        solver: &CombatManager<'ctx>,
-        solver_data: &SolverData,
-        overlapping_units: &[Loc],
     ) -> Vec<Bool<'ctx>> {
         let mut assumptions = Vec::new();
 
-        for &unit_loc in overlapping_units {
-            let move_hex_var = &solver.variables.move_hex[&unit_loc];
+        for unit_loc in overlapping_units {
+            let move_hex_var = &manager.variables.move_hex[&unit_loc];
 
-            // Constraint: move_hex must not be to any hex occupied by an untouched friendly unit
-            for &untouched_loc in &solver_data.untouched_friendly_units {
-                let constraint = move_hex_var._eq(&untouched_loc.as_z3(solver.ctx)).not();
-                assumptions.push(constraint);
-            }
+            let move_hexes_occupied = untouched_friendly_units.iter().cloned().collect::<Vec<_>>();
+
+            let move_hex_not_occupied_constraint =
+                loc_var_in_hexes(manager.ctx, move_hex_var, &move_hexes_occupied).not();
+
+            assumptions.push(move_hex_not_occupied_constraint);
         }
 
         assumptions
@@ -184,96 +160,97 @@ impl SatPositioningSystem {
     /// Add variables and constraints for overlapping units
     fn add_variables_and_constraints<'ctx>(
         &self,
-        solver: &mut CombatManager<'ctx>,
+        manager: &mut ConstraintManager<'ctx>,
         board: &Board,
         overlapping_units: &[Loc],
-    ) -> Result<()> {
+    ) -> Result<Vec<Bool<'ctx>>> {
+        let mut constraints = Vec::new();
+
         // Add move_time and move_hex variables for overlapping units
         for unit_loc in overlapping_units {
-            solver
+            manager
                 .variables
-                .add_friendly_movement_variables(solver.ctx, *unit_loc);
+                .add_friendly_movement_variable(manager.ctx, *unit_loc);
+
+            let new_constraints = self.add_friendly_movement_constraints(*unit_loc, manager, board);
+            constraints.extend(new_constraints);
         }
 
-        // Add constraints for these new variables
-        self.add_friendly_movement_constraints(solver, board, overlapping_units);
-
-        Ok(())
+        Ok(constraints)
     }
 
     /// Add movement constraints for friendly units
     fn add_friendly_movement_constraints<'ctx>(
         &self,
-        manager: &mut CombatManager<'ctx>,
+        friendly_loc: Loc,
+        manager: &mut ConstraintManager<'ctx>,
         board: &Board,
-        friendly_locs: &[Loc],
-    ) {
-        for &friendly_loc in friendly_locs {
-            let move_hex_var = &manager.variables.move_hex[&friendly_loc];
-            let move_time_var = &manager.variables.move_time[&friendly_loc];
+    ) -> Vec<Bool<'ctx>> {
+        let mut constraints = Vec::new();
 
-            // Must move to a valid hex
-            let valid_move_hexes = board.get_theoretical_move_hexes(friendly_loc);
-            let hex_constraint = loc_var_in_hexes(manager.ctx, move_hex_var, &valid_move_hexes);
-            manager.solver.assert(&hex_constraint);
+        let move_hex_var = &manager.variables.move_hex[&friendly_loc];
+        let move_time_var = &manager.variables.move_time[&friendly_loc];
 
-            // Cannot be the same as the attack_hex of any non-passive attacker
-            for attacker in &manager.variables.attacker_locs {
-                let passive_var = &manager.variables.passive[attacker];
-                let attack_hex_var = &manager.variables.attack_hex[attacker];
+        // Cannot be the same as the attack_hex of any non-passive attacker
+        for attacker in &manager.graph.attackers {
+            let passive_var = &manager.variables.passive[attacker];
+            let attack_hex_var = &manager.variables.attack_hex[attacker];
 
-                let same_hex = move_hex_var._eq(attack_hex_var);
+            let same_hex = move_hex_var._eq(attack_hex_var);
+
+            if attacker == &friendly_loc {
+                manager.solver.assert(&same_hex);
+                constraints.push(same_hex);
+            } else {
                 let attacker_active = passive_var.not();
                 let conflict_constraint = attacker_active.implies(&same_hex.not());
                 manager.solver.assert(&conflict_constraint);
-            }
-
-            // Cannot be the same as the move_hex of any other friendly unit
-            for other_friendly in &manager.variables.friendly_locs {
-                if other_friendly != &friendly_loc {
-                    let other_move_hex_var = &manager.variables.move_hex[other_friendly];
-                    let same_hex_constraint = move_hex_var._eq(other_move_hex_var).not();
-                    manager.solver.assert(&same_hex_constraint);
-                }
+                constraints.push(conflict_constraint);
             }
         }
-    }
 
-    /// Weaken assumptions based on unsat core
-    fn weaken_assumptions<'ctx>(
-        &self,
-        manager: &mut CombatManager<'ctx>,
-        board: &Board,
-        side: Side,
-        overlapping_units: &[Loc],
-    ) -> Result<()> {
-        let unsat_core = manager.solver.get_unsat_core();
-
-        // For each unit in the unsat core, replace its assumption with a weaker one
-        for constraint in &unsat_core {
-            // This is a simplified implementation - in practice, you'd need to
-            // identify which unit this constraint belongs to and weaken it appropriately
-            // For now, we'll just remove the constraint
-        }
-
-        // Check if the weakened assumptions can be satisfied
-        match manager.solver.check() {
-            z3::SatResult::Sat => Ok(()),
-            z3::SatResult::Unsat => {
-                // Repeat the weakening process
-                self.weaken_assumptions(manager, board, side, overlapping_units)
+        // Cannot be the same as the move_hex of any other friendly unit
+        for (other_friendly, other_move_hex_var) in &manager.variables.move_hex {
+            if other_friendly != &friendly_loc {
+                let different_hex_constraint = move_hex_var._eq(other_move_hex_var).not();
+                manager.solver.assert(&different_hex_constraint);
+                constraints.push(different_hex_constraint);
             }
-            z3::SatResult::Unknown => bail!(
-                "Unknown result from SAT solver: {:?}",
-                manager.solver.get_reason_unknown().unwrap()
-            ),
         }
+
+        // restrict the move hex to the theoretical move hexes
+        let theoretical_move_hexes = board.get_theoretical_move_hexes(friendly_loc);
+
+        let theoretical_hex_constraint =
+            loc_var_in_hexes(manager.ctx, move_hex_var, &theoretical_move_hexes);
+
+        manager.solver.assert(&theoretical_hex_constraint);
+        constraints.push(theoretical_hex_constraint);
+
+        // add DNF constraints on the move
+        for attack_hex in theoretical_move_hexes {
+            let dnf = &manager.graph.move_hex_map[&friendly_loc][&attack_hex];
+            let condition = move_hex_var._eq(&attack_hex.as_z3(manager.ctx));
+
+            if let Some(dnf) = dnf {
+                let path_constraint = manager.create_dnf_constraint(
+                    &dnf,
+                    &manager.variables.move_time[&friendly_loc],
+                    &condition,
+                );
+
+                manager.solver.assert(&path_constraint);
+                constraints.push(path_constraint);
+            }
+        }
+
+        constraints
     }
 
     /// Stage 2: Attack positioning - choosing specific locations for combat-relevant pieces
-    fn attack_positioning<'ctx>(
+    pub fn attack_positioning<'ctx>(
         &self,
-        manager: &mut CombatManager<'ctx>,
+        manager: &mut ConstraintManager<'ctx>,
         board: &Board,
         side: Side,
         move_candidates: &[MoveCandidate],
@@ -291,19 +268,12 @@ impl SatPositioningSystem {
             }
 
             // Check if the move is to a location occupied by a non-combat-relevant piece
-            if let Some(blocking_piece) =
-                self.get_blocking_piece(manager, candidate.to_loc, board, side)
-            {
-                // Make the blocking piece combat-relevant
-                if !manager.variables.friendly_locs.contains(&blocking_piece) {
-                    manager
-                        .variables
-                        .add_friendly_movement_variables(manager.ctx, blocking_piece);
-                    self.add_friendly_movement_constraints(manager, board, &[blocking_piece]);
+            let blocking_piece = candidate.to_loc;
+            if self.has_blocking_piece(manager, blocking_piece, board, side) {
+                self.add_variables_and_constraints(manager, board, &[blocking_piece])?;
 
-                    // Add moves for this piece to the end of the filtered list
-                    // (This would require modifying the list, but we'll handle it differently)
-                }
+                // Add moves for this piece to the end of the filtered list
+                // (This would require modifying the list, but we'll handle it differently)
             }
 
             // Attempt to assert the current move
@@ -373,29 +343,18 @@ impl SatPositioningSystem {
     /// Filter moves to only include combat-relevant ones
     fn filter_combat_relevant_moves<'ctx>(
         &self,
-        manager: &CombatManager<'ctx>,
+        manager: &ConstraintManager<'ctx>,
         move_candidates: &[MoveCandidate],
     ) -> Vec<MoveCandidate> {
         move_candidates
             .iter()
             .filter(|candidate| {
-                // Check if the from_loc has move_hex variables (friendly units that need to move)
-                if manager
-                    .variables
-                    .friendly_locs
-                    .contains(&candidate.from_loc)
-                {
-                    // Filter destination to valid move_hexes
-                    // This would require checking the actual move_hex constraints
-                    true // Simplified for now
-                } else if manager
-                    .variables
-                    .attacker_locs
-                    .contains(&candidate.from_loc)
-                {
-                    // Filter destination to valid attack_hexes
-                    // This would require checking the actual attack_hex constraints
-                    true // Simplified for now
+                if manager.variables.move_hex.contains_key(&candidate.from_loc) {
+                    // moves for friendly units in the way are always combat-relevant
+                    true
+                } else if manager.graph.attackers.contains(&candidate.from_loc) {
+                    // moves for attackers are combat-relevant if they are to an attack hex
+                    manager.graph.attack_hex_map[&candidate.from_loc].contains(&candidate.to_loc)
                 } else {
                     // Not combat-relevant
                     false
@@ -406,24 +365,16 @@ impl SatPositioningSystem {
     }
 
     /// Get the piece that would block a move to a specific location
-    fn get_blocking_piece<'ctx>(
+    fn has_blocking_piece<'ctx>(
         &self,
-        manager: &CombatManager<'ctx>,
+        manager: &ConstraintManager<'ctx>,
         to_loc: Loc,
         board: &Board,
         side: Side,
-    ) -> Option<Loc> {
-        // Check if there's a friendly piece at the destination that's not combat-relevant
-        for (loc, piece) in &board.pieces {
-            if piece.side == side && *loc == to_loc {
-                if !manager.variables.friendly_locs.contains(loc)
-                    && !manager.variables.attacker_locs.contains(loc)
-                {
-                    return Some(*loc);
-                }
-            }
-        }
-        None
+    ) -> bool {
+        manager.graph.friends.contains(&to_loc)
+            && !manager.graph.attackers.contains(&to_loc)
+            && !manager.variables.move_hex.contains_key(&to_loc)
     }
 
     /// Create a Z3 constraint for a specific move
@@ -434,15 +385,14 @@ impl SatPositioningSystem {
         to_loc: Loc,
         ctx: &'ctx z3::Context,
     ) -> Bool<'ctx> {
-        if variables.friendly_locs.contains(&from_loc) {
+        if let Some(move_hex_var) = variables.move_hex.get(&from_loc) {
             // This is a friendly unit that needs to move out of the way
-            variables.move_hex[&from_loc]._eq(&to_loc.as_z3(ctx))
-        } else if variables.attacker_locs.contains(&from_loc) {
+            move_hex_var._eq(&to_loc.as_z3(ctx))
+        } else if let Some(attack_hex_var) = variables.attack_hex.get(&from_loc) {
             // This is an attacker
-            variables.attack_hex[&from_loc]._eq(&to_loc.as_z3(ctx))
+            attack_hex_var._eq(&to_loc.as_z3(ctx))
         } else {
-            // This shouldn't happen for combat-relevant moves
-            Bool::from_bool(ctx, false)
+            panic!("create_move_constraint called for a piece that is not a friendly unit or an attacker: {:?}", from_loc);
         }
     }
 
@@ -450,7 +400,7 @@ impl SatPositioningSystem {
     /// This function doesn't interact with the SAT solver and can be called separately
     pub fn generate_non_attack_movements<'ctx>(
         &self,
-        manager: &CombatManager<'ctx>,
+        manager: &ConstraintManager<'ctx>,
         board: &Board,
         side: Side,
         move_candidates: Vec<MoveCandidate>,
@@ -462,8 +412,8 @@ impl SatPositioningSystem {
             .friends
             .iter()
             .filter(|loc| {
-                !manager.variables.friendly_locs.contains(loc)
-                    && !manager.variables.attacker_locs.contains(loc)
+                !manager.variables.move_hex.contains_key(loc)
+                    && !manager.graph.attackers.contains(loc)
             })
             .cloned()
             .collect();
@@ -472,10 +422,6 @@ impl SatPositioningSystem {
         let mut to_be_processed = move_candidates;
 
         while !yet_to_move.is_empty() {
-            println!("Stage 3: yet_to_move: {:?}", yet_to_move);
-            println!("Stage 3: used_hexes: {:?}", used_hexes);
-            println!("Stage 3: to_be_processed: {:?}", to_be_processed);
-
             // Filter move candidates to only include non-combat pieces
             to_be_processed = to_be_processed
                 .iter()
@@ -506,8 +452,6 @@ impl SatPositioningSystem {
                     *entry = candidate;
                 }
             }
-
-            println!("Stage 3: piece_to_best_move: {:?}", piece_to_best_move);
 
             let mut visited = HashSet::new();
             let mut moved = HashSet::new();
@@ -577,11 +521,8 @@ impl SatPositioningSystem {
                     actions.push(action);
                 }
             }
-
-            println!("Stage 3: actions: {:?}", actions);
         }
 
-        println!("Stage 3: generated {} actions", actions.len());
         actions
     }
 }
@@ -606,15 +547,10 @@ fn loc_var_in_hexes<'ctx>(
     Bool::or(ctx, &alternatives_ref)
 }
 
-/// Data extracted from solver to avoid borrowing conflicts
-struct SolverData {
-    untouched_friendly_units: HashSet<Loc>,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ai::captain::combat::manager::generate_move_from_sat_model;
+    use crate::ai::captain::combat::constraints::generate_move_from_sat_model;
     use crate::ai::rng::make_rng;
     use crate::core::{board::Board, map::Map, side::Side, units::Unit};
     use z3::Context;
@@ -670,7 +606,7 @@ mod tests {
         let mut board = Board::new(&map);
         let ctx = Context::new(&z3::Config::new());
         let graph = board.combat_graph(Side::Yellow);
-        let manager = CombatManager::new(&ctx, graph, &board);
+        let manager = ConstraintManager::new(&ctx, graph, &board);
 
         let positioning = SatPositioningSystem {};
         let move_candidates = vec![];
@@ -699,7 +635,7 @@ mod tests {
 
         let ctx = Context::new(&z3::Config::new());
         let graph = board.combat_graph(Side::Yellow);
-        let manager = CombatManager::new(&ctx, graph, &board);
+        let manager = ConstraintManager::new(&ctx, graph, &board);
 
         let mut positioning = SatPositioningSystem {};
         let move_candidates =
@@ -737,7 +673,7 @@ mod tests {
 
         let ctx = Context::new(&z3::Config::new());
         let graph = board.combat_graph(Side::Yellow);
-        let manager = CombatManager::new(&ctx, graph, &board);
+        let manager = ConstraintManager::new(&ctx, graph, &board);
 
         let positioning = SatPositioningSystem {};
         let move_candidates = vec![
@@ -796,7 +732,7 @@ mod tests {
 
         let ctx = Context::new(&z3::Config::new());
         let graph = board.combat_graph(Side::Yellow);
-        let manager = CombatManager::new(&ctx, graph, &board);
+        let manager = ConstraintManager::new(&ctx, graph, &board);
 
         let positioning = SatPositioningSystem {};
         let move_candidates = vec![
@@ -850,7 +786,7 @@ mod tests {
 
         let ctx = Context::new(&z3::Config::new());
         let graph = board.combat_graph(Side::Yellow);
-        let manager = CombatManager::new(&ctx, graph, &board);
+        let manager = ConstraintManager::new(&ctx, graph, &board);
 
         let positioning = SatPositioningSystem {};
         let move_candidates = vec![
@@ -872,9 +808,6 @@ mod tests {
             Side::Yellow,
             move_candidates,
         );
-
-        // Debug output
-        println!("Generated actions: {:?}", actions);
 
         // Should resolve conflict by choosing the higher affinity move
         assert!(!actions.is_empty());
@@ -913,7 +846,7 @@ mod tests {
 
         let ctx = Context::new(&z3::Config::new());
         let graph = board.combat_graph(Side::Yellow);
-        let manager = CombatManager::new(&ctx, graph, &board);
+        let manager = ConstraintManager::new(&ctx, graph, &board);
 
         let positioning = SatPositioningSystem {};
         let move_candidates = vec![MoveCandidate {
@@ -943,18 +876,18 @@ mod tests {
 
         let ctx = Context::new(&z3::Config::new());
         let graph = board.combat_graph(Side::Yellow);
-        let manager = CombatManager::new(&ctx, graph, &board);
+        let manager = ConstraintManager::new(&ctx, graph, &board);
 
         let positioning = SatPositioningSystem {};
 
         // Should find the blocking piece
-        let blocking = positioning.get_blocking_piece(&manager, loc, &board, Side::Yellow);
-        assert_eq!(blocking, Some(loc));
+        let blocking = positioning.has_blocking_piece(&manager, loc, &board, Side::Yellow);
+        assert!(blocking);
 
         // Should not find a blocking piece for an empty location
         let empty_loc = crate::core::loc::Loc::new(5, 5);
-        let blocking = positioning.get_blocking_piece(&manager, empty_loc, &board, Side::Yellow);
-        assert_eq!(blocking, None);
+        let blocking = positioning.has_blocking_piece(&manager, empty_loc, &board, Side::Yellow);
+        assert!(!blocking);
     }
 
     #[test]
@@ -972,7 +905,7 @@ mod tests {
 
         let ctx = Context::new(&z3::Config::new());
         let graph = board.combat_graph(Side::Yellow);
-        let manager = CombatManager::new(&ctx, graph, &board);
+        let manager = ConstraintManager::new(&ctx, graph, &board);
 
         let positioning = SatPositioningSystem {};
         let to_loc = crate::core::loc::Loc::new(1, 2);
@@ -999,17 +932,21 @@ mod tests {
 
         let ctx = Context::new(&z3::Config::new());
         let graph = board.combat_graph(Side::Yellow);
-        let mut manager = CombatManager::new(&ctx, graph, &board);
+        let mut manager = ConstraintManager::new(&ctx, graph, &board);
 
         let mut positioning = SatPositioningSystem {};
         let move_candidates =
             positioning.generate_move_candidates(&mut make_rng(), &board, Side::Yellow);
-        let result = positioning.position_pieces_with_sat(
-            &mut manager,
-            &mut board,
-            Side::Yellow,
-            &move_candidates,
-        );
+
+        let result = positioning
+            .attack_reconciliation(&mut manager, &board, Side::Yellow, &move_candidates)
+            .unwrap();
+
+        assert!(result.is_none());
+
+        positioning
+            .attack_positioning(&mut manager, &board, Side::Yellow, &move_candidates)
+            .unwrap();
 
         let model = manager.solver.get_model().unwrap();
         let sat_actions =
@@ -1026,9 +963,6 @@ mod tests {
             .into_iter()
             .chain(positioning_actions.into_iter())
             .collect::<Vec<_>>();
-
-        // Should succeed and return actions
-        assert!(result.is_ok());
 
         // Should return some actions (even if just staying in place)
         assert!(!all_actions.is_empty());
