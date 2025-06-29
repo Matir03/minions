@@ -1,10 +1,13 @@
-use crate::core::{  
-    board::{actions::SpawnAction, BitboardOps, Board}, convert::FromIndex, loc::Loc, side::Side, tech::TechState, units::Unit, Tech, ToIndex
+use crate::core::{
+    board::{actions::SpawnAction, BitboardOps, Board},
+    convert::FromIndex,
+    loc::Loc,
+    side::Side,
+    tech::TechState,
+    units::Unit,
+    Tech, ToIndex,
 };
-use rand::{
-    distributions::WeightedIndex,
-    prelude::*,
-};
+use rand::{distributions::WeightedIndex, prelude::*};
 
 /// Given the current board state and available money, this function decides which units to
 /// purchase and where to spawn them using a set of heuristics.
@@ -44,7 +47,10 @@ pub fn generate_heuristic_spawn_actions(
     for unit in sorted_units {
         if unit.stats().flying {
             if let Some(loc) = all_spawn_locs.pop() {
-                actions.push(SpawnAction::Spawn { spawn_loc: loc, unit });
+                actions.push(SpawnAction::Spawn {
+                    spawn_loc: loc,
+                    unit,
+                });
                 land_spawn_locs.set(loc, false);
             } else {
                 // no more spawn locations
@@ -53,21 +59,27 @@ pub fn generate_heuristic_spawn_actions(
         } else {
             // land units
             if let Some(loc) = land_spawn_locs.pop() {
-                actions.push(SpawnAction::Spawn { spawn_loc: loc, unit });
+                actions.push(SpawnAction::Spawn {
+                    spawn_loc: loc,
+                    unit,
+                });
                 all_spawn_locs.set(loc, false);
-            } 
+            }
         }
     }
 
     actions
 }
 
-const WEIGHT_FACTOR: f64 = 1.2;
 /// Decides which units to buy based on available money and technology.
 /// A simple greedy approach: keep buying the cheapest available unit.
-fn purchase_heuristic(side: Side, tech_state: &TechState, mut money: i32, rng: &mut impl Rng) -> Vec<Unit> {
-    let mut available_units: Vec<_> = tech_state
-        .acquired_techs[side]
+fn purchase_heuristic(
+    side: Side,
+    tech_state: &TechState,
+    mut money: i32,
+    rng: &mut impl Rng,
+) -> Vec<Unit> {
+    let mut available_units: Vec<_> = tech_state.acquired_techs[side]
         .iter()
         .filter_map(|tech| {
             if let Tech::UnitTech(unit) = tech {
@@ -79,28 +91,24 @@ fn purchase_heuristic(side: Side, tech_state: &TechState, mut money: i32, rng: &
         .chain(std::iter::once(Unit::Zombie))
         .collect();
 
-    let mut units_with_weights = available_units
-        .iter()
-        .map(|u| (u, WEIGHT_FACTOR.powi(u.to_index().unwrap() as i32)))
-        .collect::<Vec<_>>();
+    // Sort by cost to ensure deterministic greedy selection
+    available_units.sort_by_key(|u| u.stats().cost);
 
     let mut units_to_buy = Vec::new();
 
     loop {
-        units_with_weights = units_with_weights
-            .into_iter()
-            .filter(|(u, _)| money >= u.stats().cost)
+        // Find the cheapest unit we can afford
+        let affordable_units: Vec<_> = available_units
+            .iter()
+            .filter(|u| money >= u.stats().cost)
             .collect();
-        
-        if units_with_weights.is_empty() {
+
+        if affordable_units.is_empty() {
             break;
         }
 
-        let weights: Vec<f64> = units_with_weights.iter().map(|(_, w)| *w).collect();
-        let distr = WeightedIndex::new(&weights).unwrap();
-        let idx = distr.sample(rng);
-        let unit = units_with_weights[idx].0;
-
+        // Always buy the cheapest unit (first in sorted list)
+        let unit = affordable_units[0];
         units_to_buy.push(*unit);
         money -= unit.stats().cost;
     }
@@ -108,14 +116,13 @@ fn purchase_heuristic(side: Side, tech_state: &TechState, mut money: i32, rng: &
     units_to_buy
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::ai::rng::make_rng;
     use crate::core::board::{Board, Piece};
-    use crate::core::map::Map;
     use crate::core::loc::Loc;
+    use crate::core::map::Map;
     use crate::core::side::Side;
     use crate::core::tech::{Tech, TechAssignment, TechState, Techline};
     use crate::core::units::Unit;
@@ -202,7 +209,11 @@ mod tests {
         let map = Map::BlackenedShores;
         let mut board = Board::new(&map);
         // Add a spawner unit
-        board.add_piece(Piece::new(Unit::BasicNecromancer, Side::Yellow, Loc::new(1, 1)));
+        board.add_piece(Piece::new(
+            Unit::BasicNecromancer,
+            Side::Yellow,
+            Loc::new(1, 1),
+        ));
         let locs = board.get_spawn_locs(Side::Yellow, true);
         // Necromancer at (1,1) can spawn at 6 adjacent hexes in the spawn zone.
         assert_eq!(locs.len(), 6);
@@ -213,7 +224,11 @@ mod tests {
     fn test_get_spawn_locs_s1() {
         let map = Map::BlackenedShores;
         let mut board = Board::new(&map);
-        board.add_piece(Piece::new(Unit::BasicNecromancer, Side::Blue, Loc::new(1, 8)));
+        board.add_piece(Piece::new(
+            Unit::BasicNecromancer,
+            Side::Blue,
+            Loc::new(1, 8),
+        ));
         let locs = board.get_spawn_locs(Side::Blue, true);
         assert_eq!(locs.len(), 6);
         assert!(locs.iter().all(|loc| loc.y >= 7));
@@ -224,7 +239,11 @@ mod tests {
         let map = Map::BlackenedShores;
         let mut board = Board::new(&map);
         // Add a spawner
-        board.add_piece(Piece::new(Unit::BasicNecromancer, Side::Yellow, Loc::new(1, 1)));
+        board.add_piece(Piece::new(
+            Unit::BasicNecromancer,
+            Side::Yellow,
+            Loc::new(1, 1),
+        ));
 
         // Block one of the spawn locations
         let blocked_loc = Loc::new(1, 0);
@@ -239,11 +258,21 @@ mod tests {
     fn test_generate_heuristic_spawn_actions_full() {
         let map = Map::BlackenedShores;
         let mut board = Board::new(&map);
-        board.add_piece(Piece::new(Unit::BasicNecromancer, Side::Yellow, Loc::new(4, 1)));
+        board.add_piece(Piece::new(
+            Unit::BasicNecromancer,
+            Side::Yellow,
+            Loc::new(4, 1),
+        ));
 
         let tech_state = new_all_unlocked_tech_state();
         let mut money = 4;
-        let actions = generate_heuristic_spawn_actions(&board, Side::Yellow, &tech_state, money, &mut make_rng());
+        let actions = generate_heuristic_spawn_actions(
+            &board,
+            Side::Yellow,
+            &tech_state,
+            money,
+            &mut make_rng(),
+        );
 
         // It should generate 2 Buy actions and 2 Spawn actions.
         assert_eq!(actions.len(), 4);

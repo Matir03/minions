@@ -1,10 +1,11 @@
 use crate::ai::captain::combat::{
-    combat::CombatGraph,
+    graph::CombatGraph,
+    manager::{generate_move_from_sat_model, CombatManager},
     prophet::{DeathProphet, RemovalAssumption},
-    solver::{generate_move_from_sat_model, SatCombatSolver},
 };
 use crate::ai::captain::positioning::SatPositioningSystem;
 use crate::core::{board::actions::AttackAction, board::Board, side::Side};
+use anyhow::Result;
 use std::collections::HashMap;
 use z3::ast::Bool;
 
@@ -25,10 +26,10 @@ impl CombatGenerationSystem {
     /// Generate combat actions using the new architecture
     pub fn generate_combat<'ctx>(
         &mut self,
-        solver: &mut SatCombatSolver<'ctx>,
+        manager: &mut CombatManager<'ctx>,
         board: &Board,
         side: Side,
-    ) -> Result<(), String> {
+    ) -> Result<()> {
         // Get assumptions from the death prophet
         let assumptions = self.death_prophet.generate_assumptions(board, side);
 
@@ -37,25 +38,25 @@ impl CombatGenerationSystem {
         for (i, assumption) in assumptions.iter().enumerate() {
             // Create constraint for this assumption
             let constraint =
-                self.create_assumption_constraint(&solver.variables, assumption, solver.ctx);
-            solver.push();
-            solver.assert(&constraint);
+                self.create_assumption_constraint(&manager.variables, assumption, manager.ctx);
+            manager.solver.push();
+            manager.solver.assert(&constraint);
 
             // Check if solver is still satisfiable
-            match solver.check() {
+            match manager.solver.check() {
                 z3::SatResult::Sat => {
                     // Assumption is satisfiable, continue
                     max_satisfiable_prefix = i + 1;
                 }
                 z3::SatResult::Unsat => {
                     // Assumption makes problem unsat, revert and stop
-                    solver.pop(1);
+                    manager.solver.pop(1);
                     break;
                 }
                 z3::SatResult::Unknown => {
                     panic!(
                         "Unknown result from SAT solver: {:?}",
-                        solver.solver.get_reason_unknown()
+                        manager.solver.get_reason_unknown().unwrap()
                     );
                 }
             }
@@ -70,17 +71,18 @@ impl CombatGenerationSystem {
     /// Position pieces using the importance heuristic
     pub fn position_pieces<'ctx>(
         &mut self,
-        solver: &mut SatCombatSolver<'ctx>,
+        manager: &mut CombatManager<'ctx>,
         board: &Board,
         side: Side,
-    ) -> Result<(), String> {
-        self.positioning_system.position_pieces(solver, board, side)
+    ) -> Result<Vec<AttackAction>> {
+        self.positioning_system
+            .position_pieces(manager, board, side)
     }
 
     /// Create a Z3 constraint for a removal assumption
     fn create_assumption_constraint<'ctx>(
         &self,
-        variables: &crate::ai::captain::combat::solver::SatVariables<'ctx>,
+        variables: &crate::ai::captain::combat::manager::SatVariables<'ctx>,
         assumption: &RemovalAssumption,
         ctx: &'ctx z3::Context,
     ) -> Bool<'ctx> {
@@ -127,7 +129,7 @@ mod tests {
         let board = Board::new(&map);
         let ctx = Context::new(&z3::Config::new());
         let graph = board.combat_graph(Side::Yellow);
-        let mut solver = SatCombatSolver::new(&ctx, graph, &board);
+        let mut solver = CombatManager::new(&ctx, graph, &board);
 
         let death_prophet = DeathProphet::new(crate::ai::rng::make_rng());
         let positioning_system = SatPositioningSystem::new(crate::ai::rng::make_rng());

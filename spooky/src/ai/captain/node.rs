@@ -26,10 +26,10 @@ use crate::{
 
 use super::{
     combat::{
-        combat::CombatGraph,
         generation::CombatGenerationSystem,
+        graph::CombatGraph,
+        manager::{generate_move_from_sat_model, CombatManager},
         prophet::DeathProphet,
-        solver::{generate_move_from_sat_model, SatCombatSolver},
     },
     positioning::SatPositioningSystem,
     spawn::generate_heuristic_spawn_actions,
@@ -102,7 +102,7 @@ impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
         std::io::stdout().flush().unwrap();
 
         let graph = new_board.combat_graph(self.side_to_move);
-        let mut sat_solver = SatCombatSolver::new(&ctx, graph, &new_board);
+        let mut sat_solver = CombatManager::new(&ctx, graph, &new_board);
         println!(" ({:.2?})", combat_start.elapsed());
 
         // --- Death Prophet (reused) ---
@@ -119,7 +119,7 @@ impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
         let sat_start = std::time::Instant::now();
         print!("First sat check: ");
         std::io::stdout().flush().unwrap();
-        let sat_result = sat_solver.check();
+        let sat_result = sat_solver.solver.check();
         println!("done ({:.2?})", sat_start.elapsed());
 
         // --- Combat Generation (add death prophet assumptions) ---
@@ -151,9 +151,10 @@ impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
         println!(" ({:.2?})", positioning_start.elapsed());
 
         // --- Extract all moves from the combined model ---
-        let all_actions = match sat_solver.check() {
+        let all_actions = match sat_solver.solver.check() {
             z3::SatResult::Sat => {
                 let model = sat_solver
+                    .solver
                     .get_model()
                     .expect("Failed to get model from SAT solver");
 

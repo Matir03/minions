@@ -1,11 +1,10 @@
 /// Type of attack a unit can perform
-
 use std::str::FromStr;
 
+use super::convert::{FromIndex, ToIndex};
+use anyhow::{anyhow, ensure, Context, Result};
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::{FromPrimitive, ToPrimitive};
-use anyhow::{anyhow, Result, Context, ensure};
-use super::convert::{FromIndex, ToIndex};
 
 use std::fmt::Display;
 
@@ -79,7 +78,7 @@ pub enum Unit {
     BattleNecromancer,
     ZombieNecromancer,
     ManaNecromancer,
-    TerrainNecromancer
+    TerrainNecromancer,
 }
 
 impl Unit {
@@ -173,25 +172,21 @@ impl FromStr for Unit {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         ensure!(s.len() == 1, "Invalid unit label");
 
-        Unit::from_fen_char(s.chars().next().unwrap())
-            .context("Invalid unit label")
+        Unit::from_fen_char(s.chars().next().unwrap()).context("Invalid unit label")
     }
 }
 
 impl FromIndex for Unit {
     fn from_index(idx: usize) -> Result<Self> {
-        FromPrimitive::from_usize(idx)
-            .ok_or_else(|| anyhow!("Invalid unit index: {}", idx))
+        FromPrimitive::from_usize(idx).ok_or_else(|| anyhow!("Invalid unit index: {}", idx))
     }
 }
 
 impl ToIndex for Unit {
     fn to_index(&self) -> Result<usize> {
-        ToPrimitive::to_usize(self)
-            .ok_or_else(|| anyhow!("Invalid unit label"))
+        ToPrimitive::to_usize(self).ok_or_else(|| anyhow!("Invalid unit label"))
     }
 }
-
 
 const UNIT_STATS: [UnitStats; Unit::NUM_UNITS] = [
     // Zombie
@@ -210,7 +205,6 @@ const UNIT_STATS: [UnitStats; Unit::NUM_UNITS] = [
         spawn: false,
         blink: false,
     },
-
     // Initiate
     UnitStats {
         attack: Attack::Damage(2),
@@ -227,7 +221,6 @@ const UNIT_STATS: [UnitStats; Unit::NUM_UNITS] = [
         spawn: true,
         blink: false,
     },
-
     // Skeleton
     UnitStats {
         attack: Attack::Damage(5),
@@ -244,7 +237,6 @@ const UNIT_STATS: [UnitStats; Unit::NUM_UNITS] = [
         spawn: false,
         blink: false,
     },
-
     // Serpent
     UnitStats {
         attack: Attack::Damage(3),
@@ -261,7 +253,6 @@ const UNIT_STATS: [UnitStats; Unit::NUM_UNITS] = [
         spawn: false,
         blink: false,
     },
-
     // Warg
     UnitStats {
         attack: Attack::Damage(1),
@@ -278,7 +269,6 @@ const UNIT_STATS: [UnitStats; Unit::NUM_UNITS] = [
         spawn: false,
         blink: false,
     },
-
     // Ghost
     UnitStats {
         attack: Attack::Damage(1),
@@ -295,7 +285,6 @@ const UNIT_STATS: [UnitStats; Unit::NUM_UNITS] = [
         spawn: false,
         blink: false,
     },
-
     // Wight
     UnitStats {
         attack: Attack::Damage(1),
@@ -312,7 +301,6 @@ const UNIT_STATS: [UnitStats; Unit::NUM_UNITS] = [
         spawn: false,
         blink: true,
     },
-
     // Haunt
     UnitStats {
         attack: Attack::Damage(2),
@@ -329,7 +317,6 @@ const UNIT_STATS: [UnitStats; Unit::NUM_UNITS] = [
         spawn: false,
         blink: true,
     },
-
     // Shrieker
     UnitStats {
         attack: Attack::Damage(3),
@@ -346,7 +333,6 @@ const UNIT_STATS: [UnitStats; Unit::NUM_UNITS] = [
         spawn: false,
         blink: false,
     },
-
     // Spectre
     UnitStats {
         attack: Attack::Damage(1),
@@ -363,7 +349,6 @@ const UNIT_STATS: [UnitStats; Unit::NUM_UNITS] = [
         spawn: false,
         blink: false,
     },
-
     // Rat
     UnitStats {
         attack: Attack::Deathtouch,
@@ -380,7 +365,6 @@ const UNIT_STATS: [UnitStats; Unit::NUM_UNITS] = [
         spawn: true,
         blink: false,
     },
-
     // Sorcerer
     UnitStats {
         attack: Attack::Unsummon,
@@ -397,7 +381,6 @@ const UNIT_STATS: [UnitStats; Unit::NUM_UNITS] = [
         spawn: false,
         blink: true,
     },
-
     // Witch
     UnitStats {
         attack: Attack::Damage(1),
@@ -414,7 +397,6 @@ const UNIT_STATS: [UnitStats; Unit::NUM_UNITS] = [
         spawn: false,
         blink: false,
     },
-
     // Vampire
     UnitStats {
         attack: Attack::Damage(2),
@@ -431,7 +413,6 @@ const UNIT_STATS: [UnitStats; Unit::NUM_UNITS] = [
         spawn: false,
         blink: false,
     },
-
     // Mummy
     UnitStats {
         attack: Attack::Damage(1),
@@ -448,7 +429,6 @@ const UNIT_STATS: [UnitStats; Unit::NUM_UNITS] = [
         spawn: true,
         blink: false,
     },
-
     // Lich
     UnitStats {
         attack: Attack::Deathtouch,
@@ -465,7 +445,6 @@ const UNIT_STATS: [UnitStats; Unit::NUM_UNITS] = [
         spawn: false,
         blink: false,
     },
-
     // Void
     UnitStats {
         attack: Attack::Unsummon,
@@ -482,7 +461,6 @@ const UNIT_STATS: [UnitStats; Unit::NUM_UNITS] = [
         spawn: false,
         blink: true,
     },
-
     // Cerberus
     UnitStats {
         attack: Attack::Damage(1),
@@ -499,7 +477,6 @@ const UNIT_STATS: [UnitStats; Unit::NUM_UNITS] = [
         spawn: false,
         blink: false,
     },
-
     // Wraith
     UnitStats {
         attack: Attack::Damage(1),
@@ -516,7 +493,6 @@ const UNIT_STATS: [UnitStats; Unit::NUM_UNITS] = [
         spawn: true,
         blink: false,
     },
-
     // Horror
     UnitStats {
         attack: Attack::Damage(1),
@@ -533,7 +509,6 @@ const UNIT_STATS: [UnitStats; Unit::NUM_UNITS] = [
         spawn: false,
         blink: false,
     },
-
     // Banshee
     UnitStats {
         attack: Attack::Deathtouch,
@@ -550,7 +525,6 @@ const UNIT_STATS: [UnitStats; Unit::NUM_UNITS] = [
         spawn: false,
         blink: true,
     },
-
     // Elemental
     UnitStats {
         attack: Attack::Damage(3),
@@ -567,7 +541,6 @@ const UNIT_STATS: [UnitStats; Unit::NUM_UNITS] = [
         spawn: false,
         blink: false,
     },
-
     // Harpy
     UnitStats {
         attack: Attack::Damage(2),
@@ -584,7 +557,6 @@ const UNIT_STATS: [UnitStats; Unit::NUM_UNITS] = [
         spawn: true,
         blink: false,
     },
-
     // Shadowlord
     UnitStats {
         attack: Attack::Damage(8),
@@ -601,7 +573,6 @@ const UNIT_STATS: [UnitStats; Unit::NUM_UNITS] = [
         spawn: false,
         blink: false,
     },
-
     // Basic Necromancer
     UnitStats {
         attack: Attack::Unsummon,
@@ -618,7 +589,6 @@ const UNIT_STATS: [UnitStats; Unit::NUM_UNITS] = [
         spawn: true,
         blink: false,
     },
-
     // Arcane Necromancer
     UnitStats {
         attack: Attack::Unsummon,
@@ -635,7 +605,6 @@ const UNIT_STATS: [UnitStats; Unit::NUM_UNITS] = [
         spawn: true,
         blink: false,
     },
-
     // Ranged Necromancer
     UnitStats {
         attack: Attack::Unsummon,
@@ -652,7 +621,6 @@ const UNIT_STATS: [UnitStats; Unit::NUM_UNITS] = [
         spawn: true,
         blink: false,
     },
-
     // Mounted Necromancer
     UnitStats {
         attack: Attack::Unsummon,
@@ -669,7 +637,6 @@ const UNIT_STATS: [UnitStats; Unit::NUM_UNITS] = [
         spawn: true,
         blink: false,
     },
-
     // Deadly Necromancer
     UnitStats {
         attack: Attack::Deathtouch,
@@ -686,7 +653,6 @@ const UNIT_STATS: [UnitStats; Unit::NUM_UNITS] = [
         spawn: true,
         blink: false,
     },
-
     // Battle Necromancer
     UnitStats {
         attack: Attack::Damage(1),
@@ -703,7 +669,6 @@ const UNIT_STATS: [UnitStats; Unit::NUM_UNITS] = [
         spawn: true,
         blink: false,
     },
-
     // Zombie Necromancer
     UnitStats {
         attack: Attack::Unsummon,
@@ -720,7 +685,6 @@ const UNIT_STATS: [UnitStats; Unit::NUM_UNITS] = [
         spawn: true,
         blink: false,
     },
-
     // Mana Necromancer
     UnitStats {
         attack: Attack::Unsummon,
@@ -737,7 +701,6 @@ const UNIT_STATS: [UnitStats; Unit::NUM_UNITS] = [
         spawn: true,
         blink: false,
     },
-
     // Terrain Necromancer
     UnitStats {
         attack: Attack::Unsummon,
@@ -764,7 +727,7 @@ mod tests {
     fn test_unit_label_conversion() {
         // Test basic conversions
         assert_eq!(Unit::from_index(0).unwrap().to_index().unwrap(), 0);
-        
+
         // Test all unit labels have unique indices
         let mut indices = Vec::new();
         for i in 0..33 {
@@ -774,7 +737,7 @@ mod tests {
                 indices.push(idx);
             }
         }
-        
+
         // Test invalid index
         assert!(Unit::from_index(100).is_err());
     }
@@ -784,23 +747,26 @@ mod tests {
         // Test basic unit label to FEN char conversion
         assert_eq!(Unit::Zombie.to_fen_char(), 'Z');
         assert_eq!(Unit::Initiate.to_fen_char(), 'I');
-        
+
         // Test FEN char to unit label conversion
         assert_eq!(Unit::from_fen_char('Z').unwrap(), Unit::Zombie);
         assert_eq!(Unit::from_fen_char('I').unwrap(), Unit::Initiate);
-        
+
         // Test case insensitivity
         assert_eq!(Unit::from_fen_char('z').unwrap(), Unit::Zombie);
         assert_eq!(Unit::from_fen_char('i').unwrap(), Unit::Initiate);
-        
+
+        // Test that 'X' maps to Spectre
+        assert_eq!(Unit::from_fen_char('X').unwrap(), Unit::Spectre);
+
         // Test invalid char
-        assert!(Unit::from_fen_char('X').is_none());
+        assert!(Unit::from_fen_char('@').is_none());
     }
 
     #[test]
     fn test_attack() {
         let attack = Attack::Damage(3);
-        
+
         match attack {
             Attack::Damage(damage) => assert_eq!(damage, 3),
             _ => panic!("Expected Damage attack"),
@@ -824,7 +790,7 @@ mod tests {
             blink: false,
             attack: Attack::Damage(2),
         };
-        
+
         assert_eq!(unit.cost, 100);
         assert_eq!(unit.num_attacks, 1);
         assert_eq!(unit.defense, 10);
