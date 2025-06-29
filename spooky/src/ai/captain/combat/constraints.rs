@@ -1,7 +1,13 @@
-use std::collections::HashMap;
-use crate::core::{Loc, Board, units::{Attack, UnitStats}};
 use super::combat::{CombatGraph, CombatTriple};
-use z3::{Context, ast::{Ast, Bool, Int, BV}};
+use crate::core::{
+    units::{Attack, UnitStats},
+    Board, Loc,
+};
+use std::collections::HashMap;
+use z3::{
+    ast::{Ast, Bool, Int, BV},
+    Context,
+};
 
 // A helper to convert Loc to a unique i64 for Z3.
 fn loc_to_u8(loc: &Loc) -> u8 {
@@ -20,12 +26,6 @@ type Z3Time<'ctx> = BV<'ctx>; // BV_TIME_SIZE bits
 
 const BV_LOC_SIZE: u32 = 8;
 type Z3Loc<'ctx> = BV<'ctx>; // BV_LOC_SIZE bits
-
-impl Loc {
-    pub fn as_z3<'ctx>(self, ctx: &'ctx Context) -> Z3Loc<'ctx> {
-        BV::from_u64(ctx, loc_to_u8(&self) as u64, BV_LOC_SIZE)
-    }
-}
 
 /// Variables for the constraint satisfaction problem, represented as Z3 ASTs.
 pub struct Variables<'ctx> {
@@ -58,39 +58,53 @@ impl<'ctx> Variables<'ctx> {
         };
 
         for defender in &graph.defenders {
-            vars.removed.insert(*defender, Bool::new_const(ctx, format!("removed_{}", defender)));
-            vars.removal_time.insert(*defender, Z3Time::new_const(ctx, format!("removal_time_{}", defender), BV_TIME_SIZE));
+            vars.removed.insert(
+                *defender,
+                Bool::new_const(ctx, format!("removed_{}", defender)),
+            );
+            vars.removal_time.insert(
+                *defender,
+                Z3Time::new_const(ctx, format!("removal_time_{}", defender), BV_TIME_SIZE),
+            );
             // vars.killed.insert(*defender, Bool::new_const(ctx, format!("killed_{}", loc_to_i64(defender))));
             // vars.unsummoned.insert(*defender, Bool::new_const(ctx, format!("unsummoned_{}", loc_to_i64(defender))));
         }
 
         for attacker in &graph.friends {
-            vars.move_time.insert(*attacker, Z3Time::new_const(ctx, format!("move_time_{}", attacker), BV_TIME_SIZE));
-            vars.move_hex.insert(*attacker, Z3Loc::new_const(ctx, format!("move_hex_{}", attacker), BV_LOC_SIZE));
+            vars.move_time.insert(
+                *attacker,
+                Z3Time::new_const(ctx, format!("move_time_{}", attacker), BV_TIME_SIZE),
+            );
+            vars.move_hex.insert(
+                *attacker,
+                Z3Loc::new_const(ctx, format!("move_hex_{}", attacker), BV_LOC_SIZE),
+            );
         }
 
         for pair in &graph.triples {
             let key = (pair.attacker_pos, pair.defender_pos);
-            vars.attacks.insert(key, Bool::new_const(ctx, format!("attacked_{}{}", key.0, key.1)));
-            vars.num_attacks.insert(key, Z3HP::new_const(ctx, format!("damage_{}{}", key.0, key.1), BV_HP_SIZE));
+            vars.attacks.insert(
+                key,
+                Bool::new_const(ctx, format!("attacked_{}{}", key.0, key.1)),
+            );
+            vars.num_attacks.insert(
+                key,
+                Z3HP::new_const(ctx, format!("damage_{}{}", key.0, key.1), BV_HP_SIZE),
+            );
         }
 
         vars
     }
 }
 
-
-fn loc_var_in_hexes<'ctx>(
-    ctx: &'ctx z3::Context,
-    var: &Z3Loc<'ctx>,
-    hexes: &[Loc],
-) -> Bool<'ctx> {
+fn loc_var_in_hexes<'ctx>(ctx: &'ctx z3::Context, var: &Z3Loc<'ctx>, hexes: &[Loc]) -> Bool<'ctx> {
     if hexes.is_empty() {
         return Bool::from_bool(ctx, false);
     }
 
-    let alternatives = hexes.iter()
-        .map(|hex| hex.as_z3(ctx)._eq(var))
+    let alternatives = hexes
+        .iter()
+        .map(|hex| crate::core::Loc::as_z3(*hex, ctx)._eq(var))
         .collect::<Vec<_>>();
 
     let alternatives_ref: Vec<_> = alternatives.iter().collect();
@@ -98,13 +112,9 @@ fn loc_var_in_hexes<'ctx>(
     Bool::or(ctx, &alternatives_ref)
 }
 
-fn bvsum<'ctx>(
-    ctx: &'ctx z3::Context,
-    vars: &[BV<'ctx>],
-) -> BV<'ctx> {
+fn bvsum<'ctx>(ctx: &'ctx z3::Context, vars: &[BV<'ctx>]) -> BV<'ctx> {
     vars.iter()
-        .fold(BV::from_u64(ctx, 0, BV_HP_SIZE), 
-            |acc, var| acc.bvadd(var))
+        .fold(BV::from_u64(ctx, 0, BV_HP_SIZE), |acc, var| acc.bvadd(var))
 }
 
 /// Ensures that friendly units move to valid hexes and that no two units end up in the same hex.
@@ -118,14 +128,22 @@ fn add_movement_constraints<'ctx>(
     // must move to a valid hex
     for friend in &graph.friends {
         let valid_move_hexes = board.get_theoretical_move_hexes(*friend);
-        solver.assert(&loc_var_in_hexes(ctx, &variables.move_hex[friend], &valid_move_hexes));
+        solver.assert(&loc_var_in_hexes(
+            ctx,
+            &variables.move_hex[friend],
+            &valid_move_hexes,
+        ));
     }
-    
+
     // no two friendly units can move to the same hex
     let num_friends = graph.friends.len();
     for i in 0..num_friends {
         for j in i + 1..num_friends {
-            solver.assert(&variables.move_hex[&graph.friends[i]]._eq(&variables.move_hex[&graph.friends[j]]).not());
+            solver.assert(
+                &variables.move_hex[&graph.friends[i]]
+                    ._eq(&variables.move_hex[&graph.friends[j]])
+                    .not(),
+            );
         }
     }
 
@@ -134,33 +152,46 @@ fn add_movement_constraints<'ctx>(
     for from_hex in &graph.friends {
         for (to_hex, dnf) in &graph.move_hex_map[from_hex] {
             if graph.friends.contains(to_hex) {
-                solver.assert(&variables.move_hex[from_hex]._eq(&to_hex.as_z3(ctx))
-                    .implies(&variables.move_time[from_hex].bvuge(&variables.move_time[to_hex])));
+                solver.assert(
+                    &variables.move_hex[from_hex]
+                        ._eq(&crate::core::Loc::as_z3(*to_hex, ctx))
+                        .implies(
+                            &variables.move_time[from_hex].bvuge(&variables.move_time[to_hex]),
+                        ),
+                );
             }
 
             if let Some(dnf) = dnf {
-                let bool_vars: Vec<_> = dnf.iter()
-                    .map(|conjunct|
-                        conjunct.iter()
+                let bool_vars: Vec<_> = dnf
+                    .iter()
+                    .map(|conjunct| {
+                        conjunct
+                            .iter()
                             .map(|loc| {
                                 if graph.defenders.contains(loc) {
-                                    Bool::and(ctx, &[
-                                        &variables.removed[loc],
-                                        &variables.move_time[from_hex].bvugt(&variables.removal_time[loc])
-                                    ])
+                                    Bool::and(
+                                        ctx,
+                                        &[
+                                            &variables.removed[loc],
+                                            &variables.move_time[from_hex]
+                                                .bvugt(&variables.removal_time[loc]),
+                                        ],
+                                    )
                                 } else {
                                     Bool::from_bool(ctx, false)
                                 }
                             })
                             .collect::<Vec<_>>()
-                        )
+                    })
                     .collect();
 
-                let bool_vars_refs: Vec<_> = bool_vars.iter()
+                let bool_vars_refs: Vec<_> = bool_vars
+                    .iter()
                     .map(|conjunct| conjunct.iter().collect::<Vec<_>>())
                     .collect();
 
-                let conjunct_vars = bool_vars_refs.iter()
+                let conjunct_vars = bool_vars_refs
+                    .iter()
                     .map(|conjunct| Bool::and(ctx, conjunct))
                     .collect::<Vec<_>>();
 
@@ -168,7 +199,11 @@ fn add_movement_constraints<'ctx>(
 
                 let disjunct = Bool::or(ctx, &conjunct_vars_refs);
 
-                solver.assert(&variables.move_hex[from_hex]._eq(&to_hex.as_z3(ctx)).implies(&disjunct));
+                solver.assert(
+                    &variables.move_hex[from_hex]
+                        ._eq(&crate::core::Loc::as_z3(*to_hex, ctx))
+                        .implies(&disjunct),
+                );
             }
         }
     }
@@ -186,14 +221,14 @@ fn add_attacker_constraints<'ctx>(
         let attacker_piece = board.get_piece(attacker).unwrap();
         let attacker_stats = attacker_piece.unit.stats();
 
-        let attacks_by_this_attacker: Vec<_> = defenders.iter()
+        let attacks_by_this_attacker: Vec<_> = defenders
+            .iter()
             .map(|defender| {
                 solver.assert(
                     &variables.attacks[&(*attacker, *defender)]._eq(
-                        &variables.num_attacks[&(*attacker, *defender)].bvugt(
-                            &BV::from_u64(ctx, 0, BV_HP_SIZE)
-                        )
-                    )
+                        &variables.num_attacks[&(*attacker, *defender)]
+                            .bvugt(&BV::from_u64(ctx, 0, BV_HP_SIZE)),
+                    ),
                 );
                 &variables.attacks[&(*attacker, *defender)]
             })
@@ -208,24 +243,27 @@ fn add_attacker_constraints<'ctx>(
         // Lumbering units cannot move and attack in the same turn.
         if attacker_stats.lumbering {
             let moved = variables.move_hex[attacker]
-                ._eq(&attacker.as_z3(ctx))
+                ._eq(&crate::core::Loc::as_z3(*attacker, ctx))
                 .not();
             solver.assert(&moved.implies(&is_attacking.not()));
         }
 
         // Units cannot exceed their number of attacks
         let max_attacks = BV::from_u64(ctx, attacker_stats.num_attacks as u64, BV_HP_SIZE);
-        let total_attacks: BV<'ctx> = defenders.iter()
+        let total_attacks: BV<'ctx> = defenders
+            .iter()
             .map(|defender| {
                 let num_attacks = &variables.num_attacks[&(*attacker, *defender)];
                 // assertion here to prevent overflow solutions
                 solver.assert(&num_attacks.bvule(&max_attacks));
-                
+
                 num_attacks
             })
-            .fold(BV::from_u64(ctx, 0, BV_HP_SIZE), |acc, attack_count| acc.bvadd(attack_count));
+            .fold(BV::from_u64(ctx, 0, BV_HP_SIZE), |acc, attack_count| {
+                acc.bvadd(attack_count)
+            });
 
-        solver.assert(&total_attacks.bvule(&max_attacks));   
+        solver.assert(&total_attacks.bvule(&max_attacks));
     }
 }
 
@@ -243,11 +281,12 @@ fn add_defender_constraints<'ctx>(
         let defense = defender_stats.defense;
         let removal_time = &variables.removal_time[defender];
 
-        let damages: Vec<_> = attackers.iter()
+        let damages: Vec<_> = attackers
+            .iter()
             .filter_map(|attacker| {
                 let attacker_piece = board.get_piece(attacker).unwrap();
                 let attacker_stats = attacker_piece.unit.stats();
-                
+
                 let damage_value = match attacker_stats.attack {
                     Attack::Damage(damage) => damage,
                     Attack::Unsummon if defender_stats.persistent => 1,
@@ -255,15 +294,17 @@ fn add_defender_constraints<'ctx>(
                         // disallow this attack
                         solver.assert(&variables.attacks[&(*attacker, *defender)].not());
                         return None;
-                    },
+                    }
                     _ => defense,
                 };
 
                 let num_attacks = &variables.num_attacks[&(*attacker, *defender)];
 
                 // force removal time to be after all attacks
-                solver.assert(&num_attacks.bvugt(&BV::from_u64(ctx, 0, BV_HP_SIZE))
-                    .implies(&removal_time.bvuge(&variables.move_time[attacker]))
+                solver.assert(
+                    &num_attacks
+                        .bvugt(&BV::from_u64(ctx, 0, BV_HP_SIZE))
+                        .implies(&removal_time.bvuge(&variables.move_time[attacker])),
                 );
 
                 let damage = num_attacks.bvmul(&BV::from_u64(ctx, damage_value as u64, BV_HP_SIZE));
@@ -288,16 +329,18 @@ fn add_location_constraints<'ctx>(
     graph: &CombatGraph,
     board: &Board,
 ) {
-    for CombatTriple { attacker_pos, defender_pos, attack_hexes } in &graph.triples {
+    for CombatTriple {
+        attacker_pos,
+        defender_pos,
+        attack_hexes,
+    } in &graph.triples
+    {
         let is_attacking = &variables.attacks[&(*attacker_pos, *defender_pos)];
         let attacker_hex = &variables.move_hex[attacker_pos];
 
-        solver.assert(&is_attacking.implies(
-            &loc_var_in_hexes(ctx, attacker_hex, attack_hexes)
-        ));
+        solver.assert(&is_attacking.implies(&loc_var_in_hexes(ctx, attacker_hex, attack_hexes)));
     }
 }
-
 
 /// Adds all constraints for the combat graph to the Z3 solver
 pub fn add_all_constraints<'ctx>(
@@ -317,7 +360,7 @@ pub fn add_all_constraints<'ctx>(
 
     // let num_units_removed: BV<'ctx> = graph.defenders.iter()
     //     .map(|defender| &variables.removed[defender])
-    //     .fold(BV::from_u64(ctx, 0, BV_SIZE), |acc, removed| 
+    //     .fold(BV::from_u64(ctx, 0, BV_SIZE), |acc, removed|
     //         acc.bvadd(&removed.ite(&one, &zero)));
 
     // solver.maximize(&num_units_removed);

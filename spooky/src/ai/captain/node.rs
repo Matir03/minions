@@ -1,13 +1,17 @@
 use std::io::Write;
+use std::ops::AddAssign;
 /// MCTS Node representing the state of a single board and its turn processing (attack + spawn).
 use std::{cell::RefCell, fmt};
-use std::ops::AddAssign;
 
 use rand::prelude::*;
 
 use crate::core::board::definitions::Phase;
 use crate::core::Unit;
 use crate::{
+    ai::{
+        eval::Eval,
+        mcts::{MCTSNode, NodeState, NodeStats},
+    },
     core::{
         board::{
             actions::{AttackAction, BoardTurn, SetupAction, SpawnAction},
@@ -18,19 +22,20 @@ use crate::{
         side::{Side, SideArray},
         tech::TechState,
     },
-    ai::{eval::Eval, mcts::{MCTSNode, NodeState, NodeStats}},
 };
 
 use super::{
     combat::{
-        solver::{block_solution, generate_move_from_model},
-        stage::CombatStage,
+        combat::CombatGraph,
+        death_prophet::DeathProphet,
+        generation::CombatGenerationSystem,
+        sat_solver::{generate_move_from_sat_model, SatCombatSolver},
     },
-    positioning::PositioningStage,
+    positioning_sat::SatPositioningSystem,
     spawn::generate_heuristic_spawn_actions,
 };
 
-use z3::{Config, Context, Optimize, SatResult};
+use z3::{Config, Context, SatResult};
 
 /// Represents the state of a single board and its turn processing (attack + spawn).
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -53,7 +58,8 @@ impl<'a> BoardNodeState<'a> {
 }
 
 pub fn setup_phase(side: Side, board: &Board<'_>) -> SetupAction {
-    let saved_unit = board.reinforcements[side].iter()
+    let saved_unit = board.reinforcements[side]
+        .iter()
         .max_by_key(|unit| unit.stats().cost)
         .cloned();
 
@@ -72,15 +78,16 @@ impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
 
         let z3_cfg = Config::new();
         let ctx = Context::new(&z3_cfg);
-        let optimizer = Optimize::new(&ctx);
         let mut new_board = self.board.clone();
 
-        // --- Setup Stage ---
+        // --- Setup Phase ---
         let setup_phase_start = std::time::Instant::now();
         print!("Setup phase: ");
         let setup_action = if self.board.state.phases().contains(&Phase::Setup) {
             let action = setup_phase(self.side_to_move, &self.board);
-            new_board.do_setup_action(self.side_to_move, &action).unwrap();
+            new_board
+                .do_setup_action(self.side_to_move, &action)
+                .unwrap();
             print!("done");
             Some(action)
         } else {
@@ -89,83 +96,100 @@ impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
         };
         println!(" ({:.2?})", setup_phase_start.elapsed());
 
-
-        // --- Combat Stage ---
-        let constraints_start = std::time::Instant::now();
-        print!("Attack phase: adding constraints ");
+        // --- Combat Solver with Constraints (reused) ---
+        let combat_start = std::time::Instant::now();
+        print!("Combat phase: creating SAT solver ");
         std::io::stdout().flush().unwrap();
 
-        let combat_stage = CombatStage::new(&ctx, &optimizer);
-        let combat_solver = combat_stage.add_constraints(&new_board, self.side_to_move);
+        let graph = new_board.combat_graph(self.side_to_move);
+        let mut sat_solver = SatCombatSolver::new(&ctx, graph, &new_board);
+        println!(" ({:.2?})", combat_start.elapsed());
 
-        // --- Repositioning Stage ---
-        let reposition_stage = PositioningStage::new(&ctx, &optimizer);
-        reposition_stage.add_constraints(
-            &new_board,
-            self.side_to_move,
-            &combat_solver.graph,
-            &combat_solver.variables,
-        );
-        println!(" ({:.2?})", constraints_start.elapsed());
-
-        let solve_start = std::time::Instant::now();
-        print!("Attack phase: solving ");
+        // --- Death Prophet (reused) ---
+        let prophet_start = std::time::Instant::now();
+        print!("Death Prophet: initializing ");
         std::io::stdout().flush().unwrap();
-        let combat_result = optimizer.check(&[]);
-        println!(" ({:.2?})", solve_start.elapsed());
 
-        let model_start = std::time::Instant::now();
-        print!("Attack phase: generating actions ");
+        let death_prophet = DeathProphet::new(crate::ai::rng::make_rng());
+        let positioning_system = SatPositioningSystem::new(crate::ai::rng::make_rng());
+        let mut combat_generation = CombatGenerationSystem::new(death_prophet, positioning_system);
+        println!(" ({:.2?})", prophet_start.elapsed());
+
+        // --- Combat Generation (add death prophet assumptions) ---
+        let generation_start = std::time::Instant::now();
+        print!("Combat generation: ");
         std::io::stdout().flush().unwrap();
-        let attack_actions = match combat_result {
-            SatResult::Sat => generate_move_from_model(
-                &optimizer.get_model().unwrap(),
-                &combat_solver.graph,
-                &combat_solver.variables,
-                &new_board,
-            ),
-            SatResult::Unknown | SatResult::Unsat => 
-                panic!("[BoardNodeState] Z3 solver returned {:?}", combat_result),
+
+        if let Err(e) =
+            combat_generation.generate_combat(&mut sat_solver, &new_board, self.side_to_move)
+        {
+            println!("failed: {}", e);
+        } else {
+            println!("done");
+        }
+        println!(" ({:.2?})", generation_start.elapsed());
+
+        // --- Piece Positioning (add positioning constraints) ---
+        let positioning_start = std::time::Instant::now();
+        print!("Piece positioning: ");
+        std::io::stdout().flush().unwrap();
+
+        if let Err(e) =
+            combat_generation.position_pieces(&mut sat_solver, &new_board, self.side_to_move)
+        {
+            println!("failed: {}", e);
+        } else {
+            println!("done");
+        }
+        println!(" ({:.2?})", positioning_start.elapsed());
+
+        // --- Extract all moves from the combined model ---
+        let all_actions = match sat_solver.check() {
+            z3::SatResult::Sat => {
+                let model = sat_solver
+                    .get_model()
+                    .expect("Failed to get model from SAT solver");
+
+                generate_move_from_sat_model(
+                    &model,
+                    &sat_solver.graph,
+                    &sat_solver.variables,
+                    &new_board,
+                )
+            }
+            _ => panic!("Failed to generate combat actions"),
         };
 
-        let rebate = new_board.do_attacks(
-            self.side_to_move,
-            &attack_actions,
-        ).unwrap_or_else(|e| {
-            panic!("[BoardNodeState] Failed to perform attack phase actions: {:#?}\n{:#?}\n{:#?}",
-                &attack_actions,
-                &optimizer.get_model().unwrap(),
-                e,
-            );
-        });
-        println!(" ({:.2?})", model_start.elapsed());
+        // Apply all actions to the board
+        let rebate = new_board
+            .do_attacks(self.side_to_move, &all_actions)
+            .unwrap_or_else(|e| {
+                panic!(
+                    "[BoardNodeState] Failed to perform combined actions: {:#?}",
+                    &all_actions,
+                );
+            });
 
+        // --- Spawning ---
         let spawn_start = std::time::Instant::now();
         print!("Spawn phase: ");
         std::io::stdout().flush().unwrap();
         let spawn_actions = if new_board.state.phases().contains(&Phase::Spawn) {
-            generate_heuristic_spawn_actions(
-                &new_board,
-                self.side_to_move,
-                tech_state,
-                money,
-                rng,
-            )
+            generate_heuristic_spawn_actions(&new_board, self.side_to_move, tech_state, money, rng)
         } else {
             Vec::new()
         };
 
-        let money_after_spawn = new_board.do_spawns(
-            self.side_to_move,
-            money,
-            &spawn_actions,
-        ).expect(&format!(
-            "[BoardNodeState] Failed to perform spawn phase actions: {:#?}",
-            spawn_actions,
-        ));
+        let money_after_spawn = new_board
+            .do_spawns(self.side_to_move, money, &spawn_actions)
+            .expect(&format!(
+                "[BoardNodeState] Failed to perform spawn phase actions: {:#?}",
+                spawn_actions,
+            ));
         println!("done ({:.2?})", spawn_start.elapsed());
 
-        let (income, winner) = new_board.end_turn(self.side_to_move)
+        let (income, winner) = new_board
+            .end_turn(self.side_to_move)
             .expect("[BoardNodeState] Failed to end turn");
 
         let mut delta_money = SideArray::new(0, 0);
@@ -174,7 +198,7 @@ impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
 
         let turn_taken = BoardTurn {
             setup_action,
-            attack_actions,
+            attack_actions: all_actions,
             spawn_actions,
         };
 
@@ -201,8 +225,8 @@ pub type BoardNodeRef<'a> = &'a RefCell<BoardNode<'a>>;
 mod tests {
     use crate::ai::mcts::NodeState;
     use crate::core::{
-        board::Board,
         board::actions::AttackAction,
+        board::Board,
         game::GameConfig,
         map::{Map, MapSpec},
         side::Side,
@@ -248,7 +272,8 @@ mod tests {
         let config = GameConfig::default();
         let node_state = BoardNodeState::new(board, Side::Yellow);
 
-        let (turn, _new_state) = node_state.propose_move(&mut rng, &(12, tech_state, &config, 0, 0));
+        let (turn, _new_state) =
+            node_state.propose_move(&mut rng, &(12, tech_state, &config, 0, 0));
 
         assert!(!turn.spawn_actions.is_empty());
     }

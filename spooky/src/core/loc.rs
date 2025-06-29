@@ -1,8 +1,12 @@
-use std::{
-    collections::HashMap, fmt::Display, ops::{Add, Neg, Sub}, str::FromStr
-};
 use anyhow::Context;
 use lazy_static::lazy_static;
+use std::{
+    collections::HashMap,
+    fmt::Display,
+    ops::{Add, Neg, Sub},
+    str::FromStr,
+};
+use z3;
 
 pub const GRID_LEN: usize = 10;
 pub const GRID_SIZE: usize = GRID_LEN * GRID_LEN;
@@ -20,8 +24,7 @@ impl Loc {
     }
 
     pub const fn in_bounds(&self) -> bool {
-        self.x >= 0 && self.x < GRID_LEN as i32 &&
-        self.y >= 0 && self.y < GRID_LEN as i32 
+        self.x >= 0 && self.x < GRID_LEN as i32 && self.y >= 0 && self.y < GRID_LEN as i32
     }
 
     pub fn from_index(index: i32) -> Self {
@@ -50,13 +53,33 @@ impl Loc {
         let delta = other - self;
         let dist = self.dist(other);
         let paths = PATH_MAPS[dist as usize].get(&delta).unwrap();
-        paths.iter()
-            .map(|path| 
-                path.iter()
-                    .map(|delta| self + delta)
-                    .collect::<Vec<Loc>>()
-            )
+        paths
+            .iter()
+            .map(|path| path.iter().map(|delta| self + delta).collect::<Vec<Loc>>())
             .collect()
+    }
+
+    // Convert Loc to Z3 bitvector representation
+    pub fn as_z3<'ctx>(self, ctx: &'ctx z3::Context) -> z3::ast::BV<'ctx> {
+        use z3::ast::BV;
+        if self.in_bounds() {
+            let val = (self.x as u8) << 4 | (self.y as u8);
+            BV::from_u64(ctx, val as u64, 8)
+        } else {
+            BV::from_u64(ctx, u8::MAX as u64, 8)
+        }
+    }
+
+    // Convert from Z3 bitvector representation back to Loc
+    pub fn from_z3(val: u64) -> Self {
+        if val == u8::MAX as u64 {
+            // Out of bounds marker
+            Self { x: -1, y: -1 }
+        } else {
+            let x = ((val >> 4) & 0xF) as i32;
+            let y = (val & 0xF) as i32;
+            Self { x, y }
+        }
     }
 }
 
@@ -70,8 +93,7 @@ impl FromStr for Loc {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let (x, y) = s.split_once(',')
-            .context("Invalid loc")?;
+        let (x, y) = s.split_once(',').context("Invalid loc")?;
 
         Ok(Loc {
             x: x.parse()?,
@@ -177,21 +199,14 @@ impl Neg for &LocDelta {
 
 enum Dir {
     W,
-    NW, 
-    NE, 
-    E, 
+    NW,
+    NE,
+    E,
     SE,
     SW,
 }
 
-const DIRS: [Dir; 6] = [
-    Dir::W, 
-    Dir::NW, 
-    Dir::NE, 
-    Dir::E, 
-    Dir::SE,
-    Dir::SW,
-];
+const DIRS: [Dir; 6] = [Dir::W, Dir::NW, Dir::NE, Dir::E, Dir::SE, Dir::SW];
 
 impl From<Dir> for LocDelta {
     fn from(dir: Dir) -> Self {
@@ -204,11 +219,11 @@ impl From<Dir> for LocDelta {
             Dir::SW => LocDelta { dx: 0, dy: -1 },
         }
     }
-} 
+}
 
 type Path = Vec<LocDelta>;
 
-lazy_static!(
+lazy_static! {
     pub static ref PATH_MAPS: [HashMap<LocDelta, Vec<Path>>; 4] = {
         let mut path_maps = Vec::new();
         let mut hashmap = HashMap::new();
@@ -217,7 +232,9 @@ lazy_static!(
         for i in 0..4 {
             path_maps.push(hashmap.clone());
 
-            if i == 3 { break; }
+            if i == 3 {
+                break;
+            }
 
             let mut next_map = hashmap.clone();
             for (delta, paths) in hashmap.iter() {
@@ -227,7 +244,7 @@ lazy_static!(
                             let prev_delta = &path[path.len() - 2];
                             if neighbor.dist(prev_delta) <= 1 {
                                 continue;
-                            }                     
+                            }
                         }
 
                         let mut new_path = path.clone();
@@ -242,4 +259,4 @@ lazy_static!(
 
         path_maps.try_into().unwrap()
     };
-);
+}
