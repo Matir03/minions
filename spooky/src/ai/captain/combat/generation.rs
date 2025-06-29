@@ -1,9 +1,9 @@
 use crate::ai::captain::combat::{
     combat::CombatGraph,
-    death_prophet::{DeathProphet, RemovalAssumption},
-    sat_solver::{generate_move_from_sat_model, SatCombatSolver},
+    prophet::{DeathProphet, RemovalAssumption},
+    solver::{generate_move_from_sat_model, SatCombatSolver},
 };
-use crate::ai::captain::positioning_sat::SatPositioningSystem;
+use crate::ai::captain::positioning::SatPositioningSystem;
 use crate::core::{board::actions::AttackAction, board::Board, side::Side};
 use std::collections::HashMap;
 use z3::ast::Bool;
@@ -112,7 +112,7 @@ impl CombatGenerationSystem {
     /// Create a Z3 constraint for a removal assumption
     fn create_assumption_constraint<'ctx>(
         &self,
-        variables: &crate::ai::captain::combat::sat_solver::SatVariables<'ctx>,
+        variables: &crate::ai::captain::combat::solver::SatVariables<'ctx>,
         assumption: &RemovalAssumption,
         ctx: &'ctx z3::Context,
     ) -> Bool<'ctx> {

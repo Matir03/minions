@@ -27,11 +27,11 @@ use crate::{
 use super::{
     combat::{
         combat::CombatGraph,
-        death_prophet::DeathProphet,
         generation::CombatGenerationSystem,
-        sat_solver::{generate_move_from_sat_model, SatCombatSolver},
+        prophet::DeathProphet,
+        solver::{generate_move_from_sat_model, SatCombatSolver},
     },
-    positioning_sat::SatPositioningSystem,
+    positioning::SatPositioningSystem,
     spawn::generate_heuristic_spawn_actions,
 };
 
