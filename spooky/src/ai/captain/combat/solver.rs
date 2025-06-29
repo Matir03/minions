@@ -94,7 +94,7 @@ impl<'ctx> SatVariables<'ctx> {
 /// SAT-based combat solver with constraints
 pub struct SatCombatSolver<'ctx> {
     pub ctx: &'ctx Context,
-    solver: Solver<'ctx>,
+    pub solver: Solver<'ctx>,
     pub variables: SatVariables<'ctx>,
     pub graph: CombatGraph,
 }

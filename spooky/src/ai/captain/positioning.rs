@@ -69,8 +69,10 @@ impl SatPositioningSystem {
                     solver.pop(1);
                 }
                 z3::SatResult::Unknown => {
-                    // Timeout or other issue, revert and continue
-                    solver.pop(1);
+                    panic!(
+                        "Unknown result from SAT solver: {:?}",
+                        solver.solver.get_reason_unknown()
+                    );
                 }
             }
         }

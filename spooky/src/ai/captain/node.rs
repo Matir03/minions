@@ -115,6 +115,13 @@ impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
         let mut combat_generation = CombatGenerationSystem::new(death_prophet, positioning_system);
         println!(" ({:.2?})", prophet_start.elapsed());
 
+        // First sat check for timining
+        let sat_start = std::time::Instant::now();
+        print!("First sat check: ");
+        std::io::stdout().flush().unwrap();
+        let sat_result = sat_solver.check();
+        println!("done ({:.2?})", sat_start.elapsed());
+
         // --- Combat Generation (add death prophet assumptions) ---
         let generation_start = std::time::Instant::now();
         print!("Combat generation: ");
@@ -123,9 +130,9 @@ impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
         if let Err(e) =
             combat_generation.generate_combat(&mut sat_solver, &new_board, self.side_to_move)
         {
-            println!("failed: {}", e);
+            print!("failed: {}", e);
         } else {
-            println!("done");
+            print!("done");
         }
         println!(" ({:.2?})", generation_start.elapsed());
 
@@ -137,9 +144,9 @@ impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
         if let Err(e) =
             combat_generation.position_pieces(&mut sat_solver, &new_board, self.side_to_move)
         {
-            println!("failed: {}", e);
+            print!("failed: {}", e);
         } else {
-            println!("done");
+            print!("done");
         }
         println!(" ({:.2?})", positioning_start.elapsed());
 

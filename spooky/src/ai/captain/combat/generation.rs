@@ -53,9 +53,10 @@ impl CombatGenerationSystem {
                     break;
                 }
                 z3::SatResult::Unknown => {
-                    // Timeout, revert and stop
-                    solver.pop(1);
-                    break;
+                    panic!(
+                        "Unknown result from SAT solver: {:?}",
+                        solver.solver.get_reason_unknown()
+                    );
                 }
             }
         }
@@ -74,39 +75,6 @@ impl CombatGenerationSystem {
         side: Side,
     ) -> Result<(), String> {
         self.positioning_system.position_pieces(solver, board, side)
-    }
-
-    /// Re-apply satisfiable assumptions to the solver
-    pub fn reapply_satisfiable_assumptions<'ctx>(
-        &mut self,
-        solver: &mut SatCombatSolver<'ctx>,
-        board: &Board,
-        side: Side,
-    ) -> usize {
-        let assumptions = self.death_prophet.generate_assumptions(board, side);
-        let mut max_satisfiable_prefix = 0;
-
-        for (i, assumption) in assumptions.iter().enumerate() {
-            let constraint =
-                self.create_assumption_constraint(&solver.variables, assumption, solver.ctx);
-            solver.assert(&constraint);
-
-            match solver.check() {
-                z3::SatResult::Sat => {
-                    max_satisfiable_prefix = i + 1;
-                }
-                z3::SatResult::Unsat => {
-                    solver.pop(1);
-                    break;
-                }
-                z3::SatResult::Unknown => {
-                    solver.pop(1);
-                    break;
-                }
-            }
-        }
-
-        max_satisfiable_prefix
     }
 
     /// Create a Z3 constraint for a removal assumption
