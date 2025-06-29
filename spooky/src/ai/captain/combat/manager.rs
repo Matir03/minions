@@ -496,22 +496,43 @@ pub fn generate_move_from_sat_model<'ctx>(
         let passive_var = &variables.passive[attacker];
         let is_passive = model.eval(passive_var, true).unwrap().as_bool().unwrap();
 
-        if !is_passive {
-            // This attacker is not passive, so it has an attack_hex and attack_time
-            let attack_hex_var = &variables.attack_hex[attacker];
-            let attack_time_var = &variables.attack_time[attacker];
+        if is_passive {
+            continue;
+        }
 
-            let hex_val = model.eval(attack_hex_var, true).unwrap().as_u64().unwrap();
-            let time_val = model.eval(attack_time_var, true).unwrap().as_u64().unwrap();
+        // This attacker is not passive, so it has an attack_hex and attack_time
+        let attack_hex_var = &variables.attack_hex[attacker];
+        let attack_time_var = &variables.attack_time[attacker];
 
-            let to_loc = Loc::from_z3(hex_val);
-            moves.insert(*attacker, to_loc);
-            move_times.insert(*attacker, time_val);
+        let hex_val = model.eval(attack_hex_var, true).unwrap().as_u64().unwrap();
+        let time_val = model.eval(attack_time_var, true).unwrap().as_u64().unwrap();
+
+        let to_loc = Loc::from_z3(hex_val);
+        moves.insert(*attacker, to_loc);
+        move_times.insert(*attacker, time_val);
+
+        for defender in &variables.defender_locs {
+            let key = (*attacker, *defender);
+            if let Some(num_attacks_var) = variables.num_attacks.get(&key) {
+                let val = model.eval(num_attacks_var, true).unwrap().as_u64().unwrap();
+
+                if val > 0 {
+                    attacks
+                        .entry(*attacker)
+                        .or_insert_with(Vec::new)
+                        .push((*defender, val));
+                }
+            }
         }
     }
 
     // Collect moves for friendly units that needed to move out of the way
     for friendly_loc in &variables.friendly_locs {
+        // Skip if already processed as an attacker
+        if moves.contains_key(friendly_loc) {
+            continue;
+        }
+
         let move_hex_var = &variables.move_hex[friendly_loc];
         let move_time_var = &variables.move_time[friendly_loc];
 
@@ -523,29 +544,6 @@ pub fn generate_move_from_sat_model<'ctx>(
         move_times.insert(*friendly_loc, time_val);
     }
 
-    // Collect attacks from non-passive attackers
-    for attacker in &variables.attacker_locs {
-        let passive_var = &variables.passive[attacker];
-        let is_passive = model.eval(passive_var, true).unwrap().as_bool().unwrap();
-
-        if !is_passive {
-            // This attacker is not passive, so check its attacks
-            for defender in &variables.defender_locs {
-                let key = (*attacker, *defender);
-                if let Some(num_attacks_var) = variables.num_attacks.get(&key) {
-                    let val = model.eval(num_attacks_var, true).unwrap().as_u64().unwrap();
-
-                    if val > 0 {
-                        attacks
-                            .entry(*attacker)
-                            .or_insert_with(Vec::new)
-                            .push((*defender, val));
-                    }
-                }
-            }
-        }
-    }
-
     // Sort movers by time
     let mut movers_by_tick = moves
         .keys()
@@ -554,8 +552,8 @@ pub fn generate_move_from_sat_model<'ctx>(
 
     movers_by_tick.sort_by_key(|&(time, _)| time);
 
+    // Group movers by time
     let mut grouped_movers = Vec::new();
-
     let mut current_time = None;
     for (time, mover) in movers_by_tick {
         if current_time != Some(time) {
@@ -569,72 +567,100 @@ pub fn generate_move_from_sat_model<'ctx>(
     let mut defenders_dead = HashSet::new();
 
     // Process each group of movers
-    for (tick, movers) in grouped_movers.iter().enumerate() {
-        // First, handle all moves in this tick
-        for &mover in movers {
-            let to_loc = moves[&mover];
-            if to_loc != mover {
-                actions.push(AttackAction::Move {
-                    from_loc: mover,
-                    to_loc: to_loc,
-                });
-            }
-        }
+    for mover_group in grouped_movers.iter() {
+        let move_actions = group_move_actions(mover_group, &moves);
+
+        actions.extend(move_actions);
 
         // Then, handle all attacks from units that moved to their attack positions
-        for &attacker in movers {
-            if let Some(attacker_attacks) = attacks.get(&attacker) {
-                for (defender, num_attacks) in attacker_attacks {
-                    // Check if this attacker can attack this defender from its current position
-                    let attacker_pos = moves.get(&attacker).unwrap_or(&attacker);
-                    let attacker_piece = board.get_piece(attacker_pos).unwrap();
-                    let attacker_stats = attacker_piece.unit.stats();
+        for &attacker in mover_group {
+            let attacker_attacks = match attacks.get(&attacker) {
+                Some(attacks) => attacks,
+                None => continue,
+            };
 
-                    if attacker_pos.dist(defender) <= attacker_stats.range {
-                        // Apply damage
-                        let damage = match attacker_stats.attack {
-                            Attack::Damage(damage) => damage * *num_attacks as i32,
-                            Attack::Unsummon => {
-                                let defender_piece = board.get_piece(defender).unwrap();
-                                if defender_piece.unit.stats().persistent {
-                                    *num_attacks as i32
-                                } else {
-                                    0
-                                }
-                            }
-                            Attack::Deathtouch => {
-                                let defender_piece = board.get_piece(defender).unwrap();
-                                if defender_piece.unit.stats().necromancer {
-                                    0
-                                } else {
-                                    defender_piece.unit.stats().defense
-                                }
-                            }
-                        };
+            let attacker_pos = moves.get(&attacker).unwrap();
+            let attacker_piece = board.get_piece(&attacker).unwrap();
+            let attacker_stats = attacker_piece.unit.stats();
+            let attack = attacker_stats.attack;
 
-                        *defender_damage.entry(*defender).or_insert(0) += damage;
+            for (defender, num_attacks) in attacker_attacks {
+                if defenders_dead.contains(defender) {
+                    continue;
+                }
 
-                        actions.push(AttackAction::Attack {
-                            attacker_loc: *attacker_pos,
-                            target_loc: *defender,
-                        });
+                let defender_stats = board.get_piece(defender).unwrap().unit.stats();
+
+                let dmg_val = match attack {
+                    Attack::Damage(damage) => damage,
+                    Attack::Unsummon if defender_stats.persistent => 1,
+                    _ => defender_stats.defense,
+                };
+
+                for _ in 0..*num_attacks {
+                    actions.push(AttackAction::Attack {
+                        attacker_loc: *attacker_pos,
+                        target_loc: *defender,
+                    });
+
+                    defender_damage
+                        .entry(*defender)
+                        .and_modify(|dmg| *dmg += dmg_val)
+                        .or_insert(dmg_val);
+
+                    if defender_damage[defender] >= defender_stats.defense {
+                        defenders_dead.insert(*defender);
+                        break;
                     }
                 }
             }
         }
+    }
 
-        // Check for defender deaths
-        for (defender, total_damage) in &defender_damage {
-            if !defenders_dead.contains(defender) {
-                let defender_piece = board.get_piece(defender).unwrap();
-                let defense = defender_piece.unit.stats().defense;
+    actions
+}
 
-                if *total_damage >= defense {
-                    defenders_dead.insert(*defender);
-                    // Note: AttackAction doesn't have a Remove variant, so we'll skip this for now
-                    // The removal will be handled by the board logic when processing attacks
+fn group_move_actions<'ctx>(
+    mover_group: &HashSet<Loc>,
+    moves: &HashMap<Loc, Loc>,
+) -> Vec<AttackAction> {
+    let mut actions = Vec::new();
+    let mut visited = HashSet::new();
+
+    for mover in mover_group {
+        if visited.contains(mover) {
+            continue;
+        }
+
+        let mut chain_movers = Vec::new();
+        let mut current_loc = *mover;
+
+        loop {
+            chain_movers.push(current_loc);
+            visited.insert(current_loc);
+            let next_loc = *moves.get(&current_loc).unwrap();
+
+            if next_loc == *mover {
+                // cycle detected
+                if chain_movers.len() > 1 {
+                    // not just a self-move
+                    actions.push(AttackAction::MoveCyclic {
+                        locs: chain_movers.clone(),
+                    });
                 }
+                break;
             }
+
+            if !mover_group.contains(&next_loc) || visited.contains(&next_loc) {
+                // end of chain
+                for from_loc in chain_movers.iter().rev().cloned() {
+                    let to_loc = *moves.get(&from_loc).unwrap();
+                    actions.push(AttackAction::Move { from_loc, to_loc });
+                }
+                break;
+            }
+
+            current_loc = next_loc;
         }
     }
 

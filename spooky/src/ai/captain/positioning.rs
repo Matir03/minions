@@ -1,5 +1,8 @@
 use crate::ai::captain::combat::manager::{CombatManager, SatVariables};
-use crate::core::{board::Board, Loc, Side};
+use crate::core::{
+    board::{actions::AttackAction, Board},
+    Loc, Side,
+};
 use anyhow::{bail, Context, Result};
 use rand::prelude::*;
 use std::collections::{HashMap, HashSet};
@@ -17,40 +20,25 @@ pub struct MoveCandidate {
 }
 
 /// SAT-based piece positioning system with three-stage approach
-pub struct SatPositioningSystem {
-    rng: StdRng,
-}
+pub struct SatPositioningSystem {}
 
 impl SatPositioningSystem {
-    pub fn new(rng: StdRng) -> Self {
-        Self { rng }
-    }
-
-    /// Main positioning function that orchestrates the three-stage approach
-    pub fn position_pieces<'ctx>(
-        &mut self,
+    pub fn position_pieces_with_sat<'ctx>(
+        &self,
         manager: &mut CombatManager<'ctx>,
         board: &Board,
         side: Side,
-    ) -> Result<Vec<crate::core::board::actions::AttackAction>> {
-        // Generate affinity values for all possible moves
-        let move_candidates = self.generate_move_candidates(board, side);
+        move_candidates: &[MoveCandidate],
+    ) -> Result<()> {
+        self.attack_reconciliation(manager, board, side, move_candidates)?;
+        self.attack_positioning(manager, board, side, move_candidates)?;
 
-        // Stage 1: Attack reconciliation
-        self.attack_reconciliation(manager, board, side, &move_candidates)?;
-
-        // Stage 2: Attack positioning
-        self.attack_positioning(manager, board, side, &move_candidates)?;
-
-        // Stage 3: Non-attack movement (handled separately, doesn't interact with solver)
-        let stage3_actions = self.execute_stage_3(manager, board, side, &move_candidates);
-
-        Ok(stage3_actions)
+        Ok(())
     }
 
     /// Stage 1: Attack reconciliation - ensuring friendly pieces in the way of attacking pieces can get out of the way
     fn attack_reconciliation<'ctx>(
-        &mut self,
+        &self,
         manager: &mut CombatManager<'ctx>,
         board: &Board,
         side: Side,
@@ -284,7 +272,7 @@ impl SatPositioningSystem {
 
     /// Stage 2: Attack positioning - choosing specific locations for combat-relevant pieces
     fn attack_positioning<'ctx>(
-        &mut self,
+        &self,
         manager: &mut CombatManager<'ctx>,
         board: &Board,
         side: Side,
@@ -352,7 +340,12 @@ impl SatPositioningSystem {
     }
 
     /// Generate all possible moves with random affinity values
-    fn generate_move_candidates(&mut self, board: &Board, side: Side) -> Vec<MoveCandidate> {
+    pub fn generate_move_candidates(
+        &self,
+        rng: &mut impl Rng,
+        board: &Board,
+        side: Side,
+    ) -> Vec<MoveCandidate> {
         let mut candidates = Vec::new();
 
         // Get all friendly pieces
@@ -363,7 +356,7 @@ impl SatPositioningSystem {
 
                 for to_loc in valid_moves {
                     // Generate a random affinity value between 0 and 1
-                    let affinity_value = self.rng.gen_range(0.0..1.0);
+                    let affinity_value = rng.gen_range(0.0..1.0);
 
                     candidates.push(MoveCandidate {
                         from_loc: *loc,
@@ -460,82 +453,136 @@ impl SatPositioningSystem {
         manager: &CombatManager<'ctx>,
         board: &Board,
         side: Side,
-        move_candidates: &[MoveCandidate],
-    ) -> Vec<crate::core::board::actions::AttackAction> {
+        move_candidates: Vec<MoveCandidate>,
+    ) -> Vec<AttackAction> {
         let mut actions = Vec::new();
 
-        // Create a set of pieces that are yet-to-move, initialized to the non-combat pieces
-        let mut yet_to_move: HashSet<Loc> = board
-            .pieces
+        let mut yet_to_move: HashSet<Loc> = manager
+            .graph
+            .friends
             .iter()
-            .filter(|(_, piece)| piece.side == side)
-            .map(|(loc, _)| *loc)
             .filter(|loc| {
                 !manager.variables.friendly_locs.contains(loc)
                     && !manager.variables.attacker_locs.contains(loc)
             })
-            .collect();
-
-        println!("Stage 3: {} pieces yet to move", yet_to_move.len());
-
-        // Filter move candidates to only include non-combat pieces
-        let mut to_be_processed: Vec<MoveCandidate> = move_candidates
-            .iter()
-            .filter(|candidate| yet_to_move.contains(&candidate.from_loc))
             .cloned()
             .collect();
 
-        println!(
-            "Stage 3: {} move candidates to process",
-            to_be_processed.len()
-        );
+        let mut used_hexes = HashSet::new();
+        let mut to_be_processed = move_candidates;
 
-        // Simplified approach: just pick the best move for each piece and create actions
-        // This avoids the complex cycle/path detection that was causing infinite loops
+        while !yet_to_move.is_empty() {
+            println!("Stage 3: yet_to_move: {:?}", yet_to_move);
+            println!("Stage 3: used_hexes: {:?}", used_hexes);
+            println!("Stage 3: to_be_processed: {:?}", to_be_processed);
 
-        // Group moves by from_loc and pick the best one for each piece
-        let mut piece_to_best_move = HashMap::new();
-        for candidate in &to_be_processed {
-            let entry = piece_to_best_move
-                .entry(candidate.from_loc)
-                .or_insert(candidate);
-            if candidate.affinity_value > entry.affinity_value {
-                *entry = candidate;
+            // Filter move candidates to only include non-combat pieces
+            to_be_processed = to_be_processed
+                .iter()
+                .filter(|candidate| {
+                    let MoveCandidate {
+                        from_loc, to_loc, ..
+                    } = candidate;
+
+                    // Must be a yet-to-move piece
+                    yet_to_move.contains(from_loc)
+                        // Must be to a hex that has not yet been moved to
+                        // either by a previous non-attack move
+                        && !used_hexes.contains(to_loc)
+                        // or by a previous attack move
+                        && (!board.pieces.contains_key(to_loc) || yet_to_move.contains(to_loc))
+                })
+                .cloned()
+                .collect();
+
+            // Group moves by from_loc and pick the best one for each piece
+            let mut piece_to_best_move = HashMap::new();
+            for candidate in &to_be_processed {
+                let entry = piece_to_best_move
+                    .entry(candidate.from_loc)
+                    .or_insert(candidate);
+
+                if candidate.affinity_value > entry.affinity_value {
+                    *entry = candidate;
+                }
             }
-        }
 
-        // Create a simple move for each piece to its best destination
-        // Avoid conflicts by tracking used destinations
-        let mut used_destinations = HashSet::new();
+            println!("Stage 3: piece_to_best_move: {:?}", piece_to_best_move);
 
-        for (&piece_loc, &candidate) in &piece_to_best_move {
-            if used_destinations.contains(&candidate.to_loc) {
-                // Skip this move if destination is already taken
-                continue;
+            let mut visited = HashSet::new();
+            let mut moved = HashSet::new();
+
+            'outer: for loc in piece_to_best_move.keys() {
+                if visited.contains(loc) {
+                    continue;
+                }
+
+                let mut path = Vec::new();
+                let mut path_set = HashSet::new();
+                let mut current = *loc;
+
+                while let Some(candidate) = piece_to_best_move.get(&current) {
+                    path.push(current);
+                    path_set.insert(current);
+                    visited.insert(current);
+
+                    let next = candidate.to_loc;
+
+                    if path_set.contains(&next) {
+                        // Cycle detected
+                        let cycle_start = path.iter().position(|l| l == &next).unwrap();
+                        let cycle = &path[cycle_start..];
+
+                        for loc in cycle {
+                            yet_to_move.remove(loc);
+                        }
+                        moved.extend(cycle);
+                        used_hexes.extend(cycle);
+
+                        if cycle.len() > 1 {
+                            let action = AttackAction::MoveCyclic {
+                                locs: cycle.to_vec(),
+                            };
+                            actions.push(action);
+                        }
+
+                        continue 'outer;
+                    }
+
+                    if used_hexes.contains(&next) {
+                        // path blocked by piece that moved this 'outer loop
+                        continue 'outer;
+                    }
+
+                    if moved.contains(&next) {
+                        // next already moved this 'outer loop, end of path
+                        break;
+                    }
+
+                    if visited.contains(&next) {
+                        // path blocked by piece that failed to move this 'outer loop
+                        continue 'outer;
+                    }
+
+                    current = next;
+                }
+
+                // add moves from valid path
+                for from_loc in path.into_iter().rev() {
+                    let to_loc = piece_to_best_move[&from_loc].to_loc;
+                    let action = AttackAction::Move { from_loc, to_loc };
+                    yet_to_move.remove(&from_loc);
+                    moved.insert(from_loc);
+                    used_hexes.insert(to_loc);
+                    actions.push(action);
+                }
             }
 
-            // Create a simple move action
-            actions.push(crate::core::board::actions::AttackAction::Move {
-                from_loc: piece_loc,
-                to_loc: candidate.to_loc,
-            });
-
-            used_destinations.insert(candidate.to_loc);
+            println!("Stage 3: actions: {:?}", actions);
         }
 
         println!("Stage 3: generated {} actions", actions.len());
         actions
-    }
-
-    /// Complete Stage 3 implementation that integrates with the main positioning function
-    pub fn execute_stage_3<'ctx>(
-        &self,
-        manager: &CombatManager<'ctx>,
-        board: &Board,
-        side: Side,
-        move_candidates: &[MoveCandidate],
-    ) -> Vec<crate::core::board::actions::AttackAction> {
-        self.generate_non_attack_movements(manager, board, side, move_candidates)
     }
 }
 
@@ -567,6 +614,7 @@ struct SolverData {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ai::captain::combat::manager::generate_move_from_sat_model;
     use crate::ai::rng::make_rng;
     use crate::core::{board::Board, map::Map, side::Side, units::Unit};
     use z3::Context;
@@ -583,8 +631,9 @@ mod tests {
             crate::core::loc::Loc::new(1, 1),
         ));
 
-        let mut positioning = SatPositioningSystem::new(make_rng());
-        let candidates = positioning.generate_move_candidates(&board, Side::Yellow);
+        let mut positioning = SatPositioningSystem {};
+        let candidates =
+            positioning.generate_move_candidates(&mut make_rng(), &board, Side::Yellow);
 
         // Should generate some move candidates
         assert!(!candidates.is_empty());
@@ -602,8 +651,9 @@ mod tests {
         let map = Map::BlackenedShores;
         let board = Board::new(&map);
 
-        let mut positioning = SatPositioningSystem::new(make_rng());
-        let mut candidates = positioning.generate_move_candidates(&board, Side::Yellow);
+        let mut positioning = SatPositioningSystem {};
+        let mut candidates =
+            positioning.generate_move_candidates(&mut make_rng(), &board, Side::Yellow);
 
         // Sort by affinity value
         candidates.sort_by(|a, b| b.affinity_value.partial_cmp(&a.affinity_value).unwrap());
@@ -617,18 +667,18 @@ mod tests {
     #[test]
     fn test_stage_3_empty_board() {
         let map = Map::BlackenedShores;
-        let board = Board::new(&map);
+        let mut board = Board::new(&map);
         let ctx = Context::new(&z3::Config::new());
         let graph = board.combat_graph(Side::Yellow);
         let manager = CombatManager::new(&ctx, graph, &board);
 
-        let positioning = SatPositioningSystem::new(make_rng());
+        let positioning = SatPositioningSystem {};
         let move_candidates = vec![];
         let actions = positioning.generate_non_attack_movements(
             &manager,
-            &board,
+            &mut board,
             Side::Yellow,
-            &move_candidates,
+            move_candidates,
         );
 
         // Should return no actions for empty board
@@ -651,13 +701,14 @@ mod tests {
         let graph = board.combat_graph(Side::Yellow);
         let manager = CombatManager::new(&ctx, graph, &board);
 
-        let mut positioning = SatPositioningSystem::new(make_rng());
-        let move_candidates = positioning.generate_move_candidates(&board, Side::Yellow);
+        let mut positioning = SatPositioningSystem {};
+        let move_candidates =
+            positioning.generate_move_candidates(&mut make_rng(), &board, Side::Yellow);
         let actions = positioning.generate_non_attack_movements(
             &manager,
-            &board,
+            &mut board,
             Side::Yellow,
-            &move_candidates,
+            move_candidates,
         );
 
         // Should return some actions (even if just staying in place)
@@ -688,7 +739,7 @@ mod tests {
         let graph = board.combat_graph(Side::Yellow);
         let manager = CombatManager::new(&ctx, graph, &board);
 
-        let positioning = SatPositioningSystem::new(make_rng());
+        let positioning = SatPositioningSystem {};
         let move_candidates = vec![
             MoveCandidate {
                 from_loc: loc1,
@@ -704,9 +755,9 @@ mod tests {
 
         let actions = positioning.generate_non_attack_movements(
             &manager,
-            &board,
+            &mut board,
             Side::Yellow,
-            &move_candidates,
+            move_candidates,
         );
 
         // Should detect a cycle and create a MoveCyclic action
@@ -747,7 +798,7 @@ mod tests {
         let graph = board.combat_graph(Side::Yellow);
         let manager = CombatManager::new(&ctx, graph, &board);
 
-        let positioning = SatPositioningSystem::new(make_rng());
+        let positioning = SatPositioningSystem {};
         let move_candidates = vec![
             MoveCandidate {
                 from_loc: loc1,
@@ -763,9 +814,9 @@ mod tests {
 
         let actions = positioning.generate_non_attack_movements(
             &manager,
-            &board,
+            &mut board,
             Side::Yellow,
-            &move_candidates,
+            move_candidates,
         );
 
         // Should detect a path and create Move actions
@@ -801,7 +852,7 @@ mod tests {
         let graph = board.combat_graph(Side::Yellow);
         let manager = CombatManager::new(&ctx, graph, &board);
 
-        let positioning = SatPositioningSystem::new(make_rng());
+        let positioning = SatPositioningSystem {};
         let move_candidates = vec![
             MoveCandidate {
                 from_loc: loc1,
@@ -817,9 +868,9 @@ mod tests {
 
         let actions = positioning.generate_non_attack_movements(
             &manager,
-            &board,
+            &mut board,
             Side::Yellow,
-            &move_candidates,
+            move_candidates,
         );
 
         // Debug output
@@ -864,7 +915,7 @@ mod tests {
         let graph = board.combat_graph(Side::Yellow);
         let manager = CombatManager::new(&ctx, graph, &board);
 
-        let positioning = SatPositioningSystem::new(make_rng());
+        let positioning = SatPositioningSystem {};
         let move_candidates = vec![MoveCandidate {
             from_loc: loc,
             to_loc: crate::core::loc::Loc::new(1, 2),
@@ -894,7 +945,7 @@ mod tests {
         let graph = board.combat_graph(Side::Yellow);
         let manager = CombatManager::new(&ctx, graph, &board);
 
-        let positioning = SatPositioningSystem::new(make_rng());
+        let positioning = SatPositioningSystem {};
 
         // Should find the blocking piece
         let blocking = positioning.get_blocking_piece(&manager, loc, &board, Side::Yellow);
@@ -923,7 +974,7 @@ mod tests {
         let graph = board.combat_graph(Side::Yellow);
         let manager = CombatManager::new(&ctx, graph, &board);
 
-        let positioning = SatPositioningSystem::new(make_rng());
+        let positioning = SatPositioningSystem {};
         let to_loc = crate::core::loc::Loc::new(1, 2);
 
         // Test with a piece that's not in combat (should return false)
@@ -950,15 +1001,37 @@ mod tests {
         let graph = board.combat_graph(Side::Yellow);
         let mut manager = CombatManager::new(&ctx, graph, &board);
 
-        let mut positioning = SatPositioningSystem::new(make_rng());
-        let result = positioning.position_pieces(&mut manager, &board, Side::Yellow);
+        let mut positioning = SatPositioningSystem {};
+        let move_candidates =
+            positioning.generate_move_candidates(&mut make_rng(), &board, Side::Yellow);
+        let result = positioning.position_pieces_with_sat(
+            &mut manager,
+            &mut board,
+            Side::Yellow,
+            &move_candidates,
+        );
+
+        let model = manager.solver.get_model().unwrap();
+        let sat_actions =
+            generate_move_from_sat_model(&model, &manager.graph, &manager.variables, &board);
+
+        let positioning_actions = positioning.generate_non_attack_movements(
+            &manager,
+            &mut board,
+            Side::Yellow,
+            move_candidates,
+        );
+
+        let all_actions = sat_actions
+            .into_iter()
+            .chain(positioning_actions.into_iter())
+            .collect::<Vec<_>>();
 
         // Should succeed and return actions
         assert!(result.is_ok());
-        let actions = result.unwrap();
 
         // Should return some actions (even if just staying in place)
-        assert!(!actions.is_empty());
+        assert!(!all_actions.is_empty());
     }
 
     #[test]

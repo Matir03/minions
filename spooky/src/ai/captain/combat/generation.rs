@@ -1,25 +1,21 @@
 use crate::ai::captain::combat::{
     graph::CombatGraph,
-    manager::{generate_move_from_sat_model, CombatManager},
+    manager::CombatManager,
     prophet::{DeathProphet, RemovalAssumption},
 };
-use crate::ai::captain::positioning::SatPositioningSystem;
-use crate::core::{board::actions::AttackAction, board::Board, side::Side};
+use crate::core::{board::Board, side::Side};
 use anyhow::Result;
-use std::collections::HashMap;
 use z3::ast::Bool;
 
 /// Combat generation system that orchestrates the new architecture
 pub struct CombatGenerationSystem {
     pub death_prophet: DeathProphet,
-    positioning_system: SatPositioningSystem,
 }
 
 impl CombatGenerationSystem {
-    pub fn new(death_prophet: DeathProphet, positioning_system: SatPositioningSystem) -> Self {
+    pub fn new() -> Self {
         Self {
-            death_prophet,
-            positioning_system,
+            death_prophet: DeathProphet::new(crate::ai::rng::make_rng()),
         }
     }
 
@@ -68,17 +64,6 @@ impl CombatGenerationSystem {
         Ok(())
     }
 
-    /// Position pieces using the importance heuristic
-    pub fn position_pieces<'ctx>(
-        &mut self,
-        manager: &mut CombatManager<'ctx>,
-        board: &Board,
-        side: Side,
-    ) -> Result<Vec<AttackAction>> {
-        self.positioning_system
-            .position_pieces(manager, board, side)
-    }
-
     /// Create a Z3 constraint for a removal assumption
     fn create_assumption_constraint<'ctx>(
         &self,
@@ -116,10 +101,7 @@ mod tests {
 
     #[test]
     fn test_combat_generation_system_creation() {
-        let death_prophet = DeathProphet::new(crate::ai::rng::make_rng());
-        let positioning_system = SatPositioningSystem::new(crate::ai::rng::make_rng());
-
-        let _system = CombatGenerationSystem::new(death_prophet, positioning_system);
+        let _system = CombatGenerationSystem::new();
         // Should not panic
     }
 
@@ -131,9 +113,7 @@ mod tests {
         let graph = board.combat_graph(Side::Yellow);
         let mut solver = CombatManager::new(&ctx, graph, &board);
 
-        let death_prophet = DeathProphet::new(crate::ai::rng::make_rng());
-        let positioning_system = SatPositioningSystem::new(crate::ai::rng::make_rng());
-        let mut system = CombatGenerationSystem::new(death_prophet, positioning_system);
+        let mut system = CombatGenerationSystem::new();
 
         let result = system.generate_combat(&mut solver, &board, Side::Yellow);
         assert!(result.is_ok());

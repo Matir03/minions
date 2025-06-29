@@ -102,7 +102,7 @@ impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
         std::io::stdout().flush().unwrap();
 
         let graph = new_board.combat_graph(self.side_to_move);
-        let mut sat_solver = CombatManager::new(&ctx, graph, &new_board);
+        let mut manager = CombatManager::new(&ctx, graph, &new_board);
         println!(" ({:.2?})", combat_start.elapsed());
 
         // --- Death Prophet (reused) ---
@@ -110,16 +110,15 @@ impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
         print!("Death Prophet: initializing ");
         std::io::stdout().flush().unwrap();
 
-        let death_prophet = DeathProphet::new(crate::ai::rng::make_rng());
-        let positioning_system = SatPositioningSystem::new(crate::ai::rng::make_rng());
-        let mut combat_generation = CombatGenerationSystem::new(death_prophet, positioning_system);
+        let positioning_system = SatPositioningSystem {};
+        let mut combat_generation = CombatGenerationSystem::new();
         println!(" ({:.2?})", prophet_start.elapsed());
 
         // First sat check for timining
         let sat_start = std::time::Instant::now();
         print!("First sat check: ");
         std::io::stdout().flush().unwrap();
-        let sat_result = sat_solver.solver.check();
+        let sat_result = manager.solver.check();
         println!("done ({:.2?})", sat_start.elapsed());
 
         // --- Combat Generation (add death prophet assumptions) ---
@@ -127,56 +126,77 @@ impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
         print!("Combat generation: ");
         std::io::stdout().flush().unwrap();
 
-        if let Err(e) =
-            combat_generation.generate_combat(&mut sat_solver, &new_board, self.side_to_move)
-        {
-            print!("failed: {}", e);
-        } else {
-            print!("done");
-        }
+        combat_generation
+            .generate_combat(&mut manager, &new_board, self.side_to_move)
+            .unwrap();
+        print!("done");
         println!(" ({:.2?})", generation_start.elapsed());
+
+        // --- Generate move candidates ---
+        let candidate_gen = std::time::Instant::now();
+        print!("Generating move candidates: ");
+        std::io::stdout().flush().unwrap();
+        let move_candidates =
+            positioning_system.generate_move_candidates(rng, &new_board, self.side_to_move);
+        println!("done ({:.2?})", candidate_gen.elapsed());
 
         // --- Piece Positioning (add positioning constraints) ---
         let positioning_start = std::time::Instant::now();
         print!("Piece positioning: ");
         std::io::stdout().flush().unwrap();
 
-        if let Err(e) =
-            combat_generation.position_pieces(&mut sat_solver, &new_board, self.side_to_move)
-        {
-            print!("failed: {}", e);
-        } else {
-            print!("done");
-        }
+        positioning_system.position_pieces_with_sat(
+            &mut manager,
+            &new_board,
+            self.side_to_move,
+            &move_candidates,
+        );
+
+        print!("done");
         println!(" ({:.2?})", positioning_start.elapsed());
 
         // --- Extract all moves from the combined model ---
-        let all_actions = match sat_solver.solver.check() {
+        let combat_actions = match manager.solver.check() {
             z3::SatResult::Sat => {
-                let model = sat_solver
+                let model = manager
                     .solver
                     .get_model()
                     .expect("Failed to get model from SAT solver");
 
-                generate_move_from_sat_model(
-                    &model,
-                    &sat_solver.graph,
-                    &sat_solver.variables,
-                    &new_board,
-                )
+                generate_move_from_sat_model(&model, &manager.graph, &manager.variables, &new_board)
             }
             _ => panic!("Failed to generate combat actions"),
         };
 
-        // Apply all actions to the board
+        // --- Apply combat actions ---
+        let combat_start = std::time::Instant::now();
+        print!("Applying combat actions: ");
+        std::io::stdout().flush().unwrap();
         let rebate = new_board
-            .do_attacks(self.side_to_move, &all_actions)
-            .unwrap_or_else(|e| {
-                panic!(
-                    "[BoardNodeState] Failed to perform combined actions: {:#?}",
-                    &all_actions,
-                );
-            });
+            .do_attacks(self.side_to_move, &combat_actions)
+            .unwrap();
+        println!("done ({:.2?})", combat_start.elapsed());
+
+        // --- Generate non-attack movements ---
+        let positioning_start = std::time::Instant::now();
+        print!("Generating non-attack movements: ");
+        std::io::stdout().flush().unwrap();
+        let positioning_actions = positioning_system.generate_non_attack_movements(
+            &manager,
+            &mut new_board,
+            self.side_to_move,
+            move_candidates,
+        );
+        println!("{:?}", positioning_actions);
+        new_board
+            .do_attacks(self.side_to_move, &positioning_actions)
+            .unwrap();
+        println!("done ({:.2?})", positioning_start.elapsed());
+
+        let attack_actions = combat_actions
+            .into_iter()
+            .chain(positioning_actions.into_iter())
+            .collect::<Vec<_>>();
 
         // --- Spawning ---
         let spawn_start = std::time::Instant::now();
@@ -206,7 +226,7 @@ impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
 
         let turn_taken = BoardTurn {
             setup_action,
-            attack_actions: all_actions,
+            attack_actions,
             spawn_actions,
         };
 
