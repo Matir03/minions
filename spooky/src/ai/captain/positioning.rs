@@ -23,11 +23,11 @@ pub struct MoveCandidate {
 pub struct SatPositioningSystem {}
 
 impl SatPositioningSystem {
-    /// Stage 1: Attack reconciliation - ensuring friendly pieces in the way of attacking pieces can get out of the way
+    /// Stage 1: Combat reconciliation - ensuring friendly pieces in the way of attacking pieces can get out of the way
     /// returns whether the attack is at all possible
     /// if it is, it will return true and the solver will be in a state where the attack can be positioned
     /// if it is not, it will return false and the caller can try a different attack
-    pub fn attack_reconciliation<'ctx>(
+    pub fn combat_reconciliation<'ctx>(
         &self,
         manager: &mut ConstraintManager<'ctx>,
         board: &Board,
@@ -247,8 +247,8 @@ impl SatPositioningSystem {
         constraints
     }
 
-    /// Stage 2: Attack positioning - choosing specific locations for combat-relevant pieces
-    pub fn attack_positioning<'ctx>(
+    /// Stage 2: Combat positioning - choosing specific locations for combat-relevant pieces
+    pub fn combat_positioning<'ctx>(
         &self,
         manager: &mut ConstraintManager<'ctx>,
         board: &Board,
@@ -939,13 +939,13 @@ mod tests {
             positioning.generate_move_candidates(&mut make_rng(), &board, Side::Yellow);
 
         let result = positioning
-            .attack_reconciliation(&mut manager, &board, Side::Yellow, &move_candidates)
+            .combat_reconciliation(&mut manager, &board, Side::Yellow, &move_candidates)
             .unwrap();
 
         assert!(result.is_none());
 
         positioning
-            .attack_positioning(&mut manager, &board, Side::Yellow, &move_candidates)
+            .combat_positioning(&mut manager, &board, Side::Yellow, &move_candidates)
             .unwrap();
 
         let model = manager.solver.get_model().unwrap();

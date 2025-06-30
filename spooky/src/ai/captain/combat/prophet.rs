@@ -41,16 +41,18 @@ impl DeathProphet {
 
         // Get the combat graph to see which defenders are actually attackable
         let graph = board.combat_graph(side);
-        let attackable_defenders: std::collections::HashSet<_> =
-            graph.defenders.iter().cloned().collect();
+        let defenders = &graph.defenders;
 
         // Get all enemy pieces (potential defenders) that are actually attackable
-        for (loc, piece) in &board.pieces {
-            if piece.side != side && attackable_defenders.contains(loc) {
-                // Generate a random number between -1 and 1 for each defender
-                let score = self.rng.gen_range(-1.0..1.0);
-                priority_scores.insert(*loc, score);
-            }
+        for loc in defenders {
+            let piece = board.get_piece(loc).unwrap();
+            let piece_stats = piece.unit.stats();
+            let score = if piece_stats.necromancer {
+                1.0
+            } else {
+                (piece_stats.cost - piece_stats.rebate) as f64 / 10.0
+            };
+            priority_scores.insert(*loc, score);
         }
 
         // Convert scores to assumptions and sort by absolute value
