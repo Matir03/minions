@@ -5,6 +5,9 @@ edition = "2021"
 authors = ["Ritam Nag"]
 description = "Engine for the Minions board game"
 
+[features]
+profiling = []
+
 [lib]
 name = "spooky"
 path = "src/lib.rs"

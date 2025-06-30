@@ -1,10 +1,14 @@
+use std::collections::HashSet;
+
 use crate::ai::captain::combat::{
     constraints::ConstraintManager,
+    constraints::SatVariables,
     graph::CombatGraph,
     prophet::{DeathProphet, RemovalAssumption},
 };
+
 use crate::core::{board::Board, side::Side};
-use anyhow::Result;
+use anyhow::{Context, Result};
 use z3::ast::Bool;
 
 /// Combat generation system that orchestrates the new architecture
@@ -28,26 +32,37 @@ impl CombatGenerationSystem {
     ) -> Result<()> {
         // Get assumptions from the death prophet
         let assumptions = self.death_prophet.generate_assumptions(board, side);
+        let constraints = assumptions
+            .iter()
+            .map(|assumption| {
+                self.create_assumption_constraint(&manager.variables, assumption, manager.ctx)
+            })
+            .collect::<Vec<_>>();
 
-        // Try to add assumptions one by one until solver returns unsat
-        let mut max_satisfiable_prefix = 0;
-        for (i, assumption) in assumptions.iter().enumerate() {
-            // Create constraint for this assumption
-            let constraint =
-                self.create_assumption_constraint(&manager.variables, assumption, manager.ctx);
-            manager.solver.push();
-            manager.solver.assert(&constraint);
+        let mut constraint_set = constraints.iter().cloned().collect::<HashSet<_>>();
+        let mut n = 0;
 
-            // Check if solver is still satisfiable
-            match manager.solver.check() {
+        for i in 0.. {
+            n = i;
+
+            let cur_constraints = constraint_set.iter().cloned().collect::<Vec<_>>();
+            let is_sat = manager.solver.check_assumptions(&cur_constraints);
+
+            match is_sat {
                 z3::SatResult::Sat => {
-                    // Assumption is satisfiable, continue
-                    max_satisfiable_prefix = i + 1;
+                    break;
                 }
                 z3::SatResult::Unsat => {
-                    // Assumption makes problem unsat, revert and stop
-                    manager.solver.pop(1);
-                    break;
+                    let unsat_core = manager.solver.get_unsat_core();
+                    let unsat_core_set = unsat_core.iter().collect::<HashSet<_>>();
+
+                    let bad_constraint = constraints
+                        .iter()
+                        .rev()
+                        .find(|c| unsat_core_set.contains(c))
+                        .unwrap();
+
+                    constraint_set.remove(bad_constraint);
                 }
                 z3::SatResult::Unknown => {
                     panic!(
@@ -58,8 +73,15 @@ impl CombatGenerationSystem {
             }
         }
 
+        println!("Number of retries: {}", n);
+
         // Give feedback to death prophet
-        self.death_prophet.receive_feedback(max_satisfiable_prefix);
+        let active_constraints = constraints
+            .iter()
+            .map(|c| constraint_set.contains(c))
+            .collect::<Vec<_>>();
+
+        self.death_prophet.receive_feedback(active_constraints);
 
         Ok(())
     }
@@ -67,7 +89,7 @@ impl CombatGenerationSystem {
     /// Create a Z3 constraint for a removal assumption
     fn create_assumption_constraint<'ctx>(
         &self,
-        variables: &crate::ai::captain::combat::constraints::SatVariables<'ctx>,
+        variables: &'ctx SatVariables<'ctx>,
         assumption: &RemovalAssumption,
         ctx: &'ctx z3::Context,
     ) -> Bool<'ctx> {

@@ -22,11 +22,15 @@ impl RemovalAssumption {
 /// Death Prophet that generates removal assumptions in order of priority
 pub struct DeathProphet {
     rng: StdRng,
+    last_assumptions: Vec<RemovalAssumption>,
 }
 
 impl DeathProphet {
     pub fn new(rng: StdRng) -> Self {
-        Self { rng }
+        Self {
+            rng,
+            last_assumptions: Vec::new(),
+        }
     }
 
     /// Generate a list of removal assumptions ordered by priority
@@ -77,15 +81,22 @@ impl DeathProphet {
             .map(|(assumption, _)| assumption)
             .collect();
 
+        self.last_assumptions = assumptions.clone();
         assumptions
     }
 
     /// Get feedback on the maximum prefix of assumptions that can be satisfied
     /// This is called by the combat generation system
-    pub fn receive_feedback(&mut self, _max_satisfiable_prefix: usize) {
-        // For now, we don't use feedback to adjust future assumptions
-        // In a more sophisticated implementation, this could be used to learn
-        // which types of assumptions are more likely to be satisfiable
+    pub fn receive_feedback(&mut self, active_constraints: Vec<bool>) {
+        let satisfied_assumptions = self
+            .last_assumptions
+            .iter()
+            .zip(active_constraints)
+            .filter(|(_, active)| *active)
+            .map(|(assumption, _)| assumption)
+            .collect::<Vec<_>>();
+
+        println!("Satisfiable assumptions: {:?}", satisfied_assumptions)
     }
 }
 
