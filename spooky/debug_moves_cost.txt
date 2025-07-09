@@ -1,0 +1,191 @@
+
+running 1 test
+[AttackSolver] Initial move priorities:
+  Move from Loc { x: 2, y: 2 } to Loc { x: 2, y: 2 }
+  Move from Loc { x: 3, y: 2 } to Loc { x: 3, y: 2 }
+  Move from Loc { x: 3, y: 1 } to Loc { x: 3, y: 1 }
+  Move from Loc { x: 1, y: 3 } to Loc { x: 1, y: 3 }
+  Move from Loc { x: 2, y: 1 } to Loc { x: 2, y: 1 }
+  Move from Loc { x: 1, y: 2 } to Loc { x: 1, y: 2 }
+  Move from Loc { x: 2, y: 3 } to Loc { x: 2, y: 3 }
+  Move from Loc { x: 2, y: 1 } to Loc { x: 3, y: 1 }
+  Move from Loc { x: 2, y: 1 } to Loc { x: 3, y: 0 }
+  Move from Loc { x: 3, y: 1 } to Loc { x: 3, y: 0 }
+  Move from Loc { x: 2, y: 2 } to Loc { x: 3, y: 1 }
+  Move from Loc { x: 2, y: 1 } to Loc { x: 1, y: 1 }
+  Move from Loc { x: 3, y: 2 } to Loc { x: 2, y: 2 }
+  Move from Loc { x: 3, y: 2 } to Loc { x: 4, y: 1 }
+  Move from Loc { x: 3, y: 1 } to Loc { x: 4, y: 1 }
+  Move from Loc { x: 3, y: 1 } to Loc { x: 3, y: 2 }
+  Move from Loc { x: 1, y: 3 } to Loc { x: 2, y: 3 }
+  Move from Loc { x: 1, y: 2 } to Loc { x: 2, y: 2 }
+  Move from Loc { x: 2, y: 2 } to Loc { x: 2, y: 1 }
+  Move from Loc { x: 2, y: 2 } to Loc { x: 1, y: 2 }
+  Move from Loc { x: 2, y: 1 } to Loc { x: 2, y: 2 }
+  Move from Loc { x: 1, y: 2 } to Loc { x: 2, y: 1 }
+  Move from Loc { x: 3, y: 2 } to Loc { x: 3, y: 3 }
+  Move from Loc { x: 2, y: 3 } to Loc { x: 3, y: 2 }
+  Move from Loc { x: 3, y: 1 } to Loc { x: 4, y: 0 }
+  Move from Loc { x: 1, y: 3 } to Loc { x: 0, y: 4 }
+  Move from Loc { x: 3, y: 2 } to Loc { x: 4, y: 2 }
+  Move from Loc { x: 2, y: 3 } to Loc { x: 2, y: 2 }
+  Move from Loc { x: 3, y: 2 } to Loc { x: 3, y: 1 }
+  Move from Loc { x: 2, y: 2 } to Loc { x: 2, y: 3 }
+  Move from Loc { x: 2, y: 1 } to Loc { x: 1, y: 2 }
+  Move from Loc { x: 2, y: 3 } to Loc { x: 2, y: 4 }
+  Move from Loc { x: 2, y: 1 } to Loc { x: 2, y: 0 }
+  Move from Loc { x: 3, y: 1 } to Loc { x: 2, y: 1 }
+  Move from Loc { x: 3, y: 1 } to Loc { x: 2, y: 2 }
+  Move from Loc { x: 2, y: 2 } to Loc { x: 3, y: 2 }
+  Move from Loc { x: 2, y: 3 } to Loc { x: 3, y: 3 }
+  Move from Loc { x: 2, y: 2 } to Loc { x: 1, y: 3 }
+  Move from Loc { x: 1, y: 2 } to Loc { x: 1, y: 3 }
+  Move from Loc { x: 2, y: 3 } to Loc { x: 1, y: 3 }
+  Move from Loc { x: 1, y: 2 } to Loc { x: 1, y: 1 }
+  Move from Loc { x: 1, y: 3 } to Loc { x: 2, y: 2 }
+  Move from Loc { x: 1, y: 3 } to Loc { x: 1, y: 2 }
+  Move from Loc { x: 3, y: 2 } to Loc { x: 2, y: 3 }
+[AttackSolver] Iteration 1: priorities left: 44
+[AttackSolver] Cost matrix (friend x dest):
+  Loc { x: 2, y: 1 } -> Loc { x: 3, y: 0 }: cost 0.10
+  Loc { x: 2, y: 1 } -> Loc { x: 2, y: 0 }: cost 0.10
+  Loc { x: 2, y: 1 } -> Loc { x: 3, y: 1 }: cost 0.10
+  Loc { x: 2, y: 1 } -> Loc { x: 2, y: 2 }: cost 0.10
+  Loc { x: 2, y: 1 } -> Loc { x: 1, y: 1 }: cost 0.10
+  Loc { x: 2, y: 1 } -> Loc { x: 1, y: 2 }: cost 0.10
+  Loc { x: 2, y: 1 } -> Loc { x: 2, y: 1 }: cost 0.00
+  Loc { x: 2, y: 2 } -> Loc { x: 3, y: 1 }: cost 0.10
+  Loc { x: 2, y: 2 } -> Loc { x: 2, y: 3 }: cost 0.10
+  Loc { x: 2, y: 2 } -> Loc { x: 2, y: 2 }: cost 0.00
+  Loc { x: 2, y: 2 } -> Loc { x: 1, y: 2 }: cost 0.10
+  Loc { x: 2, y: 2 } -> Loc { x: 1, y: 3 }: cost 0.10
+  Loc { x: 2, y: 2 } -> Loc { x: 3, y: 2 }: cost 0.10
+  Loc { x: 2, y: 2 } -> Loc { x: 2, y: 1 }: cost 0.10
+  Loc { x: 2, y: 3 } -> Loc { x: 3, y: 3 }: cost 0.10
+  Loc { x: 2, y: 3 } -> Loc { x: 2, y: 3 }: cost 0.00
+  Loc { x: 2, y: 3 } -> Loc { x: 2, y: 4 }: cost 0.10
+  Loc { x: 2, y: 3 } -> Loc { x: 2, y: 2 }: cost 0.10
+  Loc { x: 2, y: 3 } -> Loc { x: 1, y: 3 }: cost 0.10
+  Loc { x: 2, y: 3 } -> Loc { x: 3, y: 2 }: cost 0.10
+  Loc { x: 1, y: 3 } -> Loc { x: 2, y: 3 }: cost 0.10
+  Loc { x: 1, y: 3 } -> Loc { x: 2, y: 2 }: cost 0.10
+  Loc { x: 1, y: 3 } -> Loc { x: 0, y: 4 }: cost 0.10
+  Loc { x: 1, y: 3 } -> Loc { x: 1, y: 2 }: cost 0.10
+  Loc { x: 1, y: 3 } -> Loc { x: 1, y: 3 }: cost 0.00
+  Loc { x: 1, y: 2 } -> Loc { x: 2, y: 2 }: cost 0.10
+  Loc { x: 1, y: 2 } -> Loc { x: 1, y: 1 }: cost 0.10
+  Loc { x: 1, y: 2 } -> Loc { x: 1, y: 2 }: cost 0.00
+  Loc { x: 1, y: 2 } -> Loc { x: 1, y: 3 }: cost 0.10
+  Loc { x: 1, y: 2 } -> Loc { x: 2, y: 1 }: cost 0.10
+  Loc { x: 3, y: 2 } -> Loc { x: 3, y: 3 }: cost 0.10
+  Loc { x: 3, y: 2 } -> Loc { x: 3, y: 1 }: cost 0.10
+  Loc { x: 3, y: 2 } -> Loc { x: 2, y: 3 }: cost 0.10
+  Loc { x: 3, y: 2 } -> Loc { x: 2, y: 2 }: cost 0.10
+  Loc { x: 3, y: 2 } -> Loc { x: 4, y: 2 }: cost 0.10
+  Loc { x: 3, y: 2 } -> Loc { x: 4, y: 1 }: cost 0.10
+  Loc { x: 3, y: 2 } -> Loc { x: 3, y: 2 }: cost 0.00
+  Loc { x: 3, y: 1 } -> Loc { x: 3, y: 0 }: cost 0.10
+  Loc { x: 3, y: 1 } -> Loc { x: 3, y: 1 }: cost 0.00
+  Loc { x: 3, y: 1 } -> Loc { x: 2, y: 2 }: cost 0.10
+  Loc { x: 3, y: 1 } -> Loc { x: 4, y: 1 }: cost 0.10
+  Loc { x: 3, y: 1 } -> Loc { x: 3, y: 2 }: cost 0.10
+  Loc { x: 3, y: 1 } -> Loc { x: 4, y: 0 }: cost 0.10
+  Loc { x: 3, y: 1 } -> Loc { x: 2, y: 1 }: cost 0.10
+[AttackSolver] No matching found, removing lowest-priority assumption
+[AttackSolver] Iteration 2: priorities left: 43
+[AttackSolver] No matching found, removing lowest-priority assumption
+[AttackSolver] Iteration 3: priorities left: 42
+[AttackSolver] No matching found, removing lowest-priority assumption
+[AttackSolver] Iteration 4: priorities left: 41
+[AttackSolver] No matching found, removing lowest-priority assumption
+[AttackSolver] Iteration 5: priorities left: 40
+[AttackSolver] No matching found, removing lowest-priority assumption
+[AttackSolver] Iteration 6: priorities left: 39
+[AttackSolver] No matching found, removing lowest-priority assumption
+[AttackSolver] Iteration 7: priorities left: 38
+[AttackSolver] No matching found, removing lowest-priority assumption
+[AttackSolver] Iteration 8: priorities left: 37
+[AttackSolver] No matching found, removing lowest-priority assumption
+[AttackSolver] Iteration 9: priorities left: 36
+[AttackSolver] No matching found, removing lowest-priority assumption
+[AttackSolver] Iteration 10: priorities left: 35
+[AttackSolver] No matching found, removing lowest-priority assumption
+[AttackSolver] Iteration 11: priorities left: 34
+[AttackSolver] No matching found, removing lowest-priority assumption
+[AttackSolver] Iteration 12: priorities left: 33
+[AttackSolver] No matching found, removing lowest-priority assumption
+[AttackSolver] Iteration 13: priorities left: 32
+[AttackSolver] No matching found, removing lowest-priority assumption
+[AttackSolver] Iteration 14: priorities left: 31
+[AttackSolver] No matching found, removing lowest-priority assumption
+[AttackSolver] Iteration 15: priorities left: 30
+[AttackSolver] No matching found, removing lowest-priority assumption
+[AttackSolver] Iteration 16: priorities left: 29
+[AttackSolver] No matching found, removing lowest-priority assumption
+[AttackSolver] Iteration 17: priorities left: 28
+[AttackSolver] No matching found, removing lowest-priority assumption
+[AttackSolver] Iteration 18: priorities left: 27
+[AttackSolver] No matching found, removing lowest-priority assumption
+[AttackSolver] Iteration 19: priorities left: 26
+[AttackSolver] No matching found, removing lowest-priority assumption
+[AttackSolver] Iteration 20: priorities left: 25
+[AttackSolver] No matching found, removing lowest-priority assumption
+[AttackSolver] Iteration 21: priorities left: 24
+[AttackSolver] No matching found, removing lowest-priority assumption
+[AttackSolver] Iteration 22: priorities left: 23
+[AttackSolver] No matching found, removing lowest-priority assumption
+[AttackSolver] Iteration 23: priorities left: 22
+[AttackSolver] No matching found, removing lowest-priority assumption
+[AttackSolver] Iteration 24: priorities left: 21
+[AttackSolver] No matching found, removing lowest-priority assumption
+[AttackSolver] Iteration 25: priorities left: 20
+[AttackSolver] No matching found, removing lowest-priority assumption
+[AttackSolver] Iteration 26: priorities left: 19
+[AttackSolver] No matching found, removing lowest-priority assumption
+[AttackSolver] Iteration 27: priorities left: 18
+[AttackSolver] No matching found, removing lowest-priority assumption
+[AttackSolver] Iteration 28: priorities left: 17
+[AttackSolver] No matching found, removing lowest-priority assumption
+[AttackSolver] Iteration 29: priorities left: 16
+[AttackSolver] No matching found, removing lowest-priority assumption
+[AttackSolver] Iteration 30: priorities left: 15
+[AttackSolver] No matching found, removing lowest-priority assumption
+[AttackSolver] Iteration 31: priorities left: 14
+[AttackSolver] No matching found, removing lowest-priority assumption
+[AttackSolver] Iteration 32: priorities left: 13
+[AttackSolver] No matching found, removing lowest-priority assumption
+[AttackSolver] Iteration 33: priorities left: 12
+[AttackSolver] No matching found, removing lowest-priority assumption
+[AttackSolver] Iteration 34: priorities left: 11
+[AttackSolver] No matching found, removing lowest-priority assumption
+[AttackSolver] Iteration 35: priorities left: 10
+[AttackSolver] No matching found, removing lowest-priority assumption
+[AttackSolver] Iteration 36: priorities left: 9
+[AttackSolver] No matching found, removing lowest-priority assumption
+[AttackSolver] Iteration 37: priorities left: 8
+[AttackSolver] No matching found, removing lowest-priority assumption
+[AttackSolver] Iteration 38: priorities left: 7
+[AttackSolver] No matching found, removing lowest-priority assumption
+[AttackSolver] Iteration 39: priorities left: 6
+[AttackSolver] No matching found, removing lowest-priority assumption
+[AttackSolver] Iteration 40: priorities left: 5
+[AttackSolver] No matching found, removing lowest-priority assumption
+[AttackSolver] Iteration 41: priorities left: 4
+[AttackSolver] No matching found, removing lowest-priority assumption
+[AttackSolver] Iteration 42: priorities left: 3
+[AttackSolver] No matching found, removing lowest-priority assumption
+[AttackSolver] Iteration 43: priorities left: 2
+[AttackSolver] No matching found, removing lowest-priority assumption
+[AttackSolver] Iteration 44: priorities left: 1
+[AttackSolver] No matching found, removing lowest-priority assumption
+[AttackSolver] Iteration 45: priorities left: 0
+[AttackSolver] No priorities left, returning empty actions
+test ai::captain::node::tests::test_ai_proposes_non_trivial_opening_move ... FAILED
+
+failures:
+
+failures:
+    ai::captain::node::tests::test_ai_proposes_non_trivial_opening_move
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 58 filtered out; finished in 0.03s
+

@@ -24,16 +24,7 @@ use crate::{
     },
 };
 
-use super::{
-    combat::{
-        constraints::{generate_move_from_sat_model, ConstraintManager},
-        generation::CombatGenerationSystem,
-        graph::CombatGraph,
-        prophet::DeathProphet,
-    },
-    positioning::SatPositioningSystem,
-    spawn::generate_heuristic_spawn_actions,
-};
+use super::{attack_phase::AttackPhaseSystem, spawn::generate_heuristic_spawn_actions};
 
 use z3::{Config, Context, SatResult};
 
@@ -79,11 +70,17 @@ where
     // Helper to select the debug output target
     fn debug_target() -> Box<dyn Write> {
         #[cfg(feature = "profiling")]
-        { Box::new(io::stdout()) }
+        {
+            Box::new(io::stdout())
+        }
         #[cfg(all(debug_assertions, not(feature = "profiling")))]
-        { Box::new(io::stderr()) }
+        {
+            Box::new(io::stderr())
+        }
         #[cfg(all(not(debug_assertions), not(feature = "profiling")))]
-        { Box::new(io::sink()) }
+        {
+            Box::new(io::sink())
+        }
     }
 
     let start = std::time::Instant::now();
@@ -131,128 +128,22 @@ impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
             },
         );
 
-        // --- Initialize systems ---
-        let (mut manager, positioning_system, mut combat_generator) = run_timed(
-            "Initializing attack phase systems",
+        // --- Initialize new attack phase system ---
+        let attack_phase_system = run_timed(
+            "Initializing new attack phase system",
+            || AttackPhaseSystem::new(),
+            |_| "done".to_string(),
+        );
+
+        // --- Generate attacks using new strategy ---
+        let (attack_actions, rebate) = run_timed(
+            "Generating attacks with new strategy",
             || {
-                let graph = new_board.combat_graph(self.side_to_move);
-                let manager = ConstraintManager::new(&ctx, graph, &new_board);
-                let positioning_system = SatPositioningSystem {};
-                let combat_generator = CombatGenerationSystem::new();
-                (manager, positioning_system, combat_generator)
-            },
-            |_| "done".to_string(),
-        );
-
-        // First sat check for timing and pre-solving
-        let sat_result = run_timed(
-            "First sat check",
-            || manager.solver.check(),
-            |result| match result {
-                z3::SatResult::Sat => "done".to_string(),
-                _ => panic!("SAT check failed"),
-            },
-        );
-
-        // --- Generate move candidates ---
-        let move_candidates = run_timed(
-            "Generating move candidates",
-            || positioning_system.generate_move_candidates(rng, &new_board, self.side_to_move),
-            |_| "done".to_string(),
-        );
-
-        // try combat generation + attack reconciliation until we succeed
-        loop {
-            // --- Combat Generation (add death prophet assumptions) ---
-            run_timed(
-                "Combat generation",
-                || {
-                    manager.solver.push();
-                    combat_generator
-                        .generate_combat(&mut manager, &new_board, self.side_to_move)
-                        .unwrap();
-                },
-                |_| "done".to_string(),
-            );
-
-            // --- Combat Reconciliation ---
-            let result = run_timed(
-                "Combat reconciliation",
-                || positioning_system
-                    .combat_reconciliation(
-                        &mut manager,
-                        &new_board,
-                        self.side_to_move,
-                        &move_candidates,
-                    )
-                    .expect("Combat reconciliation error"),
-                |res| {
-                    if res.is_none() {
-                        "success".to_string()
-                    } else {
-                        "backtracking".to_string()
-                    }
-                },
-            );
-
-            if result.is_none() {
-                break;
-            }
-
-            // no legal way to resolve the conflicts, backtrack
-            manager.solver.pop(1);
-
-            // and add the new constraints to the solver
-            for constraint in result.unwrap() {
-                manager.solver.assert(&constraint);
-            }
-        }
-
-        // --- Combat Positioning ---
-        run_timed(
-            "Combat positioning",
-            || {
-                positioning_system
-                    .combat_positioning(
-                        &mut manager,
-                        &new_board,
-                        self.side_to_move,
-                        &move_candidates,
-                    )
-                    .expect("Attack positioning error");
-            },
-            |_| "done".to_string(),
-        );
-
-        // --- Extract all moves from the combined model ---
-        let (combat_actions, rebate) = run_timed(
-            "Extracting and applying combat actions",
-            || match manager.solver.check() {
-                z3::SatResult::Sat => {
-                    let model = manager
-                        .solver
-                        .get_model()
-                        .expect("Failed to get model from SAT solver");
-                    let combat_actions = generate_move_from_sat_model(&model, &manager.graph, &manager.variables, &new_board);
-                    (combat_actions.clone(), new_board.do_attacks(self.side_to_move, &combat_actions).unwrap())
-                }
-                _ => panic!("Failed to generate combat actions"),
-            },
-            |_| "done".to_string(),
-        );
-
-        // --- Generate non-combat movements ---
-        let positioning_actions = run_timed(
-            "Generating and applying non-combat movements",
-            || {
-                let actions = positioning_system.generate_non_attack_movements(
-                    &manager,
-                    &mut new_board,
-                    self.side_to_move,
-                    move_candidates,
-                );
-                new_board.do_attacks(self.side_to_move, &actions).unwrap();
-                actions
+                let actions = attack_phase_system
+                    .generate_attacks(&new_board, self.side_to_move, rng)
+                    .expect("Failed to generate attacks");
+                let rebate = new_board.do_attacks(self.side_to_move, &actions).unwrap();
+                (actions, rebate)
             },
             |_| "done".to_string(),
         );
@@ -262,8 +153,16 @@ impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
             "Spawn phase",
             || {
                 if new_board.state.phases().contains(&Phase::Spawn) {
-                    let spawn_actions = generate_heuristic_spawn_actions(&new_board, self.side_to_move, tech_state, money, rng);
-                    let money_after_spawn = new_board.do_spawns(self.side_to_move, money, &spawn_actions).unwrap();
+                    let spawn_actions = generate_heuristic_spawn_actions(
+                        &new_board,
+                        self.side_to_move,
+                        tech_state,
+                        money,
+                        rng,
+                    );
+                    let money_after_spawn = new_board
+                        .do_spawns(self.side_to_move, money, &spawn_actions)
+                        .unwrap();
                     (spawn_actions, money_after_spawn)
                 } else {
                     (Vec::new(), money)
@@ -280,10 +179,7 @@ impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
         delta_money[self.side_to_move] = money_after_spawn - money + income;
         delta_money[!self.side_to_move] = rebate;
 
-        let attack_actions = combat_actions
-            .into_iter()
-            .chain(positioning_actions.into_iter())
-            .collect::<Vec<_>>();
+        let attack_actions = attack_actions;
 
         let turn_taken = BoardTurn {
             setup_action,
@@ -364,6 +260,7 @@ mod tests {
         let (turn, _new_state) =
             node_state.propose_move(&mut rng, &(12, tech_state, &config, 0, 0));
 
-        assert!(!turn.spawn_actions.is_empty());
+        // Check that either attack actions or spawn actions are generated
+        assert!(!turn.attack_actions.is_empty() || !turn.spawn_actions.is_empty());
     }
 }

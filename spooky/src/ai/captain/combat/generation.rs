@@ -9,7 +9,7 @@ use crate::ai::captain::combat::{
 
 use crate::core::{board::Board, side::Side};
 use anyhow::{Context, Result};
-use z3::ast::Bool;
+use z3::ast::{Ast, Bool, BV};
 
 /// Combat generation system that orchestrates the new architecture
 pub struct CombatGenerationSystem {
@@ -109,6 +109,14 @@ impl CombatGenerationSystem {
                     .get(loc)
                     .expect(&format!("No removed variable for location {}", loc))
                     .not()
+            }
+            RemovalAssumption::Move(from_loc, to_loc) => {
+                // Constraint: move_hex[from_loc] == to_loc
+                let move_hex_var = variables
+                    .move_hex
+                    .get(from_loc)
+                    .expect(&format!("No move_hex variable for location {}", from_loc));
+                move_hex_var._eq(&to_loc.as_z3(ctx))
             }
         }
     }

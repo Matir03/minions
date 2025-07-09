@@ -28,6 +28,8 @@ colored = "2.0"
 z3 = { version="0.12.1", features = ["static-link-z3"] }
 bumpalo = { version="3.16.0", features = ["collections"] }
 rand = "0.8.5"
+lapjv = "0.1.0"
+ndarray = "0.12.1"
 
 [dev-dependencies]
 assert_cmd = "2.0"

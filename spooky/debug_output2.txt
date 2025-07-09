@@ -1,0 +1,71 @@
+
+running 1 test
+Generated 44 priorities
+Friend Loc { x: 3, y: 2 } has 7 possible destinations
+  Considering move from Loc { x: 3, y: 2 } to Loc { x: 3, y: 1 }, dnf: None, score: 9
+  Considering move from Loc { x: 3, y: 2 } to Loc { x: 2, y: 2 }, dnf: None, score: 9
+  Considering move from Loc { x: 3, y: 2 } to Loc { x: 4, y: 1 }, dnf: None, score: 9
+  Considering move from Loc { x: 3, y: 2 } to Loc { x: 3, y: 3 }, dnf: None, score: 9
+  Skipping move from Loc { x: 3, y: 2 } to Loc { x: 3, y: 2 }: same as friend_loc
+  Considering move from Loc { x: 3, y: 2 } to Loc { x: 2, y: 3 }, dnf: None, score: 9
+  Considering move from Loc { x: 3, y: 2 } to Loc { x: 4, y: 2 }, dnf: None, score: 9
+  Adding move action from Loc { x: 3, y: 2 } to Loc { x: 3, y: 1 }
+Friend Loc { x: 2, y: 1 } has 7 possible destinations
+  Considering move from Loc { x: 2, y: 1 } to Loc { x: 3, y: 0 }, dnf: None, score: 9
+  Considering move from Loc { x: 2, y: 1 } to Loc { x: 3, y: 1 }, dnf: None, score: 9
+  Considering move from Loc { x: 2, y: 1 } to Loc { x: 1, y: 2 }, dnf: None, score: 9
+  Considering move from Loc { x: 2, y: 1 } to Loc { x: 1, y: 1 }, dnf: None, score: 9
+  Considering move from Loc { x: 2, y: 1 } to Loc { x: 2, y: 2 }, dnf: None, score: 9
+  Skipping move from Loc { x: 2, y: 1 } to Loc { x: 2, y: 1 }: same as friend_loc
+  Considering move from Loc { x: 2, y: 1 } to Loc { x: 2, y: 0 }, dnf: None, score: 9
+  Adding move action from Loc { x: 2, y: 1 } to Loc { x: 3, y: 0 }
+Friend Loc { x: 2, y: 2 } has 7 possible destinations
+  Considering move from Loc { x: 2, y: 2 } to Loc { x: 3, y: 2 }, dnf: None, score: 9
+  Considering move from Loc { x: 2, y: 2 } to Loc { x: 1, y: 2 }, dnf: None, score: 9
+  Considering move from Loc { x: 2, y: 2 } to Loc { x: 1, y: 3 }, dnf: None, score: 9
+  Considering move from Loc { x: 2, y: 2 } to Loc { x: 2, y: 3 }, dnf: None, score: 9
+  Skipping move from Loc { x: 2, y: 2 } to Loc { x: 2, y: 2 }: same as friend_loc
+  Considering move from Loc { x: 2, y: 2 } to Loc { x: 2, y: 1 }, dnf: None, score: 9
+  Considering move from Loc { x: 2, y: 2 } to Loc { x: 3, y: 1 }, dnf: None, score: 9
+  Adding move action from Loc { x: 2, y: 2 } to Loc { x: 3, y: 2 }
+Friend Loc { x: 3, y: 1 } has 7 possible destinations
+  Considering move from Loc { x: 3, y: 1 } to Loc { x: 4, y: 1 }, dnf: None, score: 9
+  Considering move from Loc { x: 3, y: 1 } to Loc { x: 3, y: 0 }, dnf: None, score: 9
+  Considering move from Loc { x: 3, y: 1 } to Loc { x: 2, y: 1 }, dnf: None, score: 9
+  Skipping move from Loc { x: 3, y: 1 } to Loc { x: 3, y: 1 }: same as friend_loc
+  Considering move from Loc { x: 3, y: 1 } to Loc { x: 2, y: 2 }, dnf: None, score: 9
+  Considering move from Loc { x: 3, y: 1 } to Loc { x: 4, y: 0 }, dnf: None, score: 9
+  Considering move from Loc { x: 3, y: 1 } to Loc { x: 3, y: 2 }, dnf: None, score: 9
+  Adding move action from Loc { x: 3, y: 1 } to Loc { x: 4, y: 1 }
+Friend Loc { x: 1, y: 2 } has 5 possible destinations
+  Considering move from Loc { x: 1, y: 2 } to Loc { x: 2, y: 1 }, dnf: None, score: 9
+  Skipping move from Loc { x: 1, y: 2 } to Loc { x: 1, y: 2 }: same as friend_loc
+  Considering move from Loc { x: 1, y: 2 } to Loc { x: 2, y: 2 }, dnf: None, score: 9
+  Considering move from Loc { x: 1, y: 2 } to Loc { x: 1, y: 3 }, dnf: None, score: 9
+  Considering move from Loc { x: 1, y: 2 } to Loc { x: 1, y: 1 }, dnf: None, score: 9
+  Adding move action from Loc { x: 1, y: 2 } to Loc { x: 2, y: 1 }
+Friend Loc { x: 1, y: 3 } has 5 possible destinations
+  Considering move from Loc { x: 1, y: 3 } to Loc { x: 2, y: 2 }, dnf: None, score: 9
+  Considering move from Loc { x: 1, y: 3 } to Loc { x: 0, y: 4 }, dnf: None, score: 9
+  Considering move from Loc { x: 1, y: 3 } to Loc { x: 1, y: 2 }, dnf: None, score: 9
+  Skipping move from Loc { x: 1, y: 3 } to Loc { x: 1, y: 3 }: same as friend_loc
+  Considering move from Loc { x: 1, y: 3 } to Loc { x: 2, y: 3 }, dnf: None, score: 9
+  Adding move action from Loc { x: 1, y: 3 } to Loc { x: 2, y: 2 }
+Friend Loc { x: 2, y: 3 } has 6 possible destinations
+  Considering move from Loc { x: 2, y: 3 } to Loc { x: 3, y: 3 }, dnf: None, score: 9
+  Considering move from Loc { x: 2, y: 3 } to Loc { x: 2, y: 2 }, dnf: None, score: 9
+  Considering move from Loc { x: 2, y: 3 } to Loc { x: 1, y: 3 }, dnf: None, score: 9
+  Considering move from Loc { x: 2, y: 3 } to Loc { x: 2, y: 4 }, dnf: None, score: 9
+  Considering move from Loc { x: 2, y: 3 } to Loc { x: 3, y: 2 }, dnf: None, score: 9
+  Skipping move from Loc { x: 2, y: 3 } to Loc { x: 2, y: 3 }: same as friend_loc
+  Adding move action from Loc { x: 2, y: 3 } to Loc { x: 3, y: 3 }
+Generated 7 move actions
+test ai::captain::node::tests::test_ai_proposes_non_trivial_opening_move ... FAILED
+
+failures:
+
+failures:
+    ai::captain::node::tests::test_ai_proposes_non_trivial_opening_move
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 58 filtered out; finished in 0.02s
+

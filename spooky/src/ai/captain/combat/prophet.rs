@@ -3,11 +3,12 @@ use crate::core::{units::UnitStats, Loc, Side};
 use rand::prelude::*;
 use std::collections::HashMap;
 
-/// Represents an assumption about whether a unit should be removed
-#[derive(Debug, Clone)]
+/// Represents an assumption about whether a unit should be removed or moved
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum RemovalAssumption {
     Removed(Loc),
     NotRemoved(Loc),
+    Move(Loc, Loc), // from_loc, to_loc
 }
 
 impl RemovalAssumption {
@@ -15,6 +16,7 @@ impl RemovalAssumption {
         match self {
             RemovalAssumption::Removed(loc) => *loc,
             RemovalAssumption::NotRemoved(loc) => *loc,
+            RemovalAssumption::Move(from_loc, _) => *from_loc,
         }
     }
 }
@@ -33,8 +35,7 @@ impl DeathProphet {
         }
     }
 
-    /// Generate a list of removal assumptions ordered by priority
-    /// For now, this generates random assumptions as specified in the architecture
+    /// Generate a list of removal and move assumptions ordered by priority
     pub fn generate_assumptions(
         &mut self,
         board: &crate::core::Board,
@@ -56,20 +57,32 @@ impl DeathProphet {
             } else {
                 (piece_stats.cost - piece_stats.rebate) as f64 / 10.0
             };
-            priority_scores.insert(*loc, score);
+            priority_scores.insert(RemovalAssumption::Removed(*loc), score);
+            priority_scores.insert(RemovalAssumption::NotRemoved(*loc), score * 0.5);
+        }
+
+        // Add move assumptions from move_hex_map
+        for (friend_loc, hex_map) in &graph.move_hex_map {
+            for (dest_loc, dnf) in hex_map {
+                // Weight moves by distance from starting location
+                let distance = friend_loc.dist(dest_loc) as f64;
+                let base_score = 1.0 / (distance + 1.0); // Closer moves have higher priority
+
+                // Adjust score based on whether move requires removal
+                let score = if dnf.is_none() {
+                    base_score * 2.0 // Free moves have higher priority
+                } else {
+                    base_score
+                };
+
+                priority_scores.insert(RemovalAssumption::Move(*friend_loc, *dest_loc), score);
+            }
         }
 
         // Convert scores to assumptions and sort by absolute value
         let mut scored_assumptions: Vec<_> = priority_scores
             .into_iter()
-            .map(|(loc, score): (Loc, f64)| {
-                let assumption = if score > 0.0 {
-                    RemovalAssumption::Removed(loc)
-                } else {
-                    RemovalAssumption::NotRemoved(loc)
-                };
-                (assumption, score.abs())
-            })
+            .map(|(assumption, score)| (assumption, score))
             .collect();
 
         // Sort by absolute value of score (highest priority first)

@@ -1,0 +1,79 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.06s
+     Running unittests src/lib.rs (target/debug/deps/spooky-4286bba9d1d61a21)
+
+running 1 test
+Setup phase: skipped (44.34µs)
+Initializing new attack phase system: done (1.27µs)
+Generating attacks with new strategy: Generated 44 priorities
+Friend Loc { x: 1, y: 2 } has 5 possible destinations
+  Skipping move from Loc { x: 1, y: 2 } to Loc { x: 1, y: 2 }: same as friend_loc
+  Considering move from Loc { x: 1, y: 2 } to Loc { x: 1, y: 1 }, dnf: None, score: 1
+  Skipping move from Loc { x: 1, y: 2 } to Loc { x: 2, y: 2 }: destination occupied
+  Skipping move from Loc { x: 1, y: 2 } to Loc { x: 2, y: 1 }: destination occupied
+  Skipping move from Loc { x: 1, y: 2 } to Loc { x: 1, y: 3 }: destination occupied
+  Adding move action from Loc { x: 1, y: 2 } to Loc { x: 1, y: 1 }
+Friend Loc { x: 2, y: 2 } has 7 possible destinations
+  Skipping move from Loc { x: 2, y: 2 } to Loc { x: 2, y: 3 }: destination occupied
+  Skipping move from Loc { x: 2, y: 2 } to Loc { x: 2, y: 2 }: same as friend_loc
+  Skipping move from Loc { x: 2, y: 2 } to Loc { x: 3, y: 2 }: destination occupied
+  Skipping move from Loc { x: 2, y: 2 } to Loc { x: 1, y: 3 }: destination occupied
+  Skipping move from Loc { x: 2, y: 2 } to Loc { x: 3, y: 1 }: destination occupied
+  Skipping move from Loc { x: 2, y: 2 } to Loc { x: 1, y: 2 }: destination occupied
+  Skipping move from Loc { x: 2, y: 2 } to Loc { x: 2, y: 1 }: destination occupied
+  No valid destination found for Loc { x: 2, y: 2 }
+Friend Loc { x: 1, y: 3 } has 5 possible destinations
+  Skipping move from Loc { x: 1, y: 3 } to Loc { x: 2, y: 2 }: destination occupied
+  Skipping move from Loc { x: 1, y: 3 } to Loc { x: 1, y: 3 }: same as friend_loc
+  Skipping move from Loc { x: 1, y: 3 } to Loc { x: 2, y: 3 }: destination occupied
+  Considering move from Loc { x: 1, y: 3 } to Loc { x: 0, y: 4 }, dnf: None, score: 1
+  Skipping move from Loc { x: 1, y: 3 } to Loc { x: 1, y: 2 }: destination occupied
+  Adding move action from Loc { x: 1, y: 3 } to Loc { x: 0, y: 4 }
+Friend Loc { x: 2, y: 3 } has 6 possible destinations
+  Skipping move from Loc { x: 2, y: 3 } to Loc { x: 1, y: 3 }: destination occupied
+  Skipping move from Loc { x: 2, y: 3 } to Loc { x: 2, y: 3 }: same as friend_loc
+  Skipping move from Loc { x: 2, y: 3 } to Loc { x: 2, y: 2 }: destination occupied
+  Considering move from Loc { x: 2, y: 3 } to Loc { x: 3, y: 3 }, dnf: None, score: 1
+  Skipping move from Loc { x: 2, y: 3 } to Loc { x: 3, y: 2 }: destination occupied
+  Considering move from Loc { x: 2, y: 3 } to Loc { x: 2, y: 4 }, dnf: None, score: 1
+  Adding move action from Loc { x: 2, y: 3 } to Loc { x: 3, y: 3 }
+Friend Loc { x: 3, y: 2 } has 7 possible destinations
+  Skipping move from Loc { x: 3, y: 2 } to Loc { x: 3, y: 2 }: same as friend_loc
+  Skipping move from Loc { x: 3, y: 2 } to Loc { x: 2, y: 3 }: destination occupied
+  Considering move from Loc { x: 3, y: 2 } to Loc { x: 3, y: 3 }, dnf: None, score: 1
+  Skipping move from Loc { x: 3, y: 2 } to Loc { x: 2, y: 2 }: destination occupied
+  Considering move from Loc { x: 3, y: 2 } to Loc { x: 4, y: 1 }, dnf: None, score: 1
+  Considering move from Loc { x: 3, y: 2 } to Loc { x: 4, y: 2 }, dnf: None, score: 1
+  Skipping move from Loc { x: 3, y: 2 } to Loc { x: 3, y: 1 }: destination occupied
+  Adding move action from Loc { x: 3, y: 2 } to Loc { x: 3, y: 3 }
+Friend Loc { x: 3, y: 1 } has 7 possible destinations
+  Skipping move from Loc { x: 3, y: 1 } to Loc { x: 3, y: 2 }: destination occupied
+  Considering move from Loc { x: 3, y: 1 } to Loc { x: 4, y: 0 }, dnf: None, score: 1
+  Considering move from Loc { x: 3, y: 1 } to Loc { x: 3, y: 0 }, dnf: None, score: 1
+  Skipping move from Loc { x: 3, y: 1 } to Loc { x: 2, y: 1 }: destination occupied
+  Skipping move from Loc { x: 3, y: 1 } to Loc { x: 3, y: 1 }: same as friend_loc
+  Considering move from Loc { x: 3, y: 1 } to Loc { x: 4, y: 1 }, dnf: None, score: 1
+  Skipping move from Loc { x: 3, y: 1 } to Loc { x: 2, y: 2 }: destination occupied
+  Adding move action from Loc { x: 3, y: 1 } to Loc { x: 4, y: 0 }
+Friend Loc { x: 2, y: 1 } has 7 possible destinations
+  Skipping move from Loc { x: 2, y: 1 } to Loc { x: 3, y: 1 }: destination occupied
+  Skipping move from Loc { x: 2, y: 1 } to Loc { x: 2, y: 1 }: same as friend_loc
+  Skipping move from Loc { x: 2, y: 1 } to Loc { x: 2, y: 2 }: destination occupied
+  Considering move from Loc { x: 2, y: 1 } to Loc { x: 1, y: 1 }, dnf: None, score: 1
+  Considering move from Loc { x: 2, y: 1 } to Loc { x: 2, y: 0 }, dnf: None, score: 1
+  Considering move from Loc { x: 2, y: 1 } to Loc { x: 3, y: 0 }, dnf: None, score: 1
+  Skipping move from Loc { x: 2, y: 1 } to Loc { x: 1, y: 2 }: destination occupied
+  Adding move action from Loc { x: 2, y: 1 } to Loc { x: 1, y: 1 }
+Generated 6 move actions
+thread 'ai::captain::node::tests::test_ai_proposes_non_trivial_opening_move' panicked at src/ai/captain/node.rs:145:80:
+called `Result::unwrap()` on an `Err` value: Destination square is occupied: move d2d3
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test ai::captain::node::tests::test_ai_proposes_non_trivial_opening_move ... FAILED
+
+failures:
+
+failures:
+    ai::captain::node::tests::test_ai_proposes_non_trivial_opening_move
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 58 filtered out; finished in 0.02s
+
+error: test failed, to rerun pass `--lib`
