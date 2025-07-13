@@ -24,7 +24,8 @@ use crate::{
     },
 };
 
-use super::{attack_phase::AttackPhaseSystem, spawn::generate_heuristic_spawn_actions};
+use super::attack::generator::AttackGenerator;
+use super::spawn::generate_heuristic_spawn_actions;
 
 use z3::{Config, Context, SatResult};
 
@@ -129,9 +130,9 @@ impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
         );
 
         // --- Initialize new attack phase system ---
-        let attack_phase_system = run_timed(
+        let mut attack_generator = run_timed(
             "Initializing new attack phase system",
-            || AttackPhaseSystem::new(),
+            || AttackGenerator::new(&ctx, &new_board, self.side_to_move, rng),
             |_| "done".to_string(),
         );
 
@@ -139,8 +140,8 @@ impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
         let (attack_actions, rebate) = run_timed(
             "Generating attacks with new strategy",
             || {
-                let actions = attack_phase_system
-                    .generate_attacks(&new_board, self.side_to_move, rng)
+                let actions = attack_generator
+                    .generate_attacks(&new_board, self.side_to_move)
                     .expect("Failed to generate attacks");
                 let rebate = new_board.do_attacks(self.side_to_move, &actions).unwrap();
                 (actions, rebate)

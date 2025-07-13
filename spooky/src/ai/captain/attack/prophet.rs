@@ -1,48 +1,63 @@
-use crate::core::board::Piece;
-use crate::core::{units::UnitStats, Loc, Side};
+use crate::core::{board::Board, units::UnitStats, Loc, Move, Side};
 use rand::prelude::*;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Represents an assumption about whether a unit should be removed or moved
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum RemovalAssumption {
-    Removed(Loc),
-    NotRemoved(Loc),
-    Move(Loc, Loc), // from_loc, to_loc
+pub enum AttackConstraint {
+    Remove(Loc),
+    Keep(Loc),
 }
 
-impl RemovalAssumption {
+impl AttackConstraint {
     pub fn loc(&self) -> Loc {
         match self {
-            RemovalAssumption::Removed(loc) => *loc,
-            RemovalAssumption::NotRemoved(loc) => *loc,
-            RemovalAssumption::Move(from_loc, _) => *from_loc,
+            AttackConstraint::Remove(loc) => *loc,
+            AttackConstraint::Keep(loc) => *loc,
         }
     }
+}
+
+#[derive(Debug, Clone)]
+pub struct MoveAssumption {
+    pub mv: Move,
+    pub cost: f64,
+}
+
+#[derive(Debug, Clone)]
+pub struct AttackAssumption {
+    pub constraint: AttackConstraint,
+    pub cost: f64,
+}
+
+#[derive(Debug, Clone)]
+pub struct Prophecy {
+    pub move_assumptions: Vec<MoveAssumption>,
+    pub attack_assumptions: Vec<AttackAssumption>,
 }
 
 /// Death Prophet that generates removal assumptions in order of priority
 pub struct DeathProphet {
     rng: StdRng,
-    last_assumptions: Vec<RemovalAssumption>,
+    last_prophecy: Option<Prophecy>,
+}
+
+pub fn score_to_cost(score: f64) -> f64 {
+    -score.log2()
 }
 
 impl DeathProphet {
     pub fn new(rng: StdRng) -> Self {
         Self {
             rng,
-            last_assumptions: Vec::new(),
+            last_prophecy: None,
         }
     }
 
     /// Generate a list of removal and move assumptions ordered by priority
-    pub fn generate_assumptions(
-        &mut self,
-        board: &crate::core::Board,
-        side: Side,
-    ) -> Vec<RemovalAssumption> {
-        let mut assumptions = Vec::new();
-        let mut priority_scores = HashMap::new();
+    pub fn make_prophecy(&mut self, board: &Board, side: Side) -> Prophecy {
+        let mut move_priorities = Vec::new();
+        let mut attack_priorities = Vec::new();
 
         // Get the combat graph to see which defenders are actually attackable
         let graph = board.combat_graph(side);
@@ -57,9 +72,17 @@ impl DeathProphet {
             } else {
                 (piece_stats.cost - piece_stats.rebate) as f64 / 10.0
             };
-            priority_scores.insert(RemovalAssumption::Removed(*loc), score);
-            priority_scores.insert(RemovalAssumption::NotRemoved(*loc), score * 0.5);
+
+            attack_priorities.push(AttackAssumption {
+                constraint: AttackConstraint::Remove(*loc),
+                cost: score_to_cost(score),
+            });
+            attack_priorities.push(AttackAssumption {
+                constraint: AttackConstraint::Keep(*loc),
+                cost: score_to_cost(1.0 - score),
+            });
         }
+        attack_priorities.sort_by(|a, b| a.cost.partial_cmp(&b.cost).unwrap());
 
         // Add move assumptions from move_hex_map
         for (friend_loc, hex_map) in &graph.move_hex_map {
@@ -75,34 +98,28 @@ impl DeathProphet {
                     base_score
                 };
 
-                priority_scores.insert(RemovalAssumption::Move(*friend_loc, *dest_loc), score);
+                move_priorities.push(MoveAssumption {
+                    mv: Move {
+                        from: *friend_loc,
+                        to: *dest_loc,
+                    },
+                    cost: score_to_cost(score),
+                });
             }
         }
+        move_priorities.sort_by(|a, b| a.cost.partial_cmp(&b.cost).unwrap());
 
-        // Convert scores to assumptions and sort by absolute value
-        let mut scored_assumptions: Vec<_> = priority_scores
-            .into_iter()
-            .map(|(assumption, score)| (assumption, score))
-            .collect();
-
-        // Sort by absolute value of score (highest priority first)
-        scored_assumptions.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
-
-        // Extract just the assumptions in priority order
-        assumptions = scored_assumptions
-            .into_iter()
-            .map(|(assumption, _)| assumption)
-            .collect();
-
-        self.last_assumptions = assumptions.clone();
-        assumptions
+        Prophecy {
+            move_assumptions: move_priorities,
+            attack_assumptions: attack_priorities,
+        }
     }
 
     /// Get feedback on the maximum prefix of assumptions that can be satisfied
     /// This is called by the combat generation system
     pub fn receive_feedback(&mut self, active_constraints: Vec<bool>) {
         let satisfied_assumptions = self
-            .last_assumptions
+            .last_prophecy
             .iter()
             .zip(active_constraints)
             .filter(|(_, active)| *active)
@@ -117,7 +134,12 @@ impl DeathProphet {
 mod tests {
     use super::*;
     use crate::ai::rng::make_rng;
-    use crate::core::{board::Board, map::Map, side::Side, units::Unit};
+    use crate::core::{
+        board::{Board, Piece},
+        map::Map,
+        side::Side,
+        units::Unit,
+    };
 
     #[test]
     fn test_death_prophet_generates_assumptions() {
@@ -142,16 +164,19 @@ mod tests {
         println!("Enemy pieces on board: {:?}", vec![loc1, loc2]);
 
         let mut prophet = DeathProphet::new(make_rng());
-        let assumptions = prophet.generate_assumptions(&board, Side::Yellow);
+        let prophecy = prophet.make_prophecy(&board, Side::Yellow);
 
-        // Should generate assumptions for both enemy pieces since they're attackable
-        assert_eq!(assumptions.len(), 2);
-
-        // All assumptions should be for enemy piece locations
-        for assumption in &assumptions {
-            let loc = assumption.loc();
-            assert!(board.get_piece(&loc).is_ok());
-            assert_eq!(board.get_piece(&loc).unwrap().side, Side::Blue);
+        // Should generate removal assumptions for both enemy pieces since they're attackable
+        let removal_assumptions: Vec<_> = prophecy.attack_assumptions;
+        assert_eq!(removal_assumptions.len(), 4);
+        // For each enemy piece, check that both Removed and NotRemoved exist
+        for &loc in &[loc1, loc2] {
+            assert!(removal_assumptions
+                .iter()
+                .any(|a| matches!(a.constraint, AttackConstraint::Remove(l) if l == loc)));
+            assert!(removal_assumptions
+                .iter()
+                .any(|a| matches!(a.constraint, AttackConstraint::Keep(l) if l == loc)));
         }
     }
 
@@ -161,11 +186,13 @@ mod tests {
         let board = Board::new(&map);
 
         let mut prophet = DeathProphet::new(make_rng());
-        let assumptions1 = prophet.generate_assumptions(&board, Side::Yellow);
-        let assumptions2 = prophet.generate_assumptions(&board, Side::Yellow);
+        let prophecy1 = prophet.make_prophecy(&board, Side::Yellow);
+        let prophecy2 = prophet.make_prophecy(&board, Side::Yellow);
 
         // Even with no pieces, we should get consistent behavior (empty lists)
-        assert_eq!(assumptions1.len(), 0);
-        assert_eq!(assumptions2.len(), 0);
+        assert_eq!(
+            prophecy1.attack_assumptions.len(),
+            prophecy2.attack_assumptions.len()
+        );
     }
 }

@@ -1,11 +1,13 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::core::{
-    board::actions::AttackAction,
-    board::Board,
-    loc::Loc,
-    side::Side,
-    units::{Attack, Unit},
+use crate::{
+    ai::captain::attack::generator::{MovementCycle, MovementPath},
+    core::{
+        board::{actions::AttackAction, Board},
+        loc::Loc,
+        side::Side,
+        units::{Attack, Unit},
+    },
 };
 
 use z3::{
@@ -42,11 +44,6 @@ pub struct SatVariables<'ctx> {
     // Removal variables
     pub removed: HashMap<Loc, Bool<'ctx>>, // whether defender got removed
     pub removal_time: HashMap<Loc, Z3Time<'ctx>>, // when defender got removed
-
-    // Movement variables for friendly units that need to move out of the way
-    // Only included post hoc for friendly units whose movements end up being relevant to combat
-    pub move_hex: HashMap<Loc, Z3Loc<'ctx>>, // what hex friendly unit is moving to
-    pub move_time: HashMap<Loc, Z3Time<'ctx>>, // when the friendly unit moves
 }
 
 impl<'ctx> SatVariables<'ctx> {
@@ -59,8 +56,6 @@ impl<'ctx> SatVariables<'ctx> {
             num_attacks: HashMap::new(),
             removed: HashMap::new(),
             removal_time: HashMap::new(),
-            move_hex: HashMap::new(),
-            move_time: HashMap::new(),
         };
 
         // Create variables for attackers only
@@ -110,21 +105,7 @@ impl<'ctx> SatVariables<'ctx> {
         vars
     }
 
-    /// Add movement variables for a friendly unit that needs to move out of the way
-    pub fn add_friendly_movement_variable(&mut self, ctx: &'ctx Context, loc: Loc) {
-        if self.move_hex.contains_key(&loc) {
-            return;
-        }
-
-        self.move_hex.insert(
-            loc,
-            Z3Loc::new_const(ctx, format!("move_hex_{}", loc), BV_LOC_SIZE),
-        );
-        self.move_time.insert(
-            loc,
-            Z3Time::new_const(ctx, format!("move_time_{}", loc), BV_TIME_SIZE),
-        );
-    }
+    // Add movement variables for a friendly unit that needs to move out of the way (removed in new system)
 }
 
 /// SAT-based combat solver with constraints
@@ -180,41 +161,6 @@ impl<'ctx> ConstraintManager<'ctx> {
             let attack_hex_var = &self.variables.attack_hex[attacker];
             let attack_time_var = &self.variables.attack_time[attacker];
 
-            let valid_attack_hexes = self.graph.attack_hex_map.get(attacker).unwrap();
-            assert!(!valid_attack_hexes.is_empty());
-
-            let hex_constraint = loc_var_in_hexes(self.ctx, attack_hex_var, &valid_attack_hexes);
-            self.solver
-                .assert(&passive_var.not().implies(&hex_constraint));
-
-            // No two non-passive attackers can have the same attack_hex
-            for other_attacker in &self.graph.attackers {
-                if other_attacker != attacker {
-                    let other_passive_var = &self.variables.passive[other_attacker];
-                    let other_attack_hex_var = &self.variables.attack_hex[other_attacker];
-
-                    let same_hex = attack_hex_var._eq(other_attack_hex_var);
-                    let both_active =
-                        Bool::and(self.ctx, &[&passive_var.not(), &other_passive_var.not()]);
-
-                    self.solver.assert(&both_active.implies(&same_hex.not()));
-                }
-            }
-
-            for attack_hex in valid_attack_hexes {
-                let dnf = &self.graph.move_hex_map[attacker][&attack_hex];
-
-                if let Some(dnf) = dnf {
-                    let path_constraint = self.create_dnf_constraint(
-                        &dnf,
-                        attack_time_var,
-                        &attack_hex_var._eq(&attack_hex.as_z3(self.ctx)),
-                    );
-                    self.solver
-                        .assert(&passive_var.not().implies(&path_constraint));
-                }
-            }
-
             // Attack relationship constraints
             let attacks_by_this_attacker: Vec<_> = defenders
                 .iter()
@@ -228,13 +174,19 @@ impl<'ctx> ConstraintManager<'ctx> {
                             ._eq(&num_attacks_var.bvugt(&BV::from_u64(self.ctx, 0, BV_HP_SIZE))),
                     );
 
-                    // Must be false if passive
+                    // attacked => !passive
                     self.solver
-                        .assert(&passive_var.implies(&attacked_var.not()));
+                        .assert(&attacked_var.implies(&passive_var.not()));
 
                     attacked_var
                 })
                 .collect();
+
+            let is_attacking = if attacks_by_this_attacker.is_empty() {
+                Bool::from_bool(self.ctx, false)
+            } else {
+                Bool::or(self.ctx, &attacks_by_this_attacker)
+            };
 
             // Units cannot exceed their number of attacks
             let max_attacks = BV::from_u64(self.ctx, attacker_stats.num_attacks as u64, BV_HP_SIZE);
@@ -258,13 +210,10 @@ impl<'ctx> ConstraintManager<'ctx> {
                 // For lumbering units, attack_hex must be the same as current position
                 let current_pos = attacker.as_z3(self.ctx);
                 let moved = attack_hex_var._eq(&current_pos).not();
-                let is_attacking = if attacks_by_this_attacker.is_empty() {
-                    Bool::from_bool(self.ctx, false)
-                } else {
-                    Bool::or(self.ctx, &attacks_by_this_attacker)
-                };
                 self.solver.assert(&moved.implies(&is_attacking.not()));
             }
+
+            //
         }
     }
 
@@ -345,19 +294,11 @@ impl<'ctx> ConstraintManager<'ctx> {
         }
     }
 
-    /// Helper method to get removal DNF for a specific attack position
-    fn get_removal_dnf_for_attack(&self, attacker: Loc, attack_hex: Loc) -> Option<Vec<Vec<Loc>>> {
-        // This would need to be implemented based on the specific pathfinding logic
-        // For now, return None to indicate no removal needed
-        None
-    }
-
     /// Helper method to create DNF constraints
     pub fn create_dnf_constraint<'a>(
         &self,
         dnf: &Vec<Vec<Loc>>,
         timing_var: &Z3Time<'ctx>,
-        condition: &Bool<'ctx>,
     ) -> Bool<'ctx> {
         let bool_vars: Vec<_> = dnf
             .iter()
@@ -393,13 +334,11 @@ impl<'ctx> ConstraintManager<'ctx> {
 
         let conjunct_vars_refs: Vec<_> = conjunct_vars.iter().collect();
 
-        let disjunct = Bool::or(self.ctx, &conjunct_vars_refs);
-
-        condition.implies(&disjunct)
+        Bool::or(self.ctx, &conjunct_vars_refs)
     }
 
     pub fn untouched(&self, loc: &Loc) -> bool {
-        !self.variables.move_hex.contains_key(loc) && !self.graph.attackers.contains(loc)
+        !self.graph.attackers.contains(loc)
     }
 
     pub fn untouched_friendly_units(&self) -> HashSet<Loc> {
@@ -413,14 +352,16 @@ impl<'ctx> ConstraintManager<'ctx> {
 }
 
 /// Generate a sequence of AttackActions from a satisfying SAT model
-pub fn generate_move_from_sat_model<'ctx>(
+pub fn generate_move_from_model<'ctx>(
     model: &Model<'ctx>,
+    movement: &HashMap<Loc, Loc>,
     graph: &CombatGraph,
     variables: &SatVariables<'ctx>,
     board: &Board,
 ) -> Vec<AttackAction> {
     let mut actions = Vec::new();
-    let mut moves = HashMap::new();
+
+    // let mut moves = HashMap::new();
     let mut move_times = HashMap::new();
     let mut attacks = HashMap::new();
 
@@ -437,14 +378,13 @@ pub fn generate_move_from_sat_model<'ctx>(
         }
 
         // This attacker is not passive, so it has an attack_hex and attack_time
-        let attack_hex_var = &variables.attack_hex[attacker];
+        // let attack_hex_var = &variables.attack_hex[attacker];
         let attack_time_var = &variables.attack_time[attacker];
 
-        let hex_val = model.eval(attack_hex_var, true).unwrap().as_u64().unwrap();
+        // let hex_val = model.eval(attack_hex_var, true).unwrap().as_u64().unwrap();
         let time_val = model.eval(attack_time_var, true).unwrap().as_u64().unwrap();
 
-        let to_loc = Loc::from_z3(hex_val);
-        moves.insert(*attacker, to_loc);
+        // let to_loc = Loc::from_z3(hex_val);
         move_times.insert(*attacker, time_val);
 
         for defender in defenders {
@@ -462,30 +402,24 @@ pub fn generate_move_from_sat_model<'ctx>(
         }
     }
 
-    // Collect moves for friendly units that needed to move out of the way
-    for (friendly_loc, move_hex_var) in &variables.move_hex {
-        // Skip if already processed as an attacker
-        if moves.contains_key(friendly_loc) {
-            continue;
-        }
-
-        let move_time_var = &variables.move_time[friendly_loc];
-
-        let hex_val = model.eval(move_hex_var, true).unwrap().as_u64().unwrap();
-        let time_val = model.eval(move_time_var, true).unwrap().as_u64().unwrap();
-
-        let to_loc = Loc::from_z3(hex_val);
-        moves.insert(*friendly_loc, to_loc);
-        move_times.insert(*friendly_loc, time_val);
-    }
-
     // Sort movers by time
-    let mut movers_by_tick = moves
-        .keys()
-        .map(|&mover| (move_times[&mover], mover))
+    let mut movers_by_tick = move_times
+        .iter()
+        .map(|(&mover, &time)| (time, mover))
         .collect::<Vec<_>>();
 
     movers_by_tick.sort_by_key(|&(time, _)| time);
+
+    let attackers = movers_by_tick
+        .iter()
+        .map(|&(_, mover)| mover)
+        .collect::<HashSet<_>>();
+
+    let passive_movers = movement
+        .keys()
+        .filter(|&mover| !attackers.contains(mover))
+        .cloned()
+        .collect::<HashSet<_>>();
 
     // Group movers by time
     let mut grouped_movers = Vec::new();
@@ -503,7 +437,7 @@ pub fn generate_move_from_sat_model<'ctx>(
 
     // Process each group of movers
     for mover_group in grouped_movers.iter() {
-        let move_actions = group_move_actions(mover_group, &moves);
+        let move_actions = group_move_actions(mover_group, &movement);
 
         actions.extend(move_actions);
 
@@ -514,7 +448,7 @@ pub fn generate_move_from_sat_model<'ctx>(
                 None => continue,
             };
 
-            let attacker_pos = moves.get(&attacker).unwrap();
+            let attacker_pos = movement.get(&attacker).unwrap();
             let attacker_piece = board.get_piece(&attacker).unwrap();
             let attacker_stats = attacker_piece.unit.stats();
             let attack = attacker_stats.attack;
@@ -552,12 +486,14 @@ pub fn generate_move_from_sat_model<'ctx>(
         }
     }
 
+    actions.extend(group_move_actions(&passive_movers, movement));
+
     actions
 }
 
 fn group_move_actions<'ctx>(
     mover_group: &HashSet<Loc>,
-    moves: &HashMap<Loc, Loc>,
+    movement: &HashMap<Loc, Loc>,
 ) -> Vec<AttackAction> {
     let mut actions = Vec::new();
     let mut visited = HashSet::new();
@@ -573,7 +509,7 @@ fn group_move_actions<'ctx>(
         loop {
             chain_movers.push(current_loc);
             visited.insert(current_loc);
-            let next_loc = *moves.get(&current_loc).unwrap();
+            let next_loc = *movement.get(&current_loc).unwrap();
 
             if next_loc == *mover {
                 // cycle detected
@@ -589,7 +525,7 @@ fn group_move_actions<'ctx>(
             if !mover_group.contains(&next_loc) || visited.contains(&next_loc) {
                 // end of chain
                 for from_loc in chain_movers.iter().rev().cloned() {
-                    let to_loc = *moves.get(&from_loc).unwrap();
+                    let to_loc = *movement.get(&from_loc).unwrap();
                     actions.push(AttackAction::Move { from_loc, to_loc });
                 }
                 break;
