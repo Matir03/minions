@@ -1,8 +1,11 @@
 use crate::core::{
-    board::{definitions::Phase, BitboardOps, Board, BoardState, Modifiers, Piece, PieceState}, 
-    loc::Loc, side::Side, spells::{Spell, SpellCast}, units::Unit
+    board::{definitions::Phase, BitboardOps, Board, BoardState, Modifiers, Piece, PieceState},
+    loc::Loc,
+    side::Side,
+    spells::{Spell, SpellCast},
+    units::Unit,
 };
-use anyhow::{bail, ensure, Result, Context};
+use anyhow::{bail, ensure, Context, Result};
 use std::fmt::Display;
 use std::str::FromStr;
 
@@ -39,16 +42,9 @@ pub enum AttackAction {
 /// Actions taken during the spawn phase.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SpawnAction {
-    Buy {
-        unit: Unit,
-    },
-    Spawn {
-        spawn_loc: Loc,
-        unit: Unit,
-    },
-    Discard {
-        spell: Spell,
-    },
+    Buy { unit: Unit },
+    Spawn { spawn_loc: Loc, unit: Unit },
+    Discard { spell: Spell },
 }
 
 /// Represents the actions taken during a single board's turn phase.
@@ -75,14 +71,20 @@ impl SetupAction {
     pub fn from_args(action_name: &str, args: &[&str]) -> Result<Self> {
         match action_name {
             "setup" => {
-                ensure!(args.len() == 1 || args.len() == 2, "setup requires 1 or 2 arguments");
+                ensure!(
+                    args.len() == 1 || args.len() == 2,
+                    "setup requires 1 or 2 arguments"
+                );
                 let necromancer_choice = args[0].parse()?;
                 let saved_unit = if args.len() == 2 {
                     Some(args[1].parse()?)
                 } else {
                     None
                 };
-                Ok(SetupAction { necromancer_choice, saved_unit })
+                Ok(SetupAction {
+                    necromancer_choice,
+                    saved_unit,
+                })
             }
             _ => bail!("Unknown setup action: {}", action_name),
         }
@@ -118,10 +120,7 @@ impl AttackAction {
                 Ok(AttackAction::Move { from_loc, to_loc })
             }
             "move_cyclic" => {
-                let locs = args
-                    .iter()
-                    .map(|s| s.parse())
-                    .collect::<Result<Vec<_>>>()?;
+                let locs = args.iter().map(|s| s.parse()).collect::<Result<Vec<_>>>()?;
                 Ok(AttackAction::MoveCyclic { locs })
             }
             "attack" => {
@@ -185,7 +184,10 @@ impl SpawnAction {
 impl<'a> Board<'a> {
     pub fn do_setup_action(&mut self, side: Side, action: &SetupAction) -> Result<()> {
         let necromancer_unit = action.necromancer_choice;
-        ensure!(necromancer_unit.stats().necromancer, "Cannot choose non-necromancer unit as necromancer");
+        ensure!(
+            necromancer_unit.stats().necromancer,
+            "Cannot choose non-necromancer unit as necromancer"
+        );
 
         let necromancer_loc = Board::NECROMANCER_START_LOC[side];
         self.remove_piece(&necromancer_loc);
@@ -198,40 +200,41 @@ impl<'a> Board<'a> {
         });
 
         if let Some(saved_unit) = action.saved_unit {
-            ensure!(self.reinforcements[side].contains(&saved_unit) > 0, "Saved unit not in reinforcements");
+            ensure!(
+                self.reinforcements[side].contains(&saved_unit) > 0,
+                "Saved unit not in reinforcements"
+            );
             self.reinforcements[side].clear();
             self.add_reinforcement(saved_unit, side);
         }
 
         self.add_reinforcement(Unit::Initiate, side);
-        
+
         Ok(())
     }
 
     // returns rebate
-    pub fn do_attack_action(
-        &mut self,
-        side: Side,
-        action: AttackAction,
-    ) -> Result<i32> {
-        ensure!(self.state.phases().contains(&Phase::Attack), "invalid attack phase");
+    pub fn do_attack_action(&mut self, side: Side, action: AttackAction) -> Result<i32> {
+        ensure!(
+            self.state.phases().contains(&Phase::Attack),
+            "invalid attack phase"
+        );
 
         match action {
             AttackAction::Move { from_loc, to_loc } => {
                 let piece = self.get_piece(&from_loc).context("No piece to move")?;
                 if piece.side != side {
-                    println!("{:#?}", action);
                     bail!("Cannot move opponent's piece");
                 }
-                if !piece.state.can_act() {
-                    println!("{:#?}", action);
-                    bail!("Piece has already moved or attacked");
+                if !piece.state.can_move() {
+                    bail!("Piece has already moved or is exhausted");
                 }
                 if self.get_piece(&to_loc).is_ok() {
                     bail!(format!("Destination square is occupied: {}", action));
                 }
 
-                let mut piece_to_move = self.remove_piece(&from_loc)
+                let mut piece_to_move = self
+                    .remove_piece(&from_loc)
                     .expect("Piece should exist here");
                 piece_to_move.state.moved = true;
                 piece_to_move.loc = to_loc;
@@ -246,11 +249,12 @@ impl<'a> Board<'a> {
             AttackAction::Attack {
                 attacker_loc,
                 target_loc,
-            } => {
-                self.attack_piece(attacker_loc, target_loc, side)
-            }
+            } => self.attack_piece(attacker_loc, target_loc, side),
             AttackAction::Blink { blink_loc } => {
-                let piece = self.get_piece(&blink_loc).context("No piece to blink")?.clone();
+                let piece = self
+                    .get_piece(&blink_loc)
+                    .context("No piece to blink")?
+                    .clone();
                 if piece.side != side {
                     println!("{:#?}", self);
                     bail!("Cannot blink opponent's piece");
@@ -259,9 +263,9 @@ impl<'a> Board<'a> {
                     println!("{:#?}", self);
                     bail!("Piece cannot blink");
                 }
-                if !piece.state.can_act() {
+                if !piece.state.can_blink() {
                     println!("{:#?}", self);
-                    bail!("Blinking piece has already moved or attacked");
+                    bail!("Cannot blink exhausted piece");
                 }
 
                 self.bounce_piece(piece);
@@ -290,8 +294,16 @@ impl<'a> Board<'a> {
     }
 
     // mutates money
-    pub fn do_spawn_action(&mut self, side: Side, money: &mut i32, action: SpawnAction) -> Result<()> {
-        ensure!(self.state.phases().contains(&Phase::Spawn), "invalid spawn phase");
+    pub fn do_spawn_action(
+        &mut self,
+        side: Side,
+        money: &mut i32,
+        action: SpawnAction,
+    ) -> Result<()> {
+        ensure!(
+            self.state.phases().contains(&Phase::Spawn),
+            "invalid spawn phase"
+        );
 
         match action {
             SpawnAction::Buy { unit } => {
@@ -303,11 +315,18 @@ impl<'a> Board<'a> {
                 self.reinforcements[side].insert(unit);
             }
             SpawnAction::Spawn { spawn_loc, unit } => {
-                if !self.bitboards.get_spawn_locs(side, unit.stats().flying).get(spawn_loc) {
+                if !self
+                    .bitboards
+                    .get_spawn_locs(side, unit.stats().flying)
+                    .get(spawn_loc)
+                {
                     bail!(format!("invalid spawn location: {:?}", spawn_loc));
                 }
                 if self.get_piece(&spawn_loc).is_ok() {
-                    bail!(format!("Cannot spawn on occupied location: {:?}", spawn_loc));
+                    bail!(format!(
+                        "Cannot spawn on occupied location: {:?}",
+                        spawn_loc
+                    ));
                 }
                 if self.reinforcements[side].remove(&unit) == 0 {
                     bail!(format!("Unit not in reinforcements: {:?}", unit));
@@ -320,9 +339,14 @@ impl<'a> Board<'a> {
 
         Ok(())
     }
-     
+
     // returns money left after spawns
-    pub fn do_spawns(&mut self, side: Side, money: i32, spawn_actions: &[SpawnAction]) -> Result<i32> {
+    pub fn do_spawns(
+        &mut self,
+        side: Side,
+        money: i32,
+        spawn_actions: &[SpawnAction],
+    ) -> Result<i32> {
         let mut money = money;
         for action in spawn_actions {
             self.do_spawn_action(side, &mut money, action.clone())?;
@@ -331,25 +355,30 @@ impl<'a> Board<'a> {
     }
 
     // returns (money left, rebate)
-    pub fn take_turn(&mut self, side: Side, board_turn: BoardTurn, money: i32) -> Result<(i32, i32)> {
+    pub fn take_turn(
+        &mut self,
+        side: Side,
+        board_turn: BoardTurn,
+        money: i32,
+    ) -> Result<(i32, i32)> {
         if self.state.phases().contains(&Phase::Setup) {
             ensure!(board_turn.setup_action.is_some(), "Setup action required");
             self.do_setup_action(side, &board_turn.setup_action.unwrap())?;
         } else {
-            ensure!(board_turn.setup_action.is_none(), "Setup action not allowed");
+            ensure!(
+                board_turn.setup_action.is_none(),
+                "Setup action not allowed"
+            );
         }
-        
+
         let rebate = self.do_attacks(side, &board_turn.attack_actions)?;
         let money = self.do_spawns(side, money, &board_turn.spawn_actions)?;
 
         Ok((money, rebate))
     }
 
-        // Returns (income, winner)
-    pub fn end_turn(
-        &mut self,
-        side_to_move: Side,
-    ) -> Result<(i32, Option<Side>)> {
+    // Returns (income, winner)
+    pub fn end_turn(&mut self, side_to_move: Side) -> Result<(i32, Option<Side>)> {
         for piece in self.pieces.values_mut() {
             piece.state.reset();
         }
@@ -358,7 +387,10 @@ impl<'a> Board<'a> {
         let units_on_graveyards = self.units_on_graveyards(side_to_move);
         let soul_necromancer_income = if let Some(necro) = self.find_necromancer(side_to_move) {
             let necromancer = self.get_piece(&necro).unwrap();
-            if matches!(necromancer.unit, Unit::BasicNecromancer | Unit::ArcaneNecromancer) {
+            if matches!(
+                necromancer.unit,
+                Unit::BasicNecromancer | Unit::ArcaneNecromancer
+            ) {
                 1
             } else {
                 0
@@ -383,10 +415,9 @@ impl<'a> Board<'a> {
 
         if let Some(winning_side) = winner {
             self.reset();
-            self.state = BoardState::Reset1;            
-        } 
+            self.state = BoardState::Reset1;
+        }
 
         Ok((income, winner))
     }
-
 }

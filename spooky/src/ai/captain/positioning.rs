@@ -22,8 +22,7 @@ pub enum MoveCandidate {
         score: f64,
     },
     Blink {
-        from_loc: Loc,
-        to_loc: Loc,
+        loc: Loc,
         score: f64,
     },
 }
@@ -32,14 +31,14 @@ impl MoveCandidate {
     pub fn from_loc(&self) -> Loc {
         match self {
             MoveCandidate::Move { from_loc, .. } => *from_loc,
-            MoveCandidate::Blink { from_loc, .. } => *from_loc,
+            MoveCandidate::Blink { loc, .. } => *loc,
         }
     }
 
-    pub fn to_loc(&self) -> Loc {
+    pub fn to_loc(&self) -> Option<Loc> {
         match self {
-            MoveCandidate::Move { to_loc, .. } => *to_loc,
-            MoveCandidate::Blink { to_loc, .. } => *to_loc,
+            MoveCandidate::Move { to_loc, .. } => Some(*to_loc),
+            MoveCandidate::Blink { .. } => None,
         }
     }
 
@@ -62,22 +61,18 @@ impl SatPositioningSystem {
         ctx: &'ctx z3::Context,
     ) -> Bool<'ctx> {
         let from_loc = candidate.from_loc();
-        let to_loc = candidate.to_loc();
+        let to_loc = match candidate.to_loc() {
+            Some(loc) => loc,
+            None => return variables.blink.get(&from_loc).unwrap().clone(),
+        };
 
         if let Some(move_hex_var) = variables.move_hex.get(&from_loc) {
             return move_hex_var._eq(&to_loc.as_z3(ctx));
+        } else if let Some(attack_hex_var) = variables.attack_hex.get(&from_loc) {
+            return attack_hex_var._eq(&to_loc.as_z3(ctx));
+        } else {
+            panic!("create_move_constraint called for a piece that is not a friendly unit or an attacker: {:?}", from_loc);
         }
-        let attack_hex_var = &variables.attack_hex[&from_loc];
-        let passive_var = &variables.passive[&from_loc];
-        let mut constraints = vec![attack_hex_var._eq(&to_loc.as_z3(ctx)), passive_var.not()];
-        if let MoveCandidate::Blink { .. } = candidate {
-            if let Some(blink_var) = variables.blink.get(&from_loc) {
-                constraints.push(blink_var.clone());
-            } else {
-                return Bool::from_bool(ctx, false);
-            }
-        }
-        Bool::and(ctx, &constraints.iter().collect::<Vec<_>>())
     }
 
     /// Stage 1: Combat reconciliation - ensuring friendly pieces in the way of attacking pieces can get out of the way
@@ -225,9 +220,10 @@ impl SatPositioningSystem {
 
         // Add move_time and move_hex variables for overlapping units
         for unit_loc in overlapping_units {
+            let blink = board.get_piece(unit_loc).unwrap().unit.stats().blink;
             manager
                 .variables
-                .add_friendly_movement_variable(manager.ctx, *unit_loc);
+                .add_friendly_movement_variable(manager.ctx, *unit_loc, blink);
 
             let new_constraints = self.add_friendly_movement_constraints(*unit_loc, manager, board);
             constraints.extend(new_constraints);
@@ -239,44 +235,46 @@ impl SatPositioningSystem {
     /// Add movement constraints for friendly units
     fn add_friendly_movement_constraints<'ctx>(
         &self,
-        friendly_loc: Loc,
-        manager: &mut ConstraintManager<'ctx>,
+        friend: Loc,
+        manager: &ConstraintManager<'ctx>,
         board: &Board,
     ) -> Vec<Bool<'ctx>> {
         let mut constraints = Vec::new();
 
-        let move_hex_var = &manager.variables.move_hex[&friendly_loc];
-        let move_time_var = &manager.variables.move_time[&friendly_loc];
+        let move_hex_var = &manager.variables.move_hex[&friend];
+        let friend_move = manager.variables.friend_move(&friend);
 
-        // Cannot be the same as the attack_hex of any non-passive attacker
+        // Cannot be the same as the attack_hex of any non-passive attacker unless one of the pieces is blinking
         for attacker in &manager.graph.attackers {
-            let passive_var = &manager.variables.passive[attacker];
-            let attack_hex_var = &manager.variables.attack_hex[attacker];
-
-            let same_hex = move_hex_var._eq(attack_hex_var);
-
-            if attacker == &friendly_loc {
+            if attacker == &friend {
+                let attack_hex_var = &manager.variables.attack_hex[attacker];
+                let same_hex = move_hex_var._eq(attack_hex_var);
                 manager.solver.assert(&same_hex);
                 constraints.push(same_hex);
             } else {
+                let attack_move = manager.variables.attack_move(attacker);
+                let blink_constraint = manager.blink_constraint(&friend_move, &attack_move);
+                let passive_var = &manager.variables.passive[attacker];
                 let attacker_active = passive_var.not();
-                let conflict_constraint = attacker_active.implies(&same_hex.not());
-                manager.solver.assert(&conflict_constraint);
-                constraints.push(conflict_constraint);
+                let constraint = attacker_active.implies(&blink_constraint);
+
+                manager.solver.assert(&constraint);
+                constraints.push(constraint);
             }
         }
 
         // Cannot be the same as the move_hex of any other friendly unit
         for (other_friendly, other_move_hex_var) in &manager.variables.move_hex {
-            if other_friendly != &friendly_loc {
-                let different_hex_constraint = move_hex_var._eq(other_move_hex_var).not();
-                manager.solver.assert(&different_hex_constraint);
-                constraints.push(different_hex_constraint);
+            if other_friendly != &friend {
+                let other_move = manager.variables.friend_move(other_friendly);
+                let constraint = manager.blink_constraint(&friend_move, &other_move);
+                manager.solver.assert(&constraint);
+                constraints.push(constraint);
             }
         }
 
         // restrict the move hex to the theoretical move hexes
-        let theoretical_move_hexes = board.get_theoretical_move_hexes(friendly_loc);
+        let theoretical_move_hexes = board.get_theoretical_move_hexes(friend);
 
         let theoretical_hex_constraint =
             loc_var_in_hexes(manager.ctx, move_hex_var, &theoretical_move_hexes);
@@ -286,13 +284,13 @@ impl SatPositioningSystem {
 
         // add DNF constraints on the move
         for attack_hex in theoretical_move_hexes {
-            let dnf = &manager.graph.move_hex_map[&friendly_loc][&attack_hex];
+            let dnf = &manager.graph.move_hex_map[&friend][&attack_hex];
             let condition = move_hex_var._eq(&attack_hex.as_z3(manager.ctx));
 
             if let Some(dnf) = dnf {
                 let path_constraint = manager.create_dnf_constraint(
                     &dnf,
-                    &manager.variables.move_time[&friendly_loc],
+                    &manager.variables.move_time[&friend],
                     &condition,
                 );
 
@@ -313,25 +311,40 @@ impl SatPositioningSystem {
         move_candidates: &[MoveCandidate],
     ) -> Result<()> {
         // Create filtered view of move affinity list for combat-relevant moves
-        let combat_relevant_moves = self.filter_combat_relevant_moves(manager, move_candidates);
+        let mut move_candidate_map = HashMap::new();
+        for candidate in move_candidates {
+            move_candidate_map
+                .entry(candidate.from_loc())
+                .or_insert_with(Vec::new)
+                .push(candidate);
+        }
+
+        let mut combat_relevant_moves = self.filter_combat_relevant_moves(manager, move_candidates);
 
         // Track which pieces have had moves allocated
         let mut allocated_pieces = HashSet::new();
 
         // Iterate through the filtered list
-        for candidate in &combat_relevant_moves {
+        let mut i = 0;
+        while i < combat_relevant_moves.len() {
+            let candidate = &combat_relevant_moves[i];
+            i += 1;
+
             if allocated_pieces.contains(&candidate.from_loc()) {
                 continue;
             }
 
             // Check if the move is to a location occupied by a non-combat-relevant piece
-            let blocking_piece = candidate.to_loc();
-            if self.has_blocking_piece(manager, blocking_piece, board, side) {
-                self.add_variables_and_constraints(manager, board, &[blocking_piece])?;
-
-                // Add moves for this piece to the end of the filtered list
-                // (This would require modifying the list, but we'll handle it differently)
+            if let Some(blocking_piece) = candidate.to_loc() {
+                if self.has_blocking_piece(manager, blocking_piece, board, side) {
+                    // add the loc as a blocking loc
+                    self.add_variables_and_constraints(manager, board, &[blocking_piece])?;
+                    let new_moves = move_candidate_map.get(&candidate.from_loc()).unwrap();
+                    combat_relevant_moves.extend(new_moves.iter().map(|x| (*x).clone()));
+                }
             }
+
+            let candidate = &combat_relevant_moves[i - 1];
 
             // Attempt to assert the current move
             let move_constraint =
@@ -379,22 +392,18 @@ impl SatPositioningSystem {
 
                 for to_loc in valid_moves {
                     // Generate a random affinity value between 0 and 1
-                    let affinity_value = rng.gen_range(0.0..1.0);
+                    let score = rng.gen_range(0.0..1.0);
 
                     candidates.push(MoveCandidate::Move {
                         from_loc: *loc,
                         to_loc,
-                        score: affinity_value,
+                        score,
                     });
+                }
 
-                    if piece.unit.stats().blink {
-                        let affinity_value = rng.gen_range(0.0..1.0);
-                        candidates.push(MoveCandidate::Blink {
-                            from_loc: *loc,
-                            to_loc,
-                            score: affinity_value,
-                        });
-                    }
+                if piece.unit.stats().blink {
+                    let score = rng.gen_range(0.0..1.0);
+                    candidates.push(MoveCandidate::Blink { loc: *loc, score });
                 }
             }
         }
@@ -420,8 +429,12 @@ impl SatPositioningSystem {
                     true
                 } else if manager.graph.attackers.contains(&candidate.from_loc()) {
                     // moves for attackers are combat-relevant if they are to an attack hex
-                    manager.graph.attack_hex_map[&candidate.from_loc()]
-                        .contains(&candidate.to_loc())
+                    // blink moves are always combat-relevant
+                    if let Some(to_loc) = candidate.to_loc() {
+                        manager.graph.attack_hex_map[&candidate.from_loc()].contains(&to_loc)
+                    } else {
+                        true
+                    }
                 } else {
                     // Not combat-relevant
                     false
@@ -449,8 +462,20 @@ impl SatPositioningSystem {
         board: &Board,
         move_candidates: Vec<MoveCandidate>,
     ) -> Vec<AttackAction> {
-        let movements = self.compute_optimal_matching(manager, board, &move_candidates);
-        self.move_actions(&movements)
+        let matching = self.compute_optimal_matching(manager, board, &move_candidates);
+        let blink_actions = matching.iter().filter_map(|(src, dest)| {
+            dest.is_none()
+                .then(|| AttackAction::Blink { blink_loc: *src })
+        });
+
+        let movements = matching
+            .iter()
+            .filter_map(|(src, dest)| dest.map(|dest| (*src, dest)))
+            .collect();
+
+        let mut move_actions = self.move_actions(&movements);
+
+        blink_actions.chain(move_actions).collect()
     }
 
     /// Compute optimal matching using LAPJV algorithm
@@ -459,7 +484,7 @@ impl SatPositioningSystem {
         manager: &ConstraintManager,
         board: &Board,
         move_candidates: &[MoveCandidate],
-    ) -> HashMap<Loc, Loc> {
+    ) -> HashMap<Loc, Option<Loc>> {
         let mut yet_to_move: HashSet<Loc> = manager
             .graph
             .friends
@@ -476,8 +501,13 @@ impl SatPositioningSystem {
             .filter(|candidate| {
                 // Must be a yet-to-move piece
                 yet_to_move.contains(&candidate.from_loc())
-                    && (!board.pieces.contains_key(&candidate.to_loc())
-                        || yet_to_move.contains(&candidate.to_loc()))
+                    && match candidate {
+                        MoveCandidate::Move { to_loc, .. } => {
+                            // to a valid destination
+                            !board.pieces.contains_key(&to_loc) || yet_to_move.contains(&to_loc)
+                        }
+                        MoveCandidate::Blink { .. } => true,
+                    }
             })
             .cloned()
             .collect();
@@ -485,28 +515,40 @@ impl SatPositioningSystem {
         // Get all possible destinations from move_hex_map
         let mut all_destinations = HashSet::new();
         for candidate in &to_be_processed {
-            let dest = candidate.to_loc();
+            let dest = match candidate {
+                MoveCandidate::Move { to_loc, .. } => *to_loc,
+                MoveCandidate::Blink { .. } => continue,
+            };
             all_destinations.insert(dest);
         }
 
         let destination_locs: Vec<Loc> = all_destinations.into_iter().collect();
+        let blinks = yet_to_move
+            .iter()
+            .filter(|loc| board.pieces.get(loc).unwrap().unit.stats().blink)
+            .collect::<Vec<_>>();
 
-        let num_locs = destination_locs.len();
+        let blink_offset = destination_locs.len();
+        let num_blinks = blinks.len();
+        let num_locs = blink_offset + num_blinks;
+
         let loc_to_idx_map = destination_locs
             .iter()
             .enumerate()
             .map(|(idx, loc)| (*loc, idx))
             .collect::<HashMap<_, _>>();
 
-        let yet_to_move_locs: Vec<Loc> = yet_to_move.iter().cloned().collect();
-        let friend_loc_to_idx_map = yet_to_move_locs
+        let blink_to_idx_map = blinks
             .iter()
             .enumerate()
-            .map(|(idx, loc)| (*loc, idx))
+            .map(|(idx, loc)| (*loc, idx + blink_offset))
             .collect::<HashMap<_, _>>();
 
-        // Build cost matrix: friend_locs x destination_locs
-        let mut cost_matrix = vec![vec![f64::INFINITY; num_locs]; yet_to_move.len()];
+        let loc_to_idx = |loc| *loc_to_idx_map.get(&loc).unwrap();
+        let blink_to_idx = |loc| *blink_to_idx_map.get(&loc).unwrap();
+
+        // Build cost matrix: num_locs x num_locs
+        let mut cost_matrix = vec![vec![f64::INFINITY; num_locs]; num_locs];
 
         for candidate in to_be_processed {
             let from_loc = candidate.from_loc();
@@ -514,21 +556,24 @@ impl SatPositioningSystem {
             let score = candidate.score();
             let cost = score_to_cost(score);
 
-            // This can happen if a destination is not reachable by a particular unit
-            if let (Some(from_idx), Some(to_idx)) = (
-                loc_to_idx_map.get(&from_loc).copied(),
-                loc_to_idx_map.get(&to_loc).copied(),
-            ) {
-                cost_matrix[from_idx][to_idx] = cost;
-            }
+            let from_idx = loc_to_idx(from_loc);
+            let to_idx = match to_loc {
+                Some(to_loc) => loc_to_idx(to_loc),
+                None => blink_to_idx(from_loc),
+            };
+
+            cost_matrix[from_idx][to_idx] = cost;
         }
 
         // set non-friend -> dest costs to 0
         // these are sentinels to populate the square matrix
         for non_friend_idx in 0..num_locs {
-            let non_friend_loc = destination_locs[non_friend_idx];
-            if yet_to_move.contains(&non_friend_loc) {
-                continue;
+            if non_friend_idx < blink_offset {
+                let non_friend_loc = destination_locs[non_friend_idx];
+                if yet_to_move.contains(&non_friend_loc) {
+                    // skip friends
+                    continue;
+                }
             }
 
             for dest_idx in 0..num_locs {
@@ -544,12 +589,20 @@ impl SatPositioningSystem {
 
         let mut matching = HashMap::new();
         for (friend_idx, dest_idx) in row_indices.into_iter().enumerate() {
+            if friend_idx >= blink_offset {
+                continue;
+            }
+
             let friend_loc = destination_locs[friend_idx];
             if !yet_to_move.contains(&friend_loc) {
                 continue;
             }
 
-            let dest_loc = destination_locs[dest_idx];
+            let dest_loc = if dest_idx < blink_offset {
+                Some(destination_locs[dest_idx])
+            } else {
+                None
+            };
             matching.insert(friend_loc, dest_loc);
         }
 
@@ -996,11 +1049,7 @@ mod tests {
         assert!(constraint.is_const());
 
         // Test with a blink move
-        let blink_candidate = MoveCandidate::Blink {
-            from_loc: loc,
-            to_loc,
-            score: 0.5,
-        };
+        let blink_candidate = MoveCandidate::Blink { loc, score: 0.5 };
         let blink_constraint =
             positioning.create_move_constraint(&manager.variables, &blink_candidate, &ctx);
         assert!(blink_constraint.is_const());

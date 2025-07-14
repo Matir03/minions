@@ -247,6 +247,7 @@ impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
                         &manager.variables,
                         &new_board,
                     );
+
                     (
                         combat_actions.clone(),
                         new_board

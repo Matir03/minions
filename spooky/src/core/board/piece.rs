@@ -1,9 +1,4 @@
-use crate::core::{
-    loc::Loc,
-    side::Side,
-    units::Unit,
-};
-
+use crate::core::{loc::Loc, side::Side, units::Unit};
 
 /// Status modifiers that can be applied to pieces
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -23,7 +18,15 @@ pub struct PieceState {
 }
 
 impl PieceState {
-    pub fn can_act(&self) -> bool {
+    pub fn can_move(&self) -> bool {
+        !self.moved && !self.exhausted
+    }
+
+    pub fn can_attack(&self) -> bool {
+        !self.exhausted
+    }
+
+    pub fn can_blink(&self) -> bool {
         !self.exhausted
     }
 
@@ -40,7 +43,6 @@ impl PieceState {
         *self = Self::default();
     }
 }
-
 
 /// Represents a piece on the board
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -1,20 +1,20 @@
-use std::{borrow::BorrowMut, cell::RefCell, collections::HashMap};
 use anyhow::{anyhow, bail, ensure, Context, Result};
 use hashbag::HashBag;
+use std::{borrow::BorrowMut, cell::RefCell, collections::HashMap};
 
-use crate::core::{
-    loc::{Loc, PATH_MAPS}, 
-    map::{Map, MapSpec, Terrain, TileType}, 
-    side::{Side, SideArray}, 
-    spells::Spell, 
-    tech::TechState, 
-    units::{Attack, Unit}
-};
 use super::{
-    actions::{SetupAction, AttackAction, SpawnAction},
+    actions::{AttackAction, SetupAction, SpawnAction},
     bitboards::Bitboards,
     definitions::{Board, BoardState},
     piece::{Piece, PieceState},
+};
+use crate::core::{
+    loc::{Loc, PATH_MAPS},
+    map::{Map, MapSpec, Terrain, TileType},
+    side::{Side, SideArray},
+    spells::Spell,
+    tech::TechState,
+    units::{Attack, Unit},
 };
 
 impl<'a> Board<'a> {
@@ -36,7 +36,9 @@ impl<'a> Board<'a> {
     }
 
     pub fn get_piece_mut(&mut self, loc: &Loc) -> Result<&mut Piece> {
-        self.pieces.get_mut(loc).context(format!("No piece at {}", loc))
+        self.pieces
+            .get_mut(loc)
+            .context(format!("No piece at {}", loc))
     }
 
     /// Add a piece to the board
@@ -70,7 +72,10 @@ impl<'a> Board<'a> {
 
         ensure!(piece.side == side_to_move, "Cannot move opponent's piece");
         ensure!(!piece.state.moved, "Cannot move piece twice");
-        ensure!(piece.state.attacks_used == 0, "Cannot move piece after attacking");
+        ensure!(
+            piece.state.attacks_used == 0,
+            "Cannot move piece after attacking"
+        );
 
         let valid_moves = self.get_valid_move_hexes(*from_loc);
         ensure!(
@@ -91,10 +96,20 @@ impl<'a> Board<'a> {
     }
 
     // returns (removed, bounce)
-    fn try_attack(&mut self, attacker_loc: Loc, target_loc: Loc, side_to_move: Side) -> Result<(bool, bool)> {
+    fn try_attack(
+        &mut self,
+        attacker_loc: Loc,
+        target_loc: Loc,
+        side_to_move: Side,
+    ) -> Result<(bool, bool)> {
         let attacker = self.get_piece(&attacker_loc)?;
 
-        ensure!(attacker.side == side_to_move, "Cannot attack with opponent's piece");
+        ensure!(
+            attacker.side == side_to_move,
+            "Cannot attack with opponent's piece"
+        );
+
+        ensure!(attacker.state.can_attack(), "Piece is exhausted");
 
         let attacker_stats = attacker.unit.stats();
         let mut attacker_state = attacker.state.clone();
@@ -133,7 +148,10 @@ impl<'a> Board<'a> {
                 damage_effect = damage;
             }
             Attack::Deathtouch => {
-                ensure!(!target_stats.necromancer, "Deathtouch cannot be used on necromancer");
+                ensure!(
+                    !target_stats.necromancer,
+                    "Deathtouch cannot be used on necromancer"
+                );
                 damage_effect = target_stats.defense;
             }
             Attack::Unsummon => {
@@ -205,8 +223,8 @@ impl<'a> Board<'a> {
             let piece = self.get_piece(&from)?;
             ensure!(piece.side == side, "Cannot move opponent's piece in cycle");
             ensure!(
-                piece.state.can_act(),
-                "Piece in cycle has already moved or attacked"
+                piece.state.can_move(),
+                "Piece in cycle has already moved or is exhausted"
             );
 
             let dist = self.path(from, to).context("No path for cycle move")?.len() as i32 - 1;
@@ -222,12 +240,13 @@ impl<'a> Board<'a> {
     pub fn move_pieces_cyclic(&mut self, side: Side, locs: &[Loc]) -> Result<()> {
         self.check_valid_move_cyclic(side, locs)?;
 
-        let pieces = locs.iter().map(|loc| 
-            self.remove_piece(loc).unwrap()
-        ).collect::<Vec<_>>();
+        let pieces = locs
+            .iter()
+            .map(|loc| self.remove_piece(loc).unwrap())
+            .collect::<Vec<_>>();
 
         let cycled_locs = locs.iter().cycle().skip(1);
-        
+
         for (mut piece, loc) in pieces.into_iter().zip(cycled_locs) {
             piece.loc = *loc;
             piece.state.moved = true;
@@ -238,13 +257,18 @@ impl<'a> Board<'a> {
     }
 
     // returns rebate
-    pub fn attack_piece(&mut self, attacker_loc: Loc, target_loc: Loc, side_to_move: Side) -> Result<i32> {
+    pub fn attack_piece(
+        &mut self,
+        attacker_loc: Loc,
+        target_loc: Loc,
+        side_to_move: Side,
+    ) -> Result<i32> {
         let (removed, bounce) = self.try_attack(attacker_loc, target_loc, side_to_move)?;
 
-        self.get_piece_mut(&attacker_loc)
-            .context("No attacker")?
-            .state
-            .exhausted = true;
+        // self.get_piece_mut(&attacker_loc)
+        //     .context("No attacker")?
+        //     .state
+        //     .exhausted = true;
 
         if removed {
             let target = self.remove_piece(&target_loc).unwrap();
@@ -273,10 +297,11 @@ impl<'a> Board<'a> {
     }
 
     pub fn reset(&mut self) {
-        let to_bounce = 
-            self.pieces.drain()
-                .filter(|(_, piece)| !piece.unit.stats().necromancer)
-                .collect::<Vec<_>>();
+        let to_bounce = self
+            .pieces
+            .drain()
+            .filter(|(_, piece)| !piece.unit.stats().necromancer)
+            .collect::<Vec<_>>();
 
         let new_board = Board::from_fen(Self::START_FEN, self.map).unwrap();
         self.pieces = new_board.pieces;
@@ -291,7 +316,8 @@ impl<'a> Board<'a> {
     }
 
     pub fn find_necromancer(&self, side: Side) -> Option<Loc> {
-        self.pieces.values()
+        self.pieces
+            .values()
             .find(|p| p.side == side && p.unit.stats().necromancer)
             .map(|p| p.loc)
     }

@@ -3,7 +3,11 @@ use std::collections::{HashMap, HashSet};
 use crate::core::board::actions::AttackAction;
 use crate::core::board::{Board, Piece};
 
-use crate::core::{loc::Loc, side::Side, units::{Attack, Unit, UnitStats}};
+use crate::core::{
+    loc::Loc,
+    side::Side,
+    units::{Attack, Unit, UnitStats},
+};
 
 use z3::{
     ast::{Ast, Bool, Int, BV},
@@ -20,6 +24,12 @@ type Z3Time<'ctx> = BV<'ctx>;
 
 const BV_LOC_SIZE: u32 = 8;
 type Z3Loc<'ctx> = BV<'ctx>;
+
+pub struct Z3Move<'a, 'ctx> {
+    pub from: Loc,
+    pub to: &'a Z3Loc<'ctx>,
+    pub time: &'a Z3Time<'ctx>,
+}
 
 /// Variables for the new SAT-based constraint satisfaction problem
 /// Focused on attacking pieces with preprocessed constraints on movement/attack
@@ -120,8 +130,24 @@ impl<'ctx> SatVariables<'ctx> {
         vars
     }
 
+    pub fn attack_move<'a>(&'a self, attacker: &Loc) -> Z3Move<'a, 'ctx> {
+        Z3Move {
+            from: *attacker,
+            to: &self.attack_hex[attacker],
+            time: &self.attack_time[attacker],
+        }
+    }
+
+    pub fn friend_move<'a>(&'a self, loc: &Loc) -> Z3Move<'a, 'ctx> {
+        Z3Move {
+            from: *loc,
+            to: &self.move_hex[loc],
+            time: &self.move_time[loc],
+        }
+    }
+
     /// Add movement variables for a friendly unit that needs to move out of the way
-    pub fn add_friendly_movement_variable(&mut self, ctx: &'ctx Context, loc: Loc) {
+    pub fn add_friendly_movement_variable(&mut self, ctx: &'ctx Context, loc: Loc, blink: bool) {
         if self.move_hex.contains_key(&loc) {
             return;
         }
@@ -134,6 +160,11 @@ impl<'ctx> SatVariables<'ctx> {
             loc,
             Z3Time::new_const(ctx, format!("move_time_{}", loc), BV_TIME_SIZE),
         );
+
+        if blink {
+            self.blink
+                .insert(loc, Bool::new_const(ctx, format!("blink_{}", loc)));
+        }
     }
 }
 
@@ -182,6 +213,55 @@ impl<'ctx> ConstraintManager<'ctx> {
         }
     }
 
+    pub fn blink_constraint<'a>(
+        &self,
+        move1: &Z3Move<'a, 'ctx>,
+        move2: &Z3Move<'a, 'ctx>,
+    ) -> Bool<'ctx> {
+        let Z3Move {
+            from: loc1,
+            to: dest1,
+            time: time1,
+        } = move1;
+        let Z3Move {
+            from: loc2,
+            to: dest2,
+            time: time2,
+        } = move2;
+
+        let same_hex = dest1._eq(dest2);
+
+        // If both are active and moving to the same hex, one must be blinking.
+        let blink_resolves = match (
+            self.variables.blink.get(loc1),
+            self.variables.blink.get(loc2),
+        ) {
+            (Some(blink1), Some(blink2)) => {
+                let first = time1.bvult(time2);
+                let second = time2.bvult(time1);
+
+                Bool::or(
+                    self.ctx,
+                    &[
+                        &Bool::and(self.ctx, &[&first, blink1]),
+                        &Bool::and(self.ctx, &[&second, blink2]),
+                    ],
+                )
+            }
+            (Some(blink1), None) => {
+                let first = time1.bvult(time2);
+                Bool::and(self.ctx, &[&first, blink1])
+            }
+            (None, Some(blink2)) => {
+                let second = time2.bvult(time1);
+                Bool::and(self.ctx, &[&second, blink2])
+            }
+            _ => Bool::from_bool(self.ctx, false),
+        };
+
+        same_hex.implies(&blink_resolves)
+    }
+
     fn add_attack_constraints(&mut self, board: &Board) {
         for (attacker, defenders) in &self.graph.attacker_to_defenders_map {
             let attacker_piece = board.get_piece(attacker).unwrap();
@@ -197,47 +277,18 @@ impl<'ctx> ConstraintManager<'ctx> {
             self.solver
                 .assert(&passive_var.not().implies(&hex_constraint));
 
-            // No two non-passive attackers can have the same attack_hex
+            // No two non-passive attackers can conflict on hex
             for other_attacker in &self.graph.attackers {
                 if other_attacker != attacker {
                     let other_passive_var = &self.variables.passive[other_attacker];
-                    let other_attack_hex_var = &self.variables.attack_hex[other_attacker];
-
-                    let same_hex = attack_hex_var._eq(other_attack_hex_var);
                     let both_active =
                         Bool::and(self.ctx, &[&passive_var.not(), &other_passive_var.not()]);
 
-                    // If both are active and moving to the same hex, one must be blinking.
-                    let mut conflict = same_hex.not();
-                    let other_attack_time_var = &self.variables.attack_time[other_attacker];
+                    let attack_move = self.variables.attack_move(attacker);
+                    let other_attack_move = self.variables.attack_move(other_attacker);
 
-                    if let (Some(blink_var), Some(other_blink_var)) = (
-                        self.variables.blink.get(attacker),
-                        self.variables.blink.get(other_attacker),
-                    ) {
-                        let attacker_first = attack_time_var.bvult(other_attack_time_var);
-                        let other_first = other_attack_time_var.bvult(attack_time_var);
-
-                        let blink_resolves = Bool::or(
-                            self.ctx,
-                            &[
-                                &attacker_first.implies(blink_var),
-                                &other_first.implies(other_blink_var),
-                            ],
-                        );
-
-                        conflict = blink_resolves;
-                    } else if let Some(blink_var) = self.variables.blink.get(attacker) {
-                        // other attacker does not have blink
-                        let attacker_first = attack_time_var.bvult(other_attack_time_var);
-                        conflict = attacker_first.implies(blink_var);
-                    } else if let Some(other_blink_var) = self.variables.blink.get(other_attacker) {
-                        // attacker does not have blink
-                        let other_first = other_attack_time_var.bvult(attack_time_var);
-                        conflict = other_first.implies(other_blink_var);
-                    }
-
-                    self.solver.assert(&both_active.implies(&conflict));
+                    let blink_constraint = self.blink_constraint(&attack_move, &other_attack_move);
+                    self.solver.assert(&both_active.implies(&blink_constraint));
                 }
             }
 
@@ -517,6 +568,16 @@ pub fn generate_move_from_sat_model<'ctx>(
         let to_loc = Loc::from_z3(hex_val);
         moves.insert(*friendly_loc, to_loc);
         move_times.insert(*friendly_loc, time_val);
+
+        // Add blink if the unit is blinking
+        if let Some(blink_var) = variables.blink.get(friendly_loc) {
+            let blink_val = model.eval(blink_var, true).unwrap().as_bool().unwrap();
+            if blink_val {
+                actions.push(AttackAction::Blink {
+                    blink_loc: *friendly_loc,
+                });
+            }
+        }
     }
 
     // Sort movers by time
@@ -551,7 +612,7 @@ pub fn generate_move_from_sat_model<'ctx>(
         for &attacker in mover_group {
             let attacker_attacks = match attacks.get(&attacker) {
                 Some(attacks) => attacks,
-                None => continue,
+                None => &vec![],
             };
 
             let attacker_pos = moves.get(&attacker).unwrap();
@@ -589,12 +650,23 @@ pub fn generate_move_from_sat_model<'ctx>(
                     }
                 }
             }
+
+            // Add blink if the unit is blinking
+            if let Some(blink_var) = variables.blink.get(&attacker) {
+                let blink_val = model.eval(blink_var, true).unwrap().as_bool().unwrap();
+                if blink_val {
+                    actions.push(AttackAction::Blink {
+                        blink_loc: *attacker_pos,
+                    });
+                }
+            }
         }
     }
 
     actions
 }
 
+// TODO: attacks need to be interspersed with moves and blinks
 fn group_move_actions<'ctx>(
     mover_group: &HashSet<Loc>,
     moves: &HashMap<Loc, Loc>,
