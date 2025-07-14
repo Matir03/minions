@@ -73,8 +73,6 @@ impl CombatGenerationSystem {
             }
         }
 
-        println!("Number of retries: {}", n);
-
         // Give feedback to death prophet
         let active_constraints = constraints
             .iter()

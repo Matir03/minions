@@ -404,128 +404,10 @@ impl SatPositioningSystem {
         &self,
         manager: &ConstraintManager<'ctx>,
         board: &Board,
-        side: Side,
         move_candidates: Vec<MoveCandidate>,
     ) -> Vec<AttackAction> {
-        let mut actions = Vec::new();
-
-        let mut yet_to_move: HashSet<Loc> = manager
-            .graph
-            .friends
-            .iter()
-            .filter(|loc| {
-                !manager.variables.move_hex.contains_key(loc)
-                    && !manager.graph.attackers.contains(loc)
-            })
-            .cloned()
-            .collect();
-
-        let mut used_hexes = HashSet::new();
-        let mut to_be_processed = move_candidates;
-
-        while !yet_to_move.is_empty() {
-            // Filter move candidates to only include non-combat pieces
-            to_be_processed = to_be_processed
-                .iter()
-                .filter(|candidate| {
-                    let MoveCandidate {
-                        from_loc, to_loc, ..
-                    } = candidate;
-
-                    // Must be a yet-to-move piece
-                    yet_to_move.contains(from_loc)
-                        // Must be to a hex that has not yet been moved to
-                        // either by a previous non-attack move
-                        && !used_hexes.contains(to_loc)
-                        // or by a previous attack move
-                        && (!board.pieces.contains_key(to_loc) || yet_to_move.contains(to_loc))
-                })
-                .cloned()
-                .collect();
-
-            // Group moves by from_loc and pick the best one for each piece
-            let mut piece_to_best_move = HashMap::new();
-            for candidate in &to_be_processed {
-                let entry = piece_to_best_move
-                    .entry(candidate.from_loc)
-                    .or_insert(candidate);
-
-                if candidate.score > entry.score {
-                    *entry = candidate;
-                }
-            }
-
-            let mut visited = HashSet::new();
-            let mut moved = HashSet::new();
-
-            'outer: for loc in piece_to_best_move.keys() {
-                if visited.contains(loc) {
-                    continue;
-                }
-
-                let mut path = Vec::new();
-                let mut path_set = HashSet::new();
-                let mut current = *loc;
-
-                while let Some(candidate) = piece_to_best_move.get(&current) {
-                    path.push(current);
-                    path_set.insert(current);
-                    visited.insert(current);
-
-                    let next = candidate.to_loc;
-
-                    if path_set.contains(&next) {
-                        // Cycle detected
-                        let cycle_start = path.iter().position(|l| l == &next).unwrap();
-                        let cycle = &path[cycle_start..];
-
-                        for loc in cycle {
-                            yet_to_move.remove(loc);
-                        }
-                        moved.extend(cycle);
-                        used_hexes.extend(cycle);
-
-                        if cycle.len() > 1 {
-                            let action = AttackAction::MoveCyclic {
-                                locs: cycle.to_vec(),
-                            };
-                            actions.push(action);
-                        }
-
-                        continue 'outer;
-                    }
-
-                    if used_hexes.contains(&next) {
-                        // path blocked by piece that moved this 'outer loop
-                        continue 'outer;
-                    }
-
-                    if moved.contains(&next) {
-                        // next already moved this 'outer loop, end of path
-                        break;
-                    }
-
-                    if visited.contains(&next) {
-                        // path blocked by piece that failed to move this 'outer loop
-                        continue 'outer;
-                    }
-
-                    current = next;
-                }
-
-                // add moves from valid path
-                for from_loc in path.into_iter().rev() {
-                    let to_loc = piece_to_best_move[&from_loc].to_loc;
-                    let action = AttackAction::Move { from_loc, to_loc };
-                    yet_to_move.remove(&from_loc);
-                    moved.insert(from_loc);
-                    used_hexes.insert(to_loc);
-                    actions.push(action);
-                }
-            }
-        }
-
-        actions
+        let movements = self.compute_optimal_matching(manager, board, &move_candidates);
+        self.move_actions(&movements)
     }
 
     /// Compute optimal matching using LAPJV algorithm
@@ -776,12 +658,7 @@ mod tests {
 
         let positioning = SatPositioningSystem {};
         let move_candidates = vec![];
-        let actions = positioning.generate_non_attack_movements(
-            &manager,
-            &mut board,
-            Side::Yellow,
-            move_candidates,
-        );
+        let actions = positioning.generate_non_attack_movements(&manager, &board, move_candidates);
 
         // Should return no actions for empty board
         assert!(actions.is_empty());
@@ -806,12 +683,7 @@ mod tests {
         let mut positioning = SatPositioningSystem {};
         let move_candidates =
             positioning.generate_move_candidates(&mut make_rng(), &board, Side::Yellow);
-        let actions = positioning.generate_non_attack_movements(
-            &manager,
-            &mut board,
-            Side::Yellow,
-            move_candidates,
-        );
+        let actions = positioning.generate_non_attack_movements(&manager, &board, move_candidates);
 
         // Should return some actions (even if just staying in place)
         assert!(!actions.is_empty());
@@ -855,12 +727,7 @@ mod tests {
             },
         ];
 
-        let actions = positioning.generate_non_attack_movements(
-            &manager,
-            &mut board,
-            Side::Yellow,
-            move_candidates,
-        );
+        let actions = positioning.generate_non_attack_movements(&manager, &board, move_candidates);
 
         // Should detect a cycle and create a MoveCyclic action
         assert!(!actions.is_empty());
@@ -914,12 +781,7 @@ mod tests {
             },
         ];
 
-        let actions = positioning.generate_non_attack_movements(
-            &manager,
-            &mut board,
-            Side::Yellow,
-            move_candidates,
-        );
+        let actions = positioning.generate_non_attack_movements(&manager, &board, move_candidates);
 
         // Should detect a path and create Move actions
         assert!(!actions.is_empty());
@@ -968,12 +830,7 @@ mod tests {
             }, // Higher affinity
         ];
 
-        let actions = positioning.generate_non_attack_movements(
-            &manager,
-            &mut board,
-            Side::Yellow,
-            move_candidates,
-        );
+        let actions = positioning.generate_non_attack_movements(&manager, &board, move_candidates);
 
         // Should resolve conflict by choosing the higher affinity move
         assert!(!actions.is_empty());
@@ -1118,12 +975,8 @@ mod tests {
         let sat_actions =
             generate_move_from_sat_model(&model, &manager.graph, &manager.variables, &board);
 
-        let positioning_actions = positioning.generate_non_attack_movements(
-            &manager,
-            &mut board,
-            Side::Yellow,
-            move_candidates,
-        );
+        let positioning_actions =
+            positioning.generate_non_attack_movements(&manager, &board, move_candidates);
 
         let all_actions = sat_actions
             .into_iter()

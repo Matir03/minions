@@ -263,12 +263,11 @@ impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
         let positioning_actions = run_timed(
             "Generating and applying non-combat movements",
             || {
-                let movements = positioning_system.compute_optimal_matching(
+                let actions = positioning_system.generate_non_attack_movements(
                     &manager,
                     &new_board,
-                    &move_candidates,
+                    move_candidates,
                 );
-                let actions = positioning_system.move_actions(&movements);
                 new_board.do_attacks(self.side_to_move, &actions).unwrap();
                 actions
             },
