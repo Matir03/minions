@@ -11,12 +11,14 @@ use z3::{
     SatResult,
 };
 
+use lapjv::{lapjv, Matrix};
+
 /// Represents a potential move with an affinity value
 #[derive(Debug, Clone)]
 pub struct MoveCandidate {
     pub from_loc: Loc,
     pub to_loc: Loc,
-    pub affinity_value: f64,
+    pub score: f64,
 }
 
 /// SAT-based piece positioning system with three-stage approach
@@ -331,7 +333,7 @@ impl SatPositioningSystem {
                     candidates.push(MoveCandidate {
                         from_loc: *loc,
                         to_loc,
-                        affinity_value,
+                        score: affinity_value,
                     });
                 }
             }
@@ -448,7 +450,7 @@ impl SatPositioningSystem {
                     .entry(candidate.from_loc)
                     .or_insert(candidate);
 
-                if candidate.affinity_value > entry.affinity_value {
+                if candidate.score > entry.score {
                     *entry = candidate;
                 }
             }
@@ -525,6 +527,170 @@ impl SatPositioningSystem {
 
         actions
     }
+
+    /// Compute optimal matching using LAPJV algorithm
+    pub fn compute_optimal_matching(
+        &self,
+        manager: &ConstraintManager,
+        board: &Board,
+        move_candidates: &[MoveCandidate],
+    ) -> HashMap<Loc, Loc> {
+        let mut yet_to_move: HashSet<Loc> = manager
+            .graph
+            .friends
+            .iter()
+            .filter(|loc| {
+                !manager.variables.move_hex.contains_key(loc)
+                    && !manager.graph.attackers.contains(loc)
+            })
+            .cloned()
+            .collect();
+
+        let to_be_processed: Vec<MoveCandidate> = move_candidates
+            .into_iter()
+            .filter(|candidate| {
+                let MoveCandidate {
+                    from_loc, to_loc, ..
+                } = candidate;
+
+                // Must be a yet-to-move piece
+                yet_to_move.contains(from_loc)
+                    && (!board.pieces.contains_key(to_loc) || yet_to_move.contains(to_loc))
+            })
+            .cloned()
+            .collect();
+
+        // Get all possible destinations from move_hex_map
+        let mut all_destinations = HashSet::new();
+        for candidate in &to_be_processed {
+            let dest = candidate.to_loc;
+            all_destinations.insert(dest);
+        }
+
+        let destination_locs: Vec<Loc> = all_destinations.into_iter().collect();
+
+        let num_locs = destination_locs.len();
+        let loc_to_idx_map = destination_locs
+            .iter()
+            .enumerate()
+            .map(|(idx, loc)| (*loc, idx))
+            .collect::<HashMap<_, _>>();
+
+        let loc_to_idx = |loc: Loc| *loc_to_idx_map.get(&loc).unwrap();
+
+        // Build cost matrix: friend_locs x destination_locs
+        let mut cost_matrix = vec![vec![f64::INFINITY; num_locs]; num_locs];
+
+        for candidate in to_be_processed {
+            let MoveCandidate {
+                from_loc,
+                to_loc,
+                score,
+            } = candidate;
+            let cost = score_to_cost(score);
+            cost_matrix[loc_to_idx(from_loc)][loc_to_idx(to_loc)] = cost;
+        }
+
+        // set non-friend -> dest costs to 0
+        // these are sentinels to populate the square matrix
+        for non_friend_idx in 0..num_locs {
+            let non_friend_loc = destination_locs[non_friend_idx];
+            if yet_to_move.contains(&non_friend_loc) {
+                continue;
+            }
+
+            for dest_idx in 0..num_locs {
+                cost_matrix[non_friend_idx][dest_idx] = 0.0;
+            }
+        }
+
+        // Convert cost matrix to array
+        let cost_array_data: Vec<f64> = cost_matrix.into_iter().flatten().collect();
+        let cost_array = Matrix::from_shape_vec((num_locs, num_locs), cost_array_data).unwrap();
+
+        let (row_indices, _) = lapjv(&cost_array).unwrap();
+
+        let mut matching = HashMap::new();
+        for (friend_idx, dest_idx) in row_indices.into_iter().enumerate() {
+            let friend_loc = destination_locs[friend_idx];
+            if !yet_to_move.contains(&friend_loc) {
+                continue;
+            }
+
+            let dest_loc = destination_locs[dest_idx];
+            matching.insert(friend_loc, dest_loc);
+        }
+
+        matching
+    }
+
+    pub fn move_actions(&self, movements: &HashMap<Loc, Loc>) -> Vec<AttackAction> {
+        let (paths, cycles) = identify_paths_and_cycles(movements);
+        let mut actions = Vec::new();
+        for path in paths {
+            let moves = path.windows(2).map(|w| AttackAction::Move {
+                from_loc: w[0],
+                to_loc: w[1],
+            });
+            actions.extend(moves.rev());
+        }
+        for cycle in cycles {
+            actions.push(AttackAction::MoveCyclic { locs: cycle });
+        }
+        actions
+    }
+}
+
+type MovementPath = Vec<Loc>;
+type MovementCycle = Vec<Loc>;
+
+/// Identify paths and cycles in the movement graph
+fn identify_paths_and_cycles(
+    movement: &HashMap<Loc, Loc>,
+) -> (Vec<MovementPath>, Vec<MovementCycle>) {
+    let mut paths = Vec::new();
+    let mut cycles = Vec::new();
+    let dests = movement.values().cloned().collect::<HashSet<_>>();
+
+    let sources = movement.keys().filter(|loc| !dests.contains(loc));
+    let mut visited = HashSet::new();
+
+    for source in sources {
+        visited.insert(*source);
+
+        let mut path = vec![*source];
+        let mut current = source;
+        while let Some(next) = movement.get(current) {
+            visited.insert(*next);
+            path.push(*next);
+            current = next;
+        }
+
+        paths.push(path);
+    }
+
+    for (source, dest) in movement {
+        if visited.contains(dest) {
+            continue;
+        }
+        visited.insert(*source);
+
+        let mut cycle = vec![*source];
+        let mut next = dest;
+        while next != source {
+            visited.insert(*next);
+            cycle.push(*next);
+            next = movement.get(&next).unwrap();
+        }
+
+        cycles.push(cycle);
+    }
+
+    (paths, cycles)
+}
+
+pub fn score_to_cost(score: f64) -> f64 {
+    -score.log2()
 }
 
 /// Helper function to create location constraints
@@ -577,8 +743,8 @@ mod tests {
         // All candidates should be for the friendly piece
         for candidate in &candidates {
             assert_eq!(candidate.from_loc, crate::core::loc::Loc::new(1, 1));
-            assert!(candidate.affinity_value >= 0.0);
-            assert!(candidate.affinity_value < 1.0);
+            assert!(candidate.score >= 0.0);
+            assert!(candidate.score < 1.0);
         }
     }
 
@@ -592,11 +758,11 @@ mod tests {
             positioning.generate_move_candidates(&mut make_rng(), &board, Side::Yellow);
 
         // Sort by affinity value
-        candidates.sort_by(|a, b| b.affinity_value.partial_cmp(&a.affinity_value).unwrap());
+        candidates.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
 
         // Check that they are in descending order
         for i in 1..candidates.len() {
-            assert!(candidates[i - 1].affinity_value >= candidates[i].affinity_value);
+            assert!(candidates[i - 1].score >= candidates[i].score);
         }
     }
 
@@ -680,12 +846,12 @@ mod tests {
             MoveCandidate {
                 from_loc: loc1,
                 to_loc: loc2,
-                affinity_value: 0.8,
+                score: 0.8,
             },
             MoveCandidate {
                 from_loc: loc2,
                 to_loc: loc1,
-                affinity_value: 0.9,
+                score: 0.9,
             },
         ];
 
@@ -739,12 +905,12 @@ mod tests {
             MoveCandidate {
                 from_loc: loc1,
                 to_loc: loc2,
-                affinity_value: 0.8,
+                score: 0.8,
             },
             MoveCandidate {
                 from_loc: loc2,
                 to_loc: loc3,
-                affinity_value: 0.9,
+                score: 0.9,
             },
         ];
 
@@ -793,12 +959,12 @@ mod tests {
             MoveCandidate {
                 from_loc: loc1,
                 to_loc: target_loc,
-                affinity_value: 0.7,
+                score: 0.7,
             },
             MoveCandidate {
                 from_loc: loc2,
                 to_loc: target_loc,
-                affinity_value: 0.9,
+                score: 0.9,
             }, // Higher affinity
         ];
 
@@ -852,7 +1018,7 @@ mod tests {
         let move_candidates = vec![MoveCandidate {
             from_loc: loc,
             to_loc: crate::core::loc::Loc::new(1, 2),
-            affinity_value: 0.5,
+            score: 0.5,
         }];
 
         let filtered = positioning.filter_combat_relevant_moves(&manager, &move_candidates);
@@ -973,13 +1139,13 @@ mod tests {
         let candidate = MoveCandidate {
             from_loc: crate::core::loc::Loc::new(1, 1),
             to_loc: crate::core::loc::Loc::new(1, 2),
-            affinity_value: 0.5,
+            score: 0.5,
         };
 
         let cloned = candidate.clone();
         assert_eq!(candidate.from_loc, cloned.from_loc);
         assert_eq!(candidate.to_loc, cloned.to_loc);
-        assert_eq!(candidate.affinity_value, cloned.affinity_value);
+        assert_eq!(candidate.score, cloned.score);
     }
 
     #[test]
@@ -987,7 +1153,7 @@ mod tests {
         let candidate = MoveCandidate {
             from_loc: crate::core::loc::Loc::new(1, 1),
             to_loc: crate::core::loc::Loc::new(1, 2),
-            affinity_value: 0.5,
+            score: 0.5,
         };
 
         let debug_str = format!("{:?}", candidate);

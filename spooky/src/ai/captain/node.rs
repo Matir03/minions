@@ -79,11 +79,17 @@ where
     // Helper to select the debug output target
     fn debug_target() -> Box<dyn Write> {
         #[cfg(feature = "profiling")]
-        { Box::new(io::stdout()) }
+        {
+            Box::new(io::stdout())
+        }
         #[cfg(all(debug_assertions, not(feature = "profiling")))]
-        { Box::new(io::stderr()) }
+        {
+            Box::new(io::stderr())
+        }
         #[cfg(all(not(debug_assertions), not(feature = "profiling")))]
-        { Box::new(io::sink()) }
+        {
+            Box::new(io::sink())
+        }
     }
 
     let start = std::time::Instant::now();
@@ -178,14 +184,16 @@ impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
             // --- Combat Reconciliation ---
             let result = run_timed(
                 "Combat reconciliation",
-                || positioning_system
-                    .combat_reconciliation(
-                        &mut manager,
-                        &new_board,
-                        self.side_to_move,
-                        &move_candidates,
-                    )
-                    .expect("Combat reconciliation error"),
+                || {
+                    positioning_system
+                        .combat_reconciliation(
+                            &mut manager,
+                            &new_board,
+                            self.side_to_move,
+                            &move_candidates,
+                        )
+                        .expect("Combat reconciliation error")
+                },
                 |res| {
                     if res.is_none() {
                         "success".to_string()
@@ -233,8 +241,18 @@ impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
                         .solver
                         .get_model()
                         .expect("Failed to get model from SAT solver");
-                    let combat_actions = generate_move_from_sat_model(&model, &manager.graph, &manager.variables, &new_board);
-                    (combat_actions.clone(), new_board.do_attacks(self.side_to_move, &combat_actions).unwrap())
+                    let combat_actions = generate_move_from_sat_model(
+                        &model,
+                        &manager.graph,
+                        &manager.variables,
+                        &new_board,
+                    );
+                    (
+                        combat_actions.clone(),
+                        new_board
+                            .do_attacks(self.side_to_move, &combat_actions)
+                            .unwrap(),
+                    )
                 }
                 _ => panic!("Failed to generate combat actions"),
             },
@@ -245,12 +263,12 @@ impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
         let positioning_actions = run_timed(
             "Generating and applying non-combat movements",
             || {
-                let actions = positioning_system.generate_non_attack_movements(
+                let movements = positioning_system.compute_optimal_matching(
                     &manager,
-                    &mut new_board,
-                    self.side_to_move,
-                    move_candidates,
+                    &new_board,
+                    &move_candidates,
                 );
+                let actions = positioning_system.move_actions(&movements);
                 new_board.do_attacks(self.side_to_move, &actions).unwrap();
                 actions
             },
@@ -262,8 +280,16 @@ impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
             "Spawn phase",
             || {
                 if new_board.state.phases().contains(&Phase::Spawn) {
-                    let spawn_actions = generate_heuristic_spawn_actions(&new_board, self.side_to_move, tech_state, money, rng);
-                    let money_after_spawn = new_board.do_spawns(self.side_to_move, money, &spawn_actions).unwrap();
+                    let spawn_actions = generate_heuristic_spawn_actions(
+                        &new_board,
+                        self.side_to_move,
+                        tech_state,
+                        money,
+                        rng,
+                    );
+                    let money_after_spawn = new_board
+                        .do_spawns(self.side_to_move, money, &spawn_actions)
+                        .unwrap();
                     (spawn_actions, money_after_spawn)
                 } else {
                     (Vec::new(), money)
