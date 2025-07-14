@@ -136,13 +136,14 @@ impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
             |_| "done".to_string(),
         );
 
-        // --- Generate attacks using new strategy ---
+        // --- Generate attacks ---
         let (attack_actions, rebate) = run_timed(
-            "Generating attacks with new strategy",
+            "Generating attacks",
             || {
                 let actions = attack_generator
                     .generate_attacks(&new_board, self.side_to_move)
                     .expect("Failed to generate attacks");
+
                 let rebate = new_board.do_attacks(self.side_to_move, &actions).unwrap();
                 (actions, rebate)
             },

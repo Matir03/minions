@@ -337,6 +337,38 @@ impl<'ctx> ConstraintManager<'ctx> {
         Bool::or(self.ctx, &conjunct_vars_refs)
     }
 
+    pub fn create_untimed_dnf_constraint<'a>(&self, dnf: &Vec<Vec<Loc>>) -> Bool<'ctx> {
+        let bool_vars: Vec<_> = dnf
+            .iter()
+            .map(|conjunct| {
+                conjunct
+                    .iter()
+                    .map(|loc| {
+                        if self.graph.defenders.contains(loc) {
+                            self.variables.removed[loc].clone()
+                        } else {
+                            Bool::from_bool(self.ctx, false)
+                        }
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+
+        let bool_vars_refs: Vec<_> = bool_vars
+            .iter()
+            .map(|conjunct| conjunct.iter().collect::<Vec<_>>())
+            .collect();
+
+        let conjunct_vars = bool_vars_refs
+            .iter()
+            .map(|conjunct| Bool::and(self.ctx, conjunct))
+            .collect::<Vec<_>>();
+
+        let conjunct_vars_refs: Vec<_> = conjunct_vars.iter().collect();
+
+        Bool::or(self.ctx, &conjunct_vars_refs)
+    }
+
     pub fn untouched(&self, loc: &Loc) -> bool {
         !self.graph.attackers.contains(loc)
     }
@@ -410,17 +442,6 @@ pub fn generate_move_from_model<'ctx>(
 
     movers_by_tick.sort_by_key(|&(time, _)| time);
 
-    let attackers = movers_by_tick
-        .iter()
-        .map(|&(_, mover)| mover)
-        .collect::<HashSet<_>>();
-
-    let passive_movers = movement
-        .keys()
-        .filter(|&mover| !attackers.contains(mover))
-        .cloned()
-        .collect::<HashSet<_>>();
-
     // Group movers by time
     let mut grouped_movers = Vec::new();
     let mut current_time = None;
@@ -435,9 +456,11 @@ pub fn generate_move_from_model<'ctx>(
     let mut defender_damage = HashMap::new();
     let mut defenders_dead = HashSet::new();
 
+    let mut moved = HashSet::new();
+
     // Process each group of movers
     for mover_group in grouped_movers.iter() {
-        let move_actions = group_move_actions(mover_group, &movement);
+        let move_actions = group_move_actions(mover_group, &mut moved, &movement);
 
         actions.extend(move_actions);
 
@@ -486,20 +509,27 @@ pub fn generate_move_from_model<'ctx>(
         }
     }
 
-    actions.extend(group_move_actions(&passive_movers, movement));
+    let passive_movers = movement
+        .keys()
+        .filter(|&mover| !moved.contains(mover))
+        .cloned()
+        .collect::<HashSet<_>>();
+
+    let passive_actions = group_move_actions(&passive_movers, &mut moved, movement);
+    actions.extend(passive_actions);
 
     actions
 }
 
 fn group_move_actions<'ctx>(
     mover_group: &HashSet<Loc>,
+    moved: &mut HashSet<Loc>,
     movement: &HashMap<Loc, Loc>,
 ) -> Vec<AttackAction> {
     let mut actions = Vec::new();
-    let mut visited = HashSet::new();
 
     for mover in mover_group {
-        if visited.contains(mover) {
+        if moved.contains(mover) {
             continue;
         }
 
@@ -508,7 +538,7 @@ fn group_move_actions<'ctx>(
 
         loop {
             chain_movers.push(current_loc);
-            visited.insert(current_loc);
+            moved.insert(current_loc);
             let next_loc = *movement.get(&current_loc).unwrap();
 
             if next_loc == *mover {
@@ -522,7 +552,7 @@ fn group_move_actions<'ctx>(
                 break;
             }
 
-            if !mover_group.contains(&next_loc) || visited.contains(&next_loc) {
+            if moved.contains(&next_loc) || !movement.contains_key(&next_loc) {
                 // end of chain
                 for from_loc in chain_movers.iter().rev().cloned() {
                     let to_loc = *movement.get(&from_loc).unwrap();

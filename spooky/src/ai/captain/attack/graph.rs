@@ -69,8 +69,7 @@ pub struct CombatTriple {
 // A DNF formula representing the removal of enemy units
 // that allows a friendly unit to move to a given hex
 // inner vec is AND, outer vec is OR
-// None means it no removal is needed
-pub type RemovalDNF = Option<Vec<Vec<Loc>>>;
+pub type RemovalDNF = Vec<Vec<Loc>>;
 
 #[derive(Debug, Clone)]
 pub struct CombatGraph {
@@ -147,11 +146,11 @@ impl CombatGraph {
                 .iter()
                 .map(|hex| {
                     if free_move_hexes.contains(hex) {
-                        return (*hex, None);
+                        return (*hex, vec![vec![]]);
                     }
 
                     if flying {
-                        return (*hex, Some(vec![vec![*hex]]));
+                        return (*hex, vec![vec![*hex]]);
                     }
 
                     let paths = friend.paths_to(hex);
@@ -175,7 +174,7 @@ impl CombatGraph {
                         })
                         .collect::<Vec<Vec<Loc>>>();
 
-                    (*hex, Some(dnf))
+                    (*hex, dnf)
                 })
                 .collect::<HashMap<Loc, RemovalDNF>>();
 

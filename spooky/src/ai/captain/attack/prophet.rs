@@ -18,13 +18,13 @@ impl AttackConstraint {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct MoveAssumption {
     pub mv: Move,
     pub cost: f64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AttackAssumption {
     pub constraint: AttackConstraint,
     pub cost: f64,
@@ -67,7 +67,7 @@ impl DeathProphet {
         for loc in defenders {
             let piece = board.get_piece(loc).unwrap();
             let piece_stats = piece.unit.stats();
-            let score = if piece_stats.necromancer {
+            let removal_score = if piece_stats.necromancer {
                 1.0
             } else {
                 (piece_stats.cost - piece_stats.rebate) as f64 / 10.0
@@ -75,11 +75,11 @@ impl DeathProphet {
 
             attack_priorities.push(AttackAssumption {
                 constraint: AttackConstraint::Remove(*loc),
-                cost: score_to_cost(score),
+                cost: score_to_cost(removal_score),
             });
             attack_priorities.push(AttackAssumption {
                 constraint: AttackConstraint::Keep(*loc),
-                cost: score_to_cost(1.0 - score),
+                cost: score_to_cost(1.0 - removal_score),
             });
         }
         attack_priorities.sort_by(|a, b| a.cost.partial_cmp(&b.cost).unwrap());
@@ -89,21 +89,14 @@ impl DeathProphet {
             for (dest_loc, dnf) in hex_map {
                 // Weight moves by distance from starting location
                 let distance = friend_loc.dist(dest_loc) as f64;
-                let base_score = 1.0 / (distance + 1.0); // Closer moves have higher priority
-
-                // Adjust score based on whether move requires removal
-                let score = if dnf.is_none() {
-                    base_score * 2.0 // Free moves have higher priority
-                } else {
-                    base_score
-                };
+                let cost = 3.0 - distance;
 
                 move_priorities.push(MoveAssumption {
                     mv: Move {
                         from: *friend_loc,
                         to: *dest_loc,
                     },
-                    cost: score_to_cost(score),
+                    cost,
                 });
             }
         }

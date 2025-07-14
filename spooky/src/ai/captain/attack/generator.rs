@@ -12,6 +12,7 @@ use crate::{
     ai::{
         captain::attack::{
             constraints::{generate_move_from_model, ConstraintManager},
+            graph::RemovalDNF,
             prophet::{AttackAssumption, MoveAssumption},
         },
         rng,
@@ -39,7 +40,7 @@ type Z3Loc<'ctx> = BV<'ctx>;
 pub type MovementPath = Vec<Loc>;
 pub type MovementCycle = Vec<Loc>;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Assumption {
     Move(MoveAssumption),
     Attack(AttackAssumption),
@@ -63,37 +64,36 @@ pub struct Z3Assumption<'ctx> {
 pub struct AttackGenerator<'ctx> {
     manager: ConstraintManager<'ctx>,
     death_prophet: DeathProphet,
-
     // Precomputed DNFs for each move
-    move_dnfs: HashMap<Move, Vec<Vec<Loc>>>,
+    // move_dnfs: HashMap<Move, Vec<Vec<Loc>>>,
+}
+
+fn get_move_dnfs(graph: &CombatGraph) -> HashMap<Move, Vec<Vec<Loc>>> {
+    let mut move_dnfs = HashMap::new();
+    for (friend, hex_map) in &graph.move_hex_map {
+        for (dest, dnf) in hex_map {
+            move_dnfs.insert(
+                Move {
+                    from: *friend,
+                    to: *dest,
+                },
+                dnf.clone(),
+            );
+        }
+    }
+    move_dnfs
 }
 
 impl<'ctx> AttackGenerator<'ctx> {
     pub fn new(ctx: &'ctx Context, board: &Board, side: Side, rng: &mut impl Rng) -> Self {
         let death_prophet = DeathProphet::new(StdRng::from_rng(rng).unwrap());
         let graph = board.combat_graph(side);
-        // Precompute DNFs for each move
-        let mut move_dnfs = HashMap::new();
-        for (friend, hex_map) in &graph.move_hex_map {
-            for (dest, dnf) in hex_map {
-                if let Some(dnf_clauses) = dnf {
-                    move_dnfs.insert(
-                        Move {
-                            from: *friend,
-                            to: *dest,
-                        },
-                        dnf_clauses.clone(),
-                    );
-                }
-            }
-        }
 
         let manager = ConstraintManager::new(ctx, graph, board);
 
         Self {
             manager,
             death_prophet,
-            move_dnfs,
         }
     }
 
@@ -104,11 +104,10 @@ impl<'ctx> AttackGenerator<'ctx> {
         let mut cant_move = HashSet::new();
         let mut unassumable = HashSet::new();
 
-        let mut iter_count = 0;
+        let base_move_dnfs = get_move_dnfs(&self.manager.graph);
 
         // Step 2: Iteratively solve
         loop {
-            iter_count += 1;
             // Filter priorities to exclude unassumable removes/keeps and cant_move moves
             let move_assumptions: Vec<_> = prophecy
                 .move_assumptions
@@ -119,6 +118,7 @@ impl<'ctx> AttackGenerator<'ctx> {
 
             let mut attack_assumptions = Vec::new();
             let mut locs_with_assumptions = HashSet::new();
+            let mut removals = HashSet::new();
 
             for assumption in prophecy.attack_assumptions.iter() {
                 let constraint = &assumption.constraint;
@@ -134,31 +134,34 @@ impl<'ctx> AttackGenerator<'ctx> {
 
                 attack_assumptions.push(assumption.clone());
                 locs_with_assumptions.insert(loc);
+                if let AttackConstraint::Remove(_) = constraint {
+                    removals.insert(loc);
+                }
             }
 
-            println!(
-                "[AttackSolver] Iteration {}: move priorities left: {}, attack priorities left: {}",
-                iter_count,
-                move_assumptions.len(),
-                attack_assumptions.len()
-            );
+            let dnf_map = base_move_dnfs
+                .iter()
+                .map(|(mv, dnf)| {
+                    let new_dnf = dnf
+                        .iter()
+                        .filter(|locs| locs.iter().all(|loc| !removals.contains(loc)))
+                        .cloned()
+                        .collect();
+
+                    (mv.clone(), new_dnf)
+                })
+                .collect::<HashMap<_, _>>();
 
             // 2a: Compute optimal matching using LAPJV
-            let movement = match self.compute_optimal_matching(&move_assumptions) {
+            let movement = match self.compute_optimal_matching(&move_assumptions, &dnf_map) {
                 Some(matching) => matching,
                 None => {
-                    println!(
-                        "[AttackSolver] No matching found, removing lowest-priority attack assumption and reverting cant_move"
-                    );
-                    let attack_assumption_to_remove = attack_assumptions
-                        .pop()
-                        .context("No attack assumptions left")?;
+                    let attack_assumption_to_remove = attack_assumptions.pop().unwrap();
                     unassumable.insert(attack_assumption_to_remove.constraint);
                     cant_move.clear();
                     continue;
                 }
             };
-            println!("[AttackSolver] Matching found");
 
             // 2b: Identify paths and cycles in the movement graph
             let (paths, cycles) = identify_paths_and_cycles(&movement);
@@ -169,6 +172,7 @@ impl<'ctx> AttackGenerator<'ctx> {
                 &cycles,
                 &move_assumptions,
                 &attack_assumptions,
+                &dnf_map,
             );
 
             let checkable_assumptions: Vec<_> = z3assumptions
@@ -184,12 +188,13 @@ impl<'ctx> AttackGenerator<'ctx> {
 
             match result {
                 SatResult::Sat => {
-                    println!("[AttackSolver] SAT: extracting model");
                     let model = self
                         .manager
                         .solver
                         .get_model()
                         .context("Failed to get model")?;
+
+                    println!("Model: {:#?}", model);
 
                     let actions = generate_move_from_model(
                         &model,
@@ -199,12 +204,20 @@ impl<'ctx> AttackGenerator<'ctx> {
                         board,
                     );
 
+                    println!(
+                        "Actions:\n{}",
+                        actions
+                            .iter()
+                            .map(|action| action.to_string())
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    );
+
+                    println!("DNF: {:#?}", dnf_map);
+
                     return Ok(actions);
                 }
                 SatResult::Unsat => {
-                    println!(
-                        "[AttackSolver] UNSAT: removing lowest-priority assumption from unsat core"
-                    );
                     let unsat_core = self.manager.solver.get_unsat_core();
                     let worst_assumption = self
                         .get_worst_assumption(&unsat_core, &z3assumptions)
@@ -234,13 +247,16 @@ impl<'ctx> AttackGenerator<'ctx> {
     fn compute_optimal_matching(
         &mut self,
         move_assumptions: &Vec<MoveAssumption>,
+        dnf_map: &HashMap<Move, Vec<Vec<Loc>>>,
     ) -> Option<HashMap<Loc, Loc>> {
         // Get all possible destinations from move_hex_map
         let mut all_destinations = HashSet::new();
-        for (_, hex_map) in &self.manager.graph.move_hex_map {
-            for (dest, _) in hex_map {
-                all_destinations.insert(*dest);
+        for (mv, dnf) in dnf_map {
+            if dnf.is_empty() {
+                continue;
             }
+            let dest = mv.to;
+            all_destinations.insert(dest);
         }
 
         let friend_locs: Vec<Loc> = self.manager.graph.friends.iter().cloned().collect();
@@ -279,28 +295,11 @@ impl<'ctx> AttackGenerator<'ctx> {
             }
         }
 
-        println!("=== LAPJV DEBUG ===");
-        println!(
-            "Cost matrix shape: {}x{}",
-            friend_locs.len(),
-            destination_locs.len()
-        );
-        println!("Friend locations: {:?}", friend_locs);
-        println!("Destination locations: {:?}", destination_locs);
-
-        // Print cost matrix for debugging
-        for (i, row) in cost_matrix.iter().enumerate() {
-            println!("Friend {} ({:?}) costs: {:?}", i, friend_locs[i], row);
-        }
-
         // Convert cost matrix to array
         let cost_array_data: Vec<f64> = cost_matrix.into_iter().flatten().collect();
         let cost_array = Matrix::from_shape_vec((num_locs, num_locs), cost_array_data).unwrap();
 
         let (row_indices, _) = lapjv(&cost_array).unwrap();
-
-        println!("LAPJV succeeded!");
-        println!("Row indices (friend -> dest): {:?}", row_indices);
 
         let mut matching = HashMap::new();
         for (friend_idx, dest_idx) in row_indices.into_iter().enumerate() {
@@ -335,6 +334,7 @@ impl<'ctx> AttackGenerator<'ctx> {
         cycles: &[MovementCycle],
         move_assumptions: &[MoveAssumption],
         attack_assumptions: &[AttackAssumption],
+        dnf_map: &HashMap<Move, RemovalDNF>,
     ) -> Vec<Z3Assumption<'ctx>> {
         let mut assumptions = Vec::new();
         let move_assumption_map = move_assumptions
@@ -344,13 +344,15 @@ impl<'ctx> AttackGenerator<'ctx> {
 
         // Add constraints for paths
         for path in paths {
-            let path_assumptions = self.compute_z3_path_assumptions(path, &move_assumption_map);
+            let path_assumptions =
+                self.compute_z3_path_assumptions(path, dnf_map, &move_assumption_map);
             assumptions.extend(path_assumptions);
         }
 
         // Add constraints for cycles
         for cycle in cycles {
-            let cycle_assumptions = self.compute_z3_cycle_assumptions(cycle, &move_assumption_map);
+            let cycle_assumptions =
+                self.compute_z3_cycle_assumptions(cycle, dnf_map, &move_assumption_map);
             assumptions.extend(cycle_assumptions);
         }
 
@@ -376,11 +378,10 @@ impl<'ctx> AttackGenerator<'ctx> {
     fn compute_z3_path_assumptions(
         &self,
         path: &MovementPath,
+        dnf_map: &HashMap<Move, RemovalDNF>,
         move_assumption_map: &HashMap<Move, &MoveAssumption>,
     ) -> Vec<Z3Assumption<'ctx>> {
         let mut assumptions = Vec::new();
-
-        let dnf_map = &self.move_dnfs;
 
         // track relevant properties for the segment
         let mut dnfs = Vec::new();
@@ -389,8 +390,15 @@ impl<'ctx> AttackGenerator<'ctx> {
         let moves = path_to_moves(path);
 
         for (i, mv) in moves.iter().enumerate().rev() {
+            let mut assumption = *move_assumption_map.get(mv).unwrap();
+
             if let Some(dnf) = dnf_map.get(mv) {
                 dnfs.push(dnf);
+                let untimed_dnf_constraint = self.manager.create_untimed_dnf_constraint(dnf);
+                assumptions.push(Z3Assumption {
+                    constraint: untimed_dnf_constraint,
+                    assumption: Assumption::Move(assumption.clone()),
+                });
             }
 
             let attacker = mv.from;
@@ -401,8 +409,6 @@ impl<'ctx> AttackGenerator<'ctx> {
 
             let hex_var = &self.manager.variables.attack_hex[&attacker];
             let time_var = &self.manager.variables.attack_time[&attacker];
-
-            let mut assumption = *move_assumption_map.get(mv).unwrap();
 
             assumptions.push(Z3Assumption {
                 constraint: hex_var._eq(&mv.to.as_z3(self.manager.ctx)),
@@ -442,6 +448,7 @@ impl<'ctx> AttackGenerator<'ctx> {
     fn compute_z3_cycle_assumptions(
         &self,
         cycle: &MovementCycle,
+        dnf_map: &HashMap<Move, RemovalDNF>,
         move_assumption_map: &HashMap<Move, &MoveAssumption>,
     ) -> Vec<Z3Assumption<'ctx>> {
         let mut assumptions = Vec::new();
@@ -463,12 +470,21 @@ impl<'ctx> AttackGenerator<'ctx> {
             .unwrap();
 
         for mv in moves {
-            let dnf = self.move_dnfs.get(&mv).unwrap();
-            let dnf_constraint = self.manager.create_dnf_constraint(dnf, time_var);
-            assumptions.push(Z3Assumption {
-                constraint: dnf_constraint,
-                assumption: Assumption::Move(worst_assumption.clone()),
-            });
+            let cur_assumption = *move_assumption_map.get(&mv).unwrap();
+
+            if let Some(dnf) = dnf_map.get(&mv) {
+                let untimed_dnf_constraint = self.manager.create_untimed_dnf_constraint(dnf);
+                assumptions.push(Z3Assumption {
+                    constraint: untimed_dnf_constraint,
+                    assumption: Assumption::Move(cur_assumption.clone()),
+                });
+
+                let dnf_constraint = self.manager.create_dnf_constraint(dnf, time_var);
+                assumptions.push(Z3Assumption {
+                    constraint: dnf_constraint,
+                    assumption: Assumption::Move(worst_assumption.clone()),
+                });
+            }
 
             let attacker = mv.from;
 
@@ -478,8 +494,6 @@ impl<'ctx> AttackGenerator<'ctx> {
 
             let hex_var = &self.manager.variables.attack_hex[&attacker];
             let mv_time_var = &self.manager.variables.attack_time[&attacker];
-
-            let cur_assumption = *move_assumption_map.get(&mv).unwrap();
 
             assumptions.push(Z3Assumption {
                 constraint: hex_var._eq(&mv.to.as_z3(self.manager.ctx)),
@@ -495,13 +509,14 @@ impl<'ctx> AttackGenerator<'ctx> {
         assumptions
     }
 
-    /// Remove lowest priority assumption from unsat core
+    /// Get the worst assumption from the unsat core
     fn get_worst_assumption(
         &self,
         unsat_core: &[Bool<'ctx>],
         assumptions: &[Z3Assumption<'ctx>],
     ) -> Option<Assumption> {
         let mut worst_assumption: Option<Assumption> = None;
+
         for constraint in unsat_core {
             let assumption = &assumptions
                 .iter()
@@ -509,19 +524,19 @@ impl<'ctx> AttackGenerator<'ctx> {
                 .unwrap()
                 .assumption;
 
-            worst_assumption = match worst_assumption {
-                Some(worst_assumption) => {
-                    if assumption.cost() > worst_assumption.cost() {
-                        Some(assumption.clone())
-                    } else {
-                        None
-                    }
-                }
-                None => Some(assumption.clone()),
-            };
+            if is_worse(&assumption, &worst_assumption) {
+                worst_assumption = Some(assumption.clone());
+            }
         }
 
         worst_assumption
+    }
+}
+
+fn is_worse(a: &Assumption, b: &Option<Assumption>) -> bool {
+    match b {
+        Some(b) => a.cost() > b.cost(),
+        None => true,
     }
 }
 
