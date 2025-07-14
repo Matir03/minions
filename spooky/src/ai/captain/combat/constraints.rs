@@ -1,12 +1,9 @@
 use std::collections::{HashMap, HashSet};
 
-use crate::core::{
-    board::actions::AttackAction,
-    board::Board,
-    loc::Loc,
-    side::Side,
-    units::{Attack, Unit},
-};
+use crate::core::board::actions::AttackAction;
+use crate::core::board::{Board, Piece};
+
+use crate::core::{loc::Loc, side::Side, units::{Attack, Unit, UnitStats}};
 
 use z3::{
     ast::{Ast, Bool, Int, BV},
@@ -47,10 +44,13 @@ pub struct SatVariables<'ctx> {
     // Only included post hoc for friendly units whose movements end up being relevant to combat
     pub move_hex: HashMap<Loc, Z3Loc<'ctx>>, // what hex friendly unit is moving to
     pub move_time: HashMap<Loc, Z3Time<'ctx>>, // when the friendly unit moves
+
+    // Blink variables
+    pub blink: HashMap<Loc, Bool<'ctx>>, // whether an attacker with blink keyword is blinking
 }
 
 impl<'ctx> SatVariables<'ctx> {
-    pub fn new(ctx: &'ctx Context, graph: &CombatGraph) -> Self {
+    pub fn new(ctx: &'ctx Context, graph: &CombatGraph, board: &Board) -> Self {
         let mut vars = SatVariables {
             passive: HashMap::new(),
             attack_hex: HashMap::new(),
@@ -61,6 +61,7 @@ impl<'ctx> SatVariables<'ctx> {
             removal_time: HashMap::new(),
             move_hex: HashMap::new(),
             move_time: HashMap::new(),
+            blink: HashMap::new(),
         };
 
         // Create variables for attackers only
@@ -80,6 +81,15 @@ impl<'ctx> SatVariables<'ctx> {
                 *attacker,
                 Z3Time::new_const(ctx, format!("attack_time_{}", attacker), BV_TIME_SIZE),
             );
+
+            // Add blink variable if the unit has the blink keyword
+            let piece = board.get_piece(attacker).unwrap();
+            if piece.unit.stats().blink {
+                vars.blink.insert(
+                    *attacker,
+                    Bool::new_const(ctx, format!("blink_{}", attacker)),
+                );
+            }
         }
 
         // Create variables for all possible attack pairs
@@ -138,7 +148,7 @@ pub struct ConstraintManager<'ctx> {
 impl<'ctx> ConstraintManager<'ctx> {
     pub fn new(ctx: &'ctx Context, graph: CombatGraph, board: &Board) -> Self {
         let solver = Solver::new(ctx);
-        let variables = SatVariables::new(ctx, &graph);
+        let variables = SatVariables::new(ctx, &graph, board);
 
         let mut manager = ConstraintManager {
             ctx,
@@ -197,7 +207,37 @@ impl<'ctx> ConstraintManager<'ctx> {
                     let both_active =
                         Bool::and(self.ctx, &[&passive_var.not(), &other_passive_var.not()]);
 
-                    self.solver.assert(&both_active.implies(&same_hex.not()));
+                    // If both are active and moving to the same hex, one must be blinking.
+                    let mut conflict = same_hex.not();
+                    let other_attack_time_var = &self.variables.attack_time[other_attacker];
+
+                    if let (Some(blink_var), Some(other_blink_var)) = (
+                        self.variables.blink.get(attacker),
+                        self.variables.blink.get(other_attacker),
+                    ) {
+                        let attacker_first = attack_time_var.bvult(other_attack_time_var);
+                        let other_first = other_attack_time_var.bvult(attack_time_var);
+
+                        let blink_resolves = Bool::or(
+                            self.ctx,
+                            &[
+                                &attacker_first.implies(blink_var),
+                                &other_first.implies(other_blink_var),
+                            ],
+                        );
+
+                        conflict = blink_resolves;
+                    } else if let Some(blink_var) = self.variables.blink.get(attacker) {
+                        // other attacker does not have blink
+                        let attacker_first = attack_time_var.bvult(other_attack_time_var);
+                        conflict = attacker_first.implies(blink_var);
+                    } else if let Some(other_blink_var) = self.variables.blink.get(other_attacker) {
+                        // attacker does not have blink
+                        let other_first = other_attack_time_var.bvult(attack_time_var);
+                        conflict = other_first.implies(other_blink_var);
+                    }
+
+                    self.solver.assert(&both_active.implies(&conflict));
                 }
             }
 

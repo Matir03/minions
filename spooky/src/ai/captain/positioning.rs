@@ -15,16 +15,71 @@ use lapjv::{lapjv, Matrix};
 
 /// Represents a potential move with an affinity value
 #[derive(Debug, Clone)]
-pub struct MoveCandidate {
-    pub from_loc: Loc,
-    pub to_loc: Loc,
-    pub score: f64,
+pub enum MoveCandidate {
+    Move {
+        from_loc: Loc,
+        to_loc: Loc,
+        score: f64,
+    },
+    Blink {
+        from_loc: Loc,
+        to_loc: Loc,
+        score: f64,
+    },
+}
+
+impl MoveCandidate {
+    pub fn from_loc(&self) -> Loc {
+        match self {
+            MoveCandidate::Move { from_loc, .. } => *from_loc,
+            MoveCandidate::Blink { from_loc, .. } => *from_loc,
+        }
+    }
+
+    pub fn to_loc(&self) -> Loc {
+        match self {
+            MoveCandidate::Move { to_loc, .. } => *to_loc,
+            MoveCandidate::Blink { to_loc, .. } => *to_loc,
+        }
+    }
+
+    pub fn score(&self) -> f64 {
+        match self {
+            MoveCandidate::Move { score, .. } => *score,
+            MoveCandidate::Blink { score, .. } => *score,
+        }
+    }
 }
 
 /// SAT-based piece positioning system with three-stage approach
 pub struct SatPositioningSystem {}
 
 impl SatPositioningSystem {
+    fn create_move_constraint<'ctx>(
+        &self,
+        variables: &SatVariables<'ctx>,
+        candidate: &MoveCandidate,
+        ctx: &'ctx z3::Context,
+    ) -> Bool<'ctx> {
+        let from_loc = candidate.from_loc();
+        let to_loc = candidate.to_loc();
+
+        if let Some(move_hex_var) = variables.move_hex.get(&from_loc) {
+            return move_hex_var._eq(&to_loc.as_z3(ctx));
+        }
+        let attack_hex_var = &variables.attack_hex[&from_loc];
+        let passive_var = &variables.passive[&from_loc];
+        let mut constraints = vec![attack_hex_var._eq(&to_loc.as_z3(ctx)), passive_var.not()];
+        if let MoveCandidate::Blink { .. } = candidate {
+            if let Some(blink_var) = variables.blink.get(&from_loc) {
+                constraints.push(blink_var.clone());
+            } else {
+                return Bool::from_bool(ctx, false);
+            }
+        }
+        Bool::and(ctx, &constraints.iter().collect::<Vec<_>>())
+    }
+
     /// Stage 1: Combat reconciliation - ensuring friendly pieces in the way of attacking pieces can get out of the way
     /// returns whether the attack is at all possible
     /// if it is, it will return true and the solver will be in a state where the attack can be positioned
@@ -265,12 +320,12 @@ impl SatPositioningSystem {
 
         // Iterate through the filtered list
         for candidate in &combat_relevant_moves {
-            if allocated_pieces.contains(&candidate.from_loc) {
+            if allocated_pieces.contains(&candidate.from_loc()) {
                 continue;
             }
 
             // Check if the move is to a location occupied by a non-combat-relevant piece
-            let blocking_piece = candidate.to_loc;
+            let blocking_piece = candidate.to_loc();
             if self.has_blocking_piece(manager, blocking_piece, board, side) {
                 self.add_variables_and_constraints(manager, board, &[blocking_piece])?;
 
@@ -279,12 +334,8 @@ impl SatPositioningSystem {
             }
 
             // Attempt to assert the current move
-            let move_constraint = self.create_move_constraint(
-                &manager.variables,
-                candidate.from_loc,
-                candidate.to_loc,
-                manager.ctx,
-            );
+            let move_constraint =
+                self.create_move_constraint(&manager.variables, candidate, manager.ctx);
 
             manager.solver.push();
             manager.solver.assert(&move_constraint);
@@ -292,7 +343,7 @@ impl SatPositioningSystem {
             match manager.solver.check() {
                 z3::SatResult::Sat => {
                     // Move is valid, track that the piece has moved
-                    allocated_pieces.insert(candidate.from_loc);
+                    allocated_pieces.insert(candidate.from_loc());
                 }
                 z3::SatResult::Unsat => {
                     // Move is invalid, revert the assertion
@@ -330,11 +381,20 @@ impl SatPositioningSystem {
                     // Generate a random affinity value between 0 and 1
                     let affinity_value = rng.gen_range(0.0..1.0);
 
-                    candidates.push(MoveCandidate {
+                    candidates.push(MoveCandidate::Move {
                         from_loc: *loc,
                         to_loc,
                         score: affinity_value,
                     });
+
+                    if piece.unit.stats().blink {
+                        let affinity_value = rng.gen_range(0.0..1.0);
+                        candidates.push(MoveCandidate::Blink {
+                            from_loc: *loc,
+                            to_loc,
+                            score: affinity_value,
+                        });
+                    }
                 }
             }
         }
@@ -351,12 +411,17 @@ impl SatPositioningSystem {
         move_candidates
             .iter()
             .filter(|candidate| {
-                if manager.variables.move_hex.contains_key(&candidate.from_loc) {
+                if manager
+                    .variables
+                    .move_hex
+                    .contains_key(&candidate.from_loc())
+                {
                     // moves for friendly units in the way are always combat-relevant
                     true
-                } else if manager.graph.attackers.contains(&candidate.from_loc) {
+                } else if manager.graph.attackers.contains(&candidate.from_loc()) {
                     // moves for attackers are combat-relevant if they are to an attack hex
-                    manager.graph.attack_hex_map[&candidate.from_loc].contains(&candidate.to_loc)
+                    manager.graph.attack_hex_map[&candidate.from_loc()]
+                        .contains(&candidate.to_loc())
                 } else {
                     // Not combat-relevant
                     false
@@ -378,28 +443,6 @@ impl SatPositioningSystem {
             && !manager.graph.attackers.contains(&to_loc)
             && !manager.variables.move_hex.contains_key(&to_loc)
     }
-
-    /// Create a Z3 constraint for a specific move
-    fn create_move_constraint<'ctx>(
-        &self,
-        variables: &SatVariables<'ctx>,
-        from_loc: Loc,
-        to_loc: Loc,
-        ctx: &'ctx z3::Context,
-    ) -> Bool<'ctx> {
-        if let Some(move_hex_var) = variables.move_hex.get(&from_loc) {
-            // This is a friendly unit that needs to move out of the way
-            move_hex_var._eq(&to_loc.as_z3(ctx))
-        } else if let Some(attack_hex_var) = variables.attack_hex.get(&from_loc) {
-            // This is an attacker
-            attack_hex_var._eq(&to_loc.as_z3(ctx))
-        } else {
-            panic!("create_move_constraint called for a piece that is not a friendly unit or an attacker: {:?}", from_loc);
-        }
-    }
-
-    /// Stage 3: Non-attack movement - generates movement actions for non-combat-relevant pieces
-    /// This function doesn't interact with the SAT solver and can be called separately
     pub fn generate_non_attack_movements<'ctx>(
         &self,
         manager: &ConstraintManager<'ctx>,
@@ -431,13 +474,10 @@ impl SatPositioningSystem {
         let to_be_processed: Vec<MoveCandidate> = move_candidates
             .into_iter()
             .filter(|candidate| {
-                let MoveCandidate {
-                    from_loc, to_loc, ..
-                } = candidate;
-
                 // Must be a yet-to-move piece
-                yet_to_move.contains(from_loc)
-                    && (!board.pieces.contains_key(to_loc) || yet_to_move.contains(to_loc))
+                yet_to_move.contains(&candidate.from_loc())
+                    && (!board.pieces.contains_key(&candidate.to_loc())
+                        || yet_to_move.contains(&candidate.to_loc()))
             })
             .cloned()
             .collect();
@@ -445,7 +485,7 @@ impl SatPositioningSystem {
         // Get all possible destinations from move_hex_map
         let mut all_destinations = HashSet::new();
         for candidate in &to_be_processed {
-            let dest = candidate.to_loc;
+            let dest = candidate.to_loc();
             all_destinations.insert(dest);
         }
 
@@ -458,19 +498,29 @@ impl SatPositioningSystem {
             .map(|(idx, loc)| (*loc, idx))
             .collect::<HashMap<_, _>>();
 
-        let loc_to_idx = |loc: Loc| *loc_to_idx_map.get(&loc).unwrap();
+        let yet_to_move_locs: Vec<Loc> = yet_to_move.iter().cloned().collect();
+        let friend_loc_to_idx_map = yet_to_move_locs
+            .iter()
+            .enumerate()
+            .map(|(idx, loc)| (*loc, idx))
+            .collect::<HashMap<_, _>>();
 
         // Build cost matrix: friend_locs x destination_locs
-        let mut cost_matrix = vec![vec![f64::INFINITY; num_locs]; num_locs];
+        let mut cost_matrix = vec![vec![f64::INFINITY; num_locs]; yet_to_move.len()];
 
         for candidate in to_be_processed {
-            let MoveCandidate {
-                from_loc,
-                to_loc,
-                score,
-            } = candidate;
+            let from_loc = candidate.from_loc();
+            let to_loc = candidate.to_loc();
+            let score = candidate.score();
             let cost = score_to_cost(score);
-            cost_matrix[loc_to_idx(from_loc)][loc_to_idx(to_loc)] = cost;
+
+            // This can happen if a destination is not reachable by a particular unit
+            if let (Some(from_idx), Some(to_idx)) = (
+                loc_to_idx_map.get(&from_loc).copied(),
+                loc_to_idx_map.get(&to_loc).copied(),
+            ) {
+                cost_matrix[from_idx][to_idx] = cost;
+            }
         }
 
         // set non-friend -> dest costs to 0
@@ -624,9 +674,9 @@ mod tests {
 
         // All candidates should be for the friendly piece
         for candidate in &candidates {
-            assert_eq!(candidate.from_loc, crate::core::loc::Loc::new(1, 1));
-            assert!(candidate.score >= 0.0);
-            assert!(candidate.score < 1.0);
+            assert_eq!(candidate.from_loc(), crate::core::loc::Loc::new(1, 1));
+            assert!(candidate.score() >= 0.0);
+            assert!(candidate.score() < 1.0);
         }
     }
 
@@ -640,11 +690,11 @@ mod tests {
             positioning.generate_move_candidates(&mut make_rng(), &board, Side::Yellow);
 
         // Sort by affinity value
-        candidates.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap());
+        candidates.sort_by(|a, b| b.score().partial_cmp(&a.score()).unwrap());
 
         // Check that they are in descending order
         for i in 1..candidates.len() {
-            assert!(candidates[i - 1].score >= candidates[i].score);
+            assert!(candidates[i - 1].score() >= candidates[i].score());
         }
     }
 
@@ -715,12 +765,12 @@ mod tests {
 
         let positioning = SatPositioningSystem {};
         let move_candidates = vec![
-            MoveCandidate {
+            MoveCandidate::Move {
                 from_loc: loc1,
                 to_loc: loc2,
                 score: 0.8,
             },
-            MoveCandidate {
+            MoveCandidate::Move {
                 from_loc: loc2,
                 to_loc: loc1,
                 score: 0.9,
@@ -769,12 +819,12 @@ mod tests {
 
         let positioning = SatPositioningSystem {};
         let move_candidates = vec![
-            MoveCandidate {
+            MoveCandidate::Move {
                 from_loc: loc1,
                 to_loc: loc2,
                 score: 0.8,
             },
-            MoveCandidate {
+            MoveCandidate::Move {
                 from_loc: loc2,
                 to_loc: loc3,
                 score: 0.9,
@@ -817,13 +867,13 @@ mod tests {
         let manager = ConstraintManager::new(&ctx, graph, &board);
 
         let positioning = SatPositioningSystem {};
-        let move_candidates = vec![
-            MoveCandidate {
+        let mut move_candidates = vec![
+            MoveCandidate::Move {
                 from_loc: loc1,
                 to_loc: target_loc,
                 score: 0.7,
             },
-            MoveCandidate {
+            MoveCandidate::Move {
                 from_loc: loc2,
                 to_loc: target_loc,
                 score: 0.9,
@@ -872,7 +922,7 @@ mod tests {
         let manager = ConstraintManager::new(&ctx, graph, &board);
 
         let positioning = SatPositioningSystem {};
-        let move_candidates = vec![MoveCandidate {
+        let move_candidates = vec![MoveCandidate::Move {
             from_loc: loc,
             to_loc: crate::core::loc::Loc::new(1, 2),
             score: 0.5,
@@ -932,9 +982,32 @@ mod tests {
 
         let positioning = SatPositioningSystem {};
         let to_loc = crate::core::loc::Loc::new(1, 2);
+        let move_candidate = MoveCandidate::Move {
+            from_loc: loc,
+            to_loc,
+            score: 0.5,
+        };
 
         // Test with a piece that's not in combat (should return false)
-        let constraint = positioning.create_move_constraint(&manager.variables, loc, to_loc, &ctx);
+        let constraint =
+            positioning.create_move_constraint(&manager.variables, &move_candidate, &ctx);
+
+        // The constraint should be a valid Z3 expression
+        assert!(constraint.is_const());
+
+        // Test with a blink move
+        let blink_candidate = MoveCandidate::Blink {
+            from_loc: loc,
+            to_loc,
+            score: 0.5,
+        };
+        let blink_constraint =
+            positioning.create_move_constraint(&manager.variables, &blink_candidate, &ctx);
+        assert!(blink_constraint.is_const());
+
+        // Test with a piece that's not in combat (should return false)
+        let constraint =
+            positioning.create_move_constraint(&manager.variables, &move_candidate, &ctx);
 
         // The constraint should be a valid Z3 expression
         assert!(constraint.is_const());
@@ -989,28 +1062,28 @@ mod tests {
 
     #[test]
     fn test_move_candidate_clone() {
-        let candidate = MoveCandidate {
+        let candidate = MoveCandidate::Move {
             from_loc: crate::core::loc::Loc::new(1, 1),
             to_loc: crate::core::loc::Loc::new(1, 2),
             score: 0.5,
         };
 
         let cloned = candidate.clone();
-        assert_eq!(candidate.from_loc, cloned.from_loc);
-        assert_eq!(candidate.to_loc, cloned.to_loc);
-        assert_eq!(candidate.score, cloned.score);
+        assert_eq!(candidate.from_loc(), cloned.from_loc());
+        assert_eq!(candidate.to_loc(), cloned.to_loc());
+        assert_eq!(candidate.score(), cloned.score());
     }
 
     #[test]
     fn test_move_candidate_debug() {
-        let candidate = MoveCandidate {
+        let candidate = MoveCandidate::Move {
             from_loc: crate::core::loc::Loc::new(1, 1),
             to_loc: crate::core::loc::Loc::new(1, 2),
             score: 0.5,
         };
-
-        let debug_str = format!("{:?}", candidate);
-        assert!(debug_str.contains("MoveCandidate"));
-        assert!(debug_str.contains("0.5"));
+        let debug_output = format!("{:?}", candidate);
+        assert!(debug_output.contains("from_loc: Loc(1, 1)"));
+        assert!(debug_output.contains("to_loc: Loc(1, 2)"));
+        assert!(debug_output.contains("score: 0.5"));
     }
 }
