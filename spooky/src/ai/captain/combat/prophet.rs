@@ -6,15 +6,17 @@ use std::collections::HashMap;
 /// Represents an assumption about whether a unit should be removed
 #[derive(Debug, Clone)]
 pub enum RemovalAssumption {
-    Removed(Loc),
-    NotRemoved(Loc),
+    Kill(Loc),
+    Unsummon(Loc),
+    Keep(Loc),
 }
 
 impl RemovalAssumption {
     pub fn loc(&self) -> Loc {
         match self {
-            RemovalAssumption::Removed(loc) => *loc,
-            RemovalAssumption::NotRemoved(loc) => *loc,
+            RemovalAssumption::Kill(loc) => *loc,
+            RemovalAssumption::Unsummon(loc) => *loc,
+            RemovalAssumption::Keep(loc) => *loc,
         }
     }
 }
@@ -34,14 +36,13 @@ impl DeathProphet {
     }
 
     /// Generate a list of removal assumptions ordered by priority
-    /// For now, this generates random assumptions as specified in the architecture
     pub fn generate_assumptions(
         &mut self,
         board: &crate::core::Board,
         side: Side,
     ) -> Vec<RemovalAssumption> {
         let mut assumptions = Vec::new();
-        let mut priority_scores = HashMap::new();
+        let mut scores = HashMap::new();
 
         // Get the combat graph to see which defenders are actually attackable
         let graph = board.combat_graph(side);
@@ -56,23 +57,22 @@ impl DeathProphet {
             } else {
                 (piece_stats.cost - piece_stats.rebate) as f64 / 10.0
             };
-            priority_scores.insert(*loc, score);
+            scores.insert(*loc, score);
         }
 
-        // Convert scores to assumptions and sort by absolute value
-        let mut scored_assumptions: Vec<_> = priority_scores
+        // Convert scores to assumptions and sort
+        let mut scored_assumptions: Vec<_> = scores
             .into_iter()
-            .map(|(loc, score): (Loc, f64)| {
-                let assumption = if score > 0.0 {
-                    RemovalAssumption::Removed(loc)
-                } else {
-                    RemovalAssumption::NotRemoved(loc)
-                };
-                (assumption, score.abs())
+            .flat_map(|(loc, score): (Loc, f64)| {
+                vec![
+                    (RemovalAssumption::Kill(loc), score),
+                    (RemovalAssumption::Unsummon(loc), 0.01),
+                    (RemovalAssumption::Keep(loc), -1.0),
+                ]
             })
             .collect();
 
-        // Sort by absolute value of score (highest priority first)
+        // Sort by scores
         scored_assumptions.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
 
         // Extract just the assumptions in priority order
@@ -85,18 +85,18 @@ impl DeathProphet {
         assumptions
     }
 
-    /// Get feedback on the maximum prefix of assumptions that can be satisfied
+    /// Get feedback on the lexicographically largest subsequence of assumptions that can be satisfied
     /// This is called by the combat generation system
     pub fn receive_feedback(&mut self, active_constraints: Vec<bool>) {
-        // let satisfied_assumptions = self
-        //     .last_assumptions
-        //     .iter()
-        //     .zip(active_constraints)
-        //     .filter(|(_, active)| *active)
-        //     .map(|(assumption, _)| assumption)
-        //     .collect::<Vec<_>>();
+        let satisfied_assumptions = self
+            .last_assumptions
+            .iter()
+            .zip(active_constraints)
+            .filter(|(_, active)| *active)
+            .map(|(assumption, _)| assumption)
+            .collect::<Vec<_>>();
 
-        // println!("Satisfiable assumptions: {:?}", satisfied_assumptions)
+        println!("Satisfiable assumptions: {:?}", satisfied_assumptions)
     }
 }
 

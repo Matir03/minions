@@ -92,21 +92,39 @@ impl CombatGenerationSystem {
         ctx: &'ctx z3::Context,
     ) -> Bool<'ctx> {
         match assumption {
-            RemovalAssumption::Removed(loc) => {
-                // Constraint: removed[loc] == true
+            RemovalAssumption::Kill(loc) => {
+                // Constraint: killed[loc] == true
                 variables
-                    .removed
+                    .killed
                     .get(loc)
-                    .expect(&format!("No removed variable for location {}", loc))
+                    .expect(&format!("No killed variable for location {}", loc))
                     .clone()
             }
-            RemovalAssumption::NotRemoved(loc) => {
-                // Constraint: removed[loc] == false
+            RemovalAssumption::Unsummon(loc) => {
+                // Constraint: unsummoned[loc] == true
                 variables
-                    .removed
+                    .unsummoned
                     .get(loc)
-                    .expect(&format!("No removed variable for location {}", loc))
-                    .not()
+                    .expect(&format!("No unsummoned variable for location {}", loc))
+                    .clone()
+            }
+            RemovalAssumption::Keep(loc) => {
+                // Constraint: killed[loc] == false and unsummoned[loc] == false
+                Bool::and(
+                    ctx,
+                    &[
+                        &variables
+                            .killed
+                            .get(loc)
+                            .expect(&format!("No killed variable for location {}", loc))
+                            .not(),
+                        &variables
+                            .unsummoned
+                            .get(loc)
+                            .expect(&format!("No unsummoned variable for location {}", loc))
+                            .not(),
+                    ],
+                )
             }
         }
     }

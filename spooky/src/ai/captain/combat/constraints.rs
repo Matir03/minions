@@ -47,8 +47,10 @@ pub struct SatVariables<'ctx> {
     pub num_attacks: HashMap<(Loc, Loc), Z3HP<'ctx>>, // number of times attacker attacked defender
 
     // Removal variables
-    pub removed: HashMap<Loc, Bool<'ctx>>, // whether defender got removed
-    pub removal_time: HashMap<Loc, Z3Time<'ctx>>, // when defender got removed
+    // pub removed: HashMap<Loc, Bool<'ctx>>, // whether defender got removed
+    pub killed: HashMap<Loc, Bool<'ctx>>, // whether defender got killed
+    pub unsummoned: HashMap<Loc, Bool<'ctx>>, // whether defender got unsummoned
+    pub removal_time: HashMap<Loc, Z3Time<'ctx>>, // when defender got removed (killed or unsummoned)
 
     // Movement variables for friendly units that need to move out of the way
     // Only included post hoc for friendly units whose movements end up being relevant to combat
@@ -67,7 +69,8 @@ impl<'ctx> SatVariables<'ctx> {
             attack_time: HashMap::new(),
             attacked: HashMap::new(),
             num_attacks: HashMap::new(),
-            removed: HashMap::new(),
+            killed: HashMap::new(),
+            unsummoned: HashMap::new(),
             removal_time: HashMap::new(),
             move_hex: HashMap::new(),
             move_time: HashMap::new(),
@@ -117,9 +120,13 @@ impl<'ctx> SatVariables<'ctx> {
 
         // Create variables for all defenders
         for defender in &graph.defenders {
-            vars.removed.insert(
+            vars.killed.insert(
                 *defender,
-                Bool::new_const(ctx, format!("removed_{}", defender)),
+                Bool::new_const(ctx, format!("killed_{}", defender)),
+            );
+            vars.unsummoned.insert(
+                *defender,
+                Bool::new_const(ctx, format!("unsummoned_{}", defender)),
             );
             vars.removal_time.insert(
                 *defender,
@@ -373,6 +380,8 @@ impl<'ctx> ConstraintManager<'ctx> {
                 .get(defender)
                 .unwrap_or(&empty_vec);
 
+            let mut unsummons = Vec::new();
+
             let damages: Vec<_> = attackers
                 .iter()
                 .filter_map(|attacker| {
@@ -388,7 +397,11 @@ impl<'ctx> ConstraintManager<'ctx> {
                                 .assert(&self.variables.attacked[&(*attacker, *defender)].not());
                             return None;
                         }
-                        _ => defense,
+                        Attack::Unsummon => {
+                            unsummons.push(&self.variables.attacked[&(*attacker, *defender)]);
+                            return None;
+                        }
+                        Attack::Deathtouch => defender_stats.defense,
                     };
 
                     let num_attacks = &self.variables.num_attacks[&(*attacker, *defender)];
@@ -410,10 +423,16 @@ impl<'ctx> ConstraintManager<'ctx> {
 
             let total_damage = bvsum(self.ctx, &damages);
 
-            let removed = total_damage.bvuge(&BV::from_u64(self.ctx, defense as u64, BV_HP_SIZE));
+            let killed = total_damage.bvuge(&BV::from_u64(self.ctx, defense as u64, BV_HP_SIZE));
+            self.solver
+                .assert(&self.variables.killed[defender]._eq(&killed));
+
+            let unsummoned = Bool::or(self.ctx, &unsummons);
+            self.solver
+                .assert(&self.variables.unsummoned[defender]._eq(&unsummoned));
 
             self.solver
-                .assert(&self.variables.removed[defender]._eq(&removed));
+                .assert(&Bool::or(self.ctx, &[&killed.not(), &unsummoned.not()]));
         }
     }
 
@@ -460,7 +479,13 @@ impl<'ctx> ConstraintManager<'ctx> {
                             Bool::and(
                                 self.ctx,
                                 &[
-                                    &self.variables.removed[loc],
+                                    &Bool::or(
+                                        self.ctx,
+                                        &[
+                                            &self.variables.killed[loc],
+                                            &self.variables.unsummoned[loc],
+                                        ],
+                                    ),
                                     &timing_var.bvugt(&self.variables.removal_time[loc]),
                                 ],
                             )
