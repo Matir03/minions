@@ -1,6 +1,6 @@
-use std::fmt::{self, Display, Formatter, Result};
 use colored::{Color, ColoredString, Colorize};
 use hashbag::HashBag;
+use std::fmt::{self, Display, Formatter, Result};
 
 use crate::core::{tech::NUM_TECHS, SideArray};
 
@@ -10,7 +10,7 @@ use super::{
     loc::Loc,
     map::{Terrain, TileType},
     side::Side,
-    tech::{Tech, TechState, Techline, TechStatus},
+    tech::{Tech, TechState, TechStatus, Techline},
     units::Unit,
 };
 
@@ -93,9 +93,9 @@ impl<'a> Display for GameState<'a> {
     }
 }
 
-fn fmt_reinforcements(reinforcements: &HashBag<Unit>, f: &mut Formatter<'_>) -> Result {
+fn fmt_reinforcements(reinforcements: &HashBag<Unit>, side: Side, f: &mut Formatter<'_>) -> Result {
     for unit in reinforcements.iter() {
-        write!(f, "{} ", unit.to_fen_char())?;
+        write!(f, "{} ", unit.to_fen_char().to_string().color(side.color()))?;
     }
     Ok(())
 }
@@ -105,29 +105,21 @@ impl<'a> Display for Board<'a> {
         // board stage
         writeln!(f, "Board state: {:?}", self.state)?;
 
-        // yellow reinforcements
-        write!(f, "{}", "Yellow reinforcements: ".yellow())?;
-        fmt_reinforcements(&self.reinforcements[Side::Yellow], f)?;
-        writeln!(f)?;
-
-        // Print column numbers with proper spacing for hex grid
-        // a to j
-        write!(f, "    ")?;
-        for x in 0..10u8 {
-            write!(f, " {} ", (x + b'a') as char)?;
-        }
+        // blue reinforcements
+        write!(f, "{}", "Blue reinforcements: ".blue())?;
+        fmt_reinforcements(&self.reinforcements[Side::Blue], Side::Blue, f)?;
         writeln!(f)?;
 
         // Top border with proper hex spacing
-        write!(f, "   ")?;
+        write!(f, "    {}", " ".repeat(9))?;
         writeln!(f, "{}", "─".repeat(32))?;
 
-        for y in 0..10 {
+        for y in (0..10).rev() {
             // Reversed to match game coordinates
             // Add proper indentation for hex grid
             let indent = y as usize;
             write!(f, "{:2} {}", y, " ".repeat(indent))?;
-            write!(f, "\\")?;
+            write!(f, "/")?;
 
             for x in 0..10 {
                 let loc = Loc::new(x, y);
@@ -141,16 +133,24 @@ impl<'a> Display for Board<'a> {
 
                 write!(f, "{}", symbol)?;
             }
-            writeln!(f, " \\")?;
+            writeln!(f, " /")?;
         }
 
         // Bottom border with proper hex spacing
-        write!(f, "    {}", " ".repeat(9))?;
+        write!(f, "   ")?;
         writeln!(f, "{}", "─".repeat(32))?;
 
-        // blue reinforcements
-        write!(f, "{}", "Blue reinforcements: ".blue())?;
-        fmt_reinforcements(&self.reinforcements[Side::Blue], f)?;
+        // Print column numbers with proper spacing for hex grid
+        // a to j
+        write!(f, "   ")?;
+        for x in 0..10u8 {
+            write!(f, " {} ", (x + b'a') as char)?;
+        }
+        writeln!(f)?;
+
+        // yellow reinforcements
+        write!(f, "{}", "Yellow reinforcements: ".yellow())?;
+        fmt_reinforcements(&self.reinforcements[Side::Yellow], Side::Yellow, f)?;
         writeln!(f)?;
 
         Ok(())
@@ -229,7 +229,7 @@ fn fmt_techline(techline: &Techline, state: &TechState, f: &mut Formatter<'_>) -
 impl Display for TechStatus {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         let s = match self {
-            TechStatus::Locked   => "   ",
+            TechStatus::Locked => "   ",
             TechStatus::Unlocked => " ■ ",
             TechStatus::Acquired => " ■■",
         };
