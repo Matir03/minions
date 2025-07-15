@@ -1,15 +1,11 @@
 //! UMI protocol implementation
 
-use std::io::{self, Write};
 use anyhow::{bail, ensure, Context, Result};
 use spooky::{
-    core::{
-        GameConfig,
-        GameAction,
-        Spell,
-    },
-    engine::{Engine, SearchOptions}
+    core::{GameAction, GameConfig, Spell},
+    engine::{Engine, SearchOptions},
 };
+use std::io::{self, Write};
 
 /// Handle a UMI command
 pub fn handle_command<'a>(cmd: &str, engine: &mut Engine<'a>) -> Result<Option<GameConfig>> {
@@ -33,8 +29,10 @@ pub fn handle_command<'a>(cmd: &str, engine: &mut Engine<'a>) -> Result<Option<G
             Ok(None)
         }
         "setoption" => {
-            ensure!(parts.len() == 4 && parts[1] == "name" && parts[3] == "value",
-                "invalid setoption command");
+            ensure!(
+                parts.len() == 4 && parts[1] == "name" && parts[3] == "value",
+                "invalid setoption command"
+            );
 
             let option_name = parts[2];
             let option_value = parts[4];
@@ -43,7 +41,10 @@ pub fn handle_command<'a>(cmd: &str, engine: &mut Engine<'a>) -> Result<Option<G
             Ok(None)
         }
         "position" => {
-            ensure!(parts.len() >= 2, "position command requires at least 2 arguments");
+            ensure!(
+                parts.len() >= 2,
+                "position command requires at least 2 arguments"
+            );
 
             match parts[1] {
                 "startpos" => {
@@ -61,10 +62,10 @@ pub fn handle_command<'a>(cmd: &str, engine: &mut Engine<'a>) -> Result<Option<G
                 //     engine.config = config;
                 //     engine.state = state;
                 // }
-                _ => bail!("invalid position command")
+                _ => bail!("invalid position command"),
             }
         }
-        cmd@("go" | "play") => {
+        cmd @ ("go" | "play") => {
             let args = parts[1..].join(" ");
             let search_options = args.parse::<SearchOptions>()?;
 
@@ -75,27 +76,38 @@ pub fn handle_command<'a>(cmd: &str, engine: &mut Engine<'a>) -> Result<Option<G
             println!("info eval winprob {}", winprob);
             println!("info nps {} nodes {} time {}", nps, nodes_explored, time);
 
-            println!("{}", turn);
+            // Manually print the turn to customize the endturn line.
+            let turn_string = turn.to_string();
+            // Using trim_end to handle potential trailing newline before splitting.
+            if let Some((body, _)) = turn_string.rsplit_once("endturn") {
+                print!("{}", body);
+            }
 
             if cmd == "play" {
                 engine.take_turn(turn).unwrap();
             }
 
             if let Some(winner) = engine.state.winner() {
-                println!("info result winner {}", winner);
+                println!("endturn winner {}", winner);
+            } else {
+                println!("endturn");
             }
+
             Ok(None)
         }
         "turn" => {
             let spells = if parts.len() >= 2 {
                 ensure!(parts[1] == "spells", "invalid turn arguments");
 
-                let spells = parts[2..].iter()
+                let spells = parts[2..]
+                    .iter()
                     .map(|s| s.parse::<Spell>())
                     .collect::<Result<Vec<_>>>()?;
 
-                ensure!(spells.len() == engine.config.num_boards + 1,
-                    "invalid number of spells");
+                ensure!(
+                    spells.len() == engine.config.num_boards + 1,
+                    "invalid number of spells"
+                );
 
                 Some(spells)
             } else {
@@ -133,7 +145,10 @@ pub fn handle_command<'a>(cmd: &str, engine: &mut Engine<'a>) -> Result<Option<G
             engine.display();
 
             while engine.state.winner().is_none() {
-                println!("\nRunning search for player {:?}...", engine.state.side_to_move);
+                println!(
+                    "\nRunning search for player {:?}...",
+                    engine.state.side_to_move
+                );
                 let (_, turn, _, time) = engine.go(&search_options);
                 println!("Best turn found in {:.2}s:\n{}", time, turn);
                 engine.take_turn(turn).unwrap();
@@ -163,7 +178,7 @@ pub fn handle_command<'a>(cmd: &str, engine: &mut Engine<'a>) -> Result<Option<G
         }
         "quit" => {
             std::process::exit(0);
-        },
+        }
         cmd => {
             bail!("Unknown command: {}", cmd);
         }

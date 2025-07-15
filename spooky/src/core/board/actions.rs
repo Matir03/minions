@@ -114,9 +114,8 @@ impl AttackAction {
     pub fn from_args(action_name: &str, args: &[&str]) -> Result<Self> {
         match action_name {
             "move" => {
-                ensure!(args.len() == 2, "move requires 2 arguments");
-                let from_loc = args[0].parse()?;
-                let to_loc = args[1].parse()?;
+                ensure!(args.len() == 1, "move requires 1 argument");
+                let (from_loc, to_loc) = Loc::parse_loc_pair(args[0])?;
                 Ok(AttackAction::Move { from_loc, to_loc })
             }
             "move_cyclic" => {
@@ -124,9 +123,8 @@ impl AttackAction {
                 Ok(AttackAction::MoveCyclic { locs })
             }
             "attack" => {
-                ensure!(args.len() == 2, "attack requires 2 arguments");
-                let attacker_loc = args[0].parse()?;
-                let target_loc = args[1].parse()?;
+                ensure!(args.len() == 1, "attack requires 1 argument");
+                let (attacker_loc, target_loc) = Loc::parse_loc_pair(args[0])?;
                 Ok(AttackAction::Attack {
                     attacker_loc,
                     target_loc,
@@ -169,7 +167,7 @@ impl SpawnAction {
                 ensure!(args.len() == 2, "spawn requires 2 arguments");
                 let unit = args[0].parse()?;
                 let spawn_loc = args[1].parse()?;
-                Ok(SpawnAction::Spawn { unit, spawn_loc })
+                Ok(SpawnAction::Spawn { spawn_loc, unit })
             }
             "discard" => {
                 ensure!(args.len() == 1, "discard requires 1 argument");

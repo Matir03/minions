@@ -1,6 +1,6 @@
-use crate::core::{GameConfig, GameState, GameAction, Spell, Side, GameTurn};
-use std::sync::Arc;
 use crate::ai::Eval;
+use crate::core::{GameAction, GameConfig, GameState, GameTurn, Side, Spell};
+use std::sync::Arc;
 
 use super::options::EngineOptions;
 use super::search::{search_no_spells, SearchOptions};
@@ -28,7 +28,6 @@ impl<'a> Engine<'a> {
 
     /// Update the current game state
 
-
     pub fn reset_game(&mut self) {
         self.state = GameState::new_default(self.config);
     }
@@ -39,10 +38,16 @@ impl<'a> Engine<'a> {
     }
 
     pub fn start_turn(&mut self, spells: Option<Vec<Spell>>) {
-        let spells = spells.unwrap_or_else(|| vec![
-            if self.options.spells_enabled { Spell::Unknown } else { Spell::Blank };
-            self.config.num_boards + 1
-        ]);
+        let spells = spells.unwrap_or_else(|| {
+            vec![
+                if self.options.spells_enabled {
+                    Spell::Unknown
+                } else {
+                    Spell::Blank
+                };
+                self.config.num_boards + 1
+            ]
+        });
 
         self.turn = Some(GameTurn::new(spells, self.config.num_boards));
     }

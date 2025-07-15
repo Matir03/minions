@@ -3,6 +3,7 @@ import os
 import sys
 import toml
 import time
+import select
 from datetime import datetime
 
 # Add the spooky directory to the python path to allow importing ratings
@@ -10,6 +11,10 @@ SPOOKY_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.append(SPOOKY_DIR)
 
 from scrims.ratings import get_rating, update_ratings
+
+class EnginePanicError(Exception):
+    """Custom exception for when the engine process panics."""
+    pass
 
 class UmiProcess:
     """A wrapper for a subprocess running a UMI-compatible chess engine."""
@@ -48,10 +53,50 @@ class UmiProcess:
         else:
             self._send_command(f"position fen {fen}")
 
-    def go(self, time_control):
-        self._send_command(f"go {time_control}")
-        response = self._wait_for_response("bestmove")
-        return response.split(" ")[1]
+    def play(self, time_control):
+        self._send_command(f"play {time_control}")
+        
+        info_lines = []
+        turn_lines = []
+        in_turn = False
+
+        while True:
+            # Check if the process terminated unexpectedly
+            if self.proc.poll() is not None:
+                stderr_output = self.proc.stderr.read()
+                print(f"!! Engine {self.name} terminated unexpectedly with exit code {self.proc.returncode}.")
+                if stderr_output:
+                    print(f"!! Stderr from {self.name}:\n{stderr_output}")
+                raise EnginePanicError(f"Engine {self.name} panicked.")
+
+            line = self.proc.stdout.readline().strip()
+            if not line:
+                time.sleep(0.01)
+                continue
+
+            print(f"< {self.name}: {line}")
+
+            if line.startswith("info"):
+                info_lines.append(line)
+            elif line.startswith("turn"):
+                in_turn = True
+                turn_lines.append(line)
+            elif in_turn:
+                turn_lines.append(line)
+                if line.startswith("endturn"):
+                    break
+
+        winner_side = None
+        if 'winner' in turn_lines[-1]:
+            winner_side = turn_lines[-1].split(' ')[-1]
+
+        return turn_lines, info_lines, winner_side
+
+    def display(self):
+        self._send_command("display")
+        # We don't need to wait for a specific response for display,
+        # as the output is just for the user to see.
+        # The main loop will print the output.
 
     def quit(self):
         self._send_command("quit")
@@ -62,36 +107,58 @@ def run_game(yellow_ai, blue_ai, time_control, start_fen, match_log_path):
     yellow_ai.set_position(start_fen)
     blue_ai.set_position(start_fen)
 
-    game_log = []
     current_player = yellow_ai
     other_player = blue_ai
-    turn = 1
+    turn_num = 1
+
+    winner = 'draw' # Default to draw if game exits unexpectedly
 
     while True:
-        move = current_player.go(time_control)
-        game_log.append(move)
-
-        # Check for game over (very basic, needs improvement)
-        # A proper implementation would parse game state from the engine
-        if move == "(none)": # Assuming (none) means no legal moves
+        try:
+            turn_lines, info_lines, declared_winner = current_player.play(time_control)
+        except EnginePanicError:
             winner = other_player.name
             break
 
-        # Make the move on the other AI's board
-        other_player._send_command(move)
+        full_turn_command = '\n'.join(turn_lines)
+
+        # Check for game over
+        if declared_winner:
+            if declared_winner.lower() == 'yellow':
+                winner = yellow_ai.name
+            else:
+                winner = blue_ai.name
+            break
+        if len(turn_lines) <= 2: # An empty turn block means no legal moves
+            winner = other_player.name
+            break
+
+        # Send the entire turn block to the other AI and display the board
+        other_player._send_command(full_turn_command)
+        print(f"\n--- Board state after {current_player.name}'s turn ---")
+        current_player.display()
+        other_player.display()
+
+        # Log the turn with metadata
+        with open(match_log_path, 'a') as f:
+            info_metadata = " ".join([f"[{info}]" for info in info_lines])
+            log_entry = turn_lines[0]
+            if info_metadata:
+                log_entry += ' ' + info_metadata
+            log_entry += '\n' + '\n'.join(turn_lines[1:])
+            f.write(log_entry + '\n\n')
 
         # Swap players
         current_player, other_player = other_player, current_player
-        turn += 1
+        turn_num += 1
 
         # Simple draw condition
-        if turn > 200:
+        if turn_num > 200:
             winner = "draw"
             break
 
     with open(match_log_path, 'a') as f:
         f.write(f"Winner: {winner}\n")
-        f.write(' '.join(game_log) + '\n\n')
 
     return winner
 

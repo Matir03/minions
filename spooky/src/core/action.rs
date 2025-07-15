@@ -81,15 +81,21 @@ impl Display for GameTurn {
         let mut out = String::new();
 
         // Spells
-        out.push_str("turn spells");
-        for spell in self.spells.iter() {
-            out.push_str(&format!(" {}", spell));
+        out.push_str("turn");
+        if !self.spells.is_empty() {
+            out.push_str(" spells");
+            for spell in self.spells.iter() {
+                out.push_str(&format!(" {}", spell));
+            }
         }
         out.push('\n');
 
         // Tech
         if self.tech_assignment.advance_by > 0 {
-            out.push_str(&format!("action adv_tech {}\n", self.tech_assignment.advance_by));
+            out.push_str(&format!(
+                "action adv_tech {}\n",
+                self.tech_assignment.advance_by
+            ));
         }
         for &tech_idx in &self.tech_assignment.acquire {
             out.push_str(&format!("action acq_tech {}\n", tech_idx));
@@ -145,19 +151,28 @@ impl GameAction {
                 Ok(GameAction::GiveSpell(board_index, spell))
             }
             "b_setup" => {
-                ensure!(args.len() >= 2, "board setup action requires at least 2 arguments");
+                ensure!(
+                    args.len() >= 2,
+                    "board setup action requires at least 2 arguments"
+                );
                 let board_index = args[0].parse()?;
                 let action = SetupAction::from_args(args[1], &args[2..])?;
                 Ok(GameAction::BoardSetupAction(board_index, action))
             }
             "b_attack" => {
-                ensure!(args.len() >= 2, "board attack action requires at least 2 arguments");
+                ensure!(
+                    args.len() >= 2,
+                    "board attack action requires at least 2 arguments"
+                );
                 let board_index = args[0].parse()?;
                 let action = AttackAction::from_args(args[1], &args[2..])?;
                 Ok(GameAction::BoardAttackAction(board_index, action))
             }
             "b_spawn" => {
-                ensure!(args.len() >= 2, "board spawn action requires at least 2 arguments");
+                ensure!(
+                    args.len() >= 2,
+                    "board spawn action requires at least 2 arguments"
+                );
                 let board_index = args[0].parse()?;
                 let action = SpawnAction::from_args(args[1], &args[2..])?;
                 Ok(GameAction::BoardSpawnAction(board_index, action))
@@ -166,4 +181,3 @@ impl GameAction {
         }
     }
 }
-

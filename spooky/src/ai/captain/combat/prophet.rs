@@ -88,15 +88,15 @@ impl DeathProphet {
     /// Get feedback on the lexicographically largest subsequence of assumptions that can be satisfied
     /// This is called by the combat generation system
     pub fn receive_feedback(&mut self, active_constraints: Vec<bool>) {
-        let satisfied_assumptions = self
-            .last_assumptions
-            .iter()
-            .zip(active_constraints)
-            .filter(|(_, active)| *active)
-            .map(|(assumption, _)| assumption)
-            .collect::<Vec<_>>();
+        // let satisfied_assumptions = self
+        //     .last_assumptions
+        //     .iter()
+        //     .zip(active_constraints)
+        //     .filter(|(_, active)| *active)
+        //     .map(|(assumption, _)| assumption)
+        //     .collect::<Vec<_>>();
 
-        println!("Satisfiable assumptions: {:?}", satisfied_assumptions)
+        // println!("Satisfiable assumptions: {:?}", satisfied_assumptions)
     }
 }
 

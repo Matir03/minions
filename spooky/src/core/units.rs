@@ -137,7 +137,7 @@ impl Unit {
             'K' => Some(Unit::Shrieker),
             'X' => Some(Unit::Spectre),
             'A' => Some(Unit::Rat),
-            'F' => Some(Unit::Sorcerer),
+            'U' => Some(Unit::Sorcerer),
             'J' => Some(Unit::Witch),
             'V' => Some(Unit::Vampire),
             'M' => Some(Unit::Mummy),
@@ -145,8 +145,8 @@ impl Unit {
             'O' => Some(Unit::Void),
             'C' => Some(Unit::Cerberus),
             'R' => Some(Unit::Wraith),
-            'B' => Some(Unit::Banshee),
             'Q' => Some(Unit::Horror),
+            'B' => Some(Unit::Banshee),
             'E' => Some(Unit::Elemental),
             'Y' => Some(Unit::Harpy),
             'D' => Some(Unit::Shadowlord),
@@ -170,9 +170,9 @@ impl FromStr for Unit {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        ensure!(s.len() == 1, "Invalid unit label");
+        ensure!(s.len() == 1, format!("Invalid unit label: {}", s));
 
-        Unit::from_fen_char(s.chars().next().unwrap()).context("Invalid unit label")
+        Unit::from_fen_char(s.chars().next().unwrap()).context(format!("Invalid unit label: {}", s))
     }
 }
 
@@ -184,7 +184,7 @@ impl FromIndex for Unit {
 
 impl ToIndex for Unit {
     fn to_index(&self) -> Result<usize> {
-        ToPrimitive::to_usize(self).ok_or_else(|| anyhow!("Invalid unit label"))
+        ToPrimitive::to_usize(self).ok_or_else(|| anyhow!("to_index failed for unit: {}", self))
     }
 }
 

@@ -81,6 +81,15 @@ impl Loc {
             Self { x, y }
         }
     }
+
+    pub fn parse_loc_pair(s: &str) -> anyhow::Result<(Loc, Loc)> {
+        anyhow::ensure!(s.len() == 4, "Invalid location pair string");
+        let from_str = &s[0..2];
+        let to_str = &s[2..4];
+        let from_loc = from_str.parse()?;
+        let to_loc = to_str.parse()?;
+        Ok((from_loc, to_loc))
+    }
 }
 
 impl From<(i32, i32)> for Loc {
@@ -93,12 +102,12 @@ impl FromStr for Loc {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let (x, y) = s.split_once(',').context("Invalid loc")?;
-
-        Ok(Loc {
-            x: x.parse()?,
-            y: y.parse()?,
-        })
+        anyhow::ensure!(s.len() == 2, "Invalid location string");
+        let x = s.chars().next().unwrap() as i32 - 'a' as i32;
+        let y = s[1..].parse()?;
+        let loc = Loc { x, y };
+        anyhow::ensure!(loc.in_bounds(), "Location out of bounds");
+        Ok(loc)
     }
 }
 
