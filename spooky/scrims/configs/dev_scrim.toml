@@ -1,0 +1,15 @@
+# Development scrimmage configuration: current build vs. an archived build.
+
+[match]
+name = "dev_scrim"
+num_games = 4            # Fewer games for a quick test
+time_control = "nodes 1"
+start_fen = "startpos"
+
+[ai_yellow]
+# The current development build
+path = "target/release/spooky"
+
+[ai_blue]
+# An example archived build to test against. 
+path = "bin/baseline"

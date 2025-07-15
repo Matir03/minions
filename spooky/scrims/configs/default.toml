@@ -1,0 +1,25 @@
+# Default configuration for AI vs AI scrimmages
+
+[match]
+# Name of the match configuration, used for naming output files.
+name = "default_match"
+
+# Number of games to play in the series.
+num_games = 10
+
+# Time control settings for each AI.
+# Format: "wtime <ms> btime <ms> winc <ms> binc <ms>"
+# Or "nodes <number>" or "movetime <ms>"
+time_control = "nodes 1"
+
+# Starting position in FEN format. "startpos" for the default setup.
+start_fen = "startpos"
+
+[ai_yellow]
+# Path to the AI binary for the yellow player.
+# Can be a path to a binary in bin/ or to the current target.
+path = "target/release/spooky"
+
+[ai_blue]
+# Path to the AI binary for the blue player.
+path = "bin/spooky_abcdef_2025-01-01" # Example of an archived build
