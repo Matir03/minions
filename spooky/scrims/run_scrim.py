@@ -92,15 +92,12 @@ class UmiProcess:
 
         return turn_lines, info_lines, winner_side
 
-    def display(self):
-        self._send_command("display")
-        # We don't need to wait for a specific response for display,
-        # as the output is just for the user to see.
-        # The main loop will print the output.
-
     def quit(self):
         self._send_command("quit")
         self.proc.wait()
+    
+    def display(self):
+        self._send_command("display")
 
 def run_game(yellow_ai, blue_ai, time_control, start_fen, match_log_path):
     """Run a single game between two AIs."""
@@ -115,6 +112,7 @@ def run_game(yellow_ai, blue_ai, time_control, start_fen, match_log_path):
 
     while True:
         try:
+            current_player.display()
             turn_lines, info_lines, declared_winner = current_player.play(time_control)
         except EnginePanicError:
             winner = other_player.name
@@ -133,11 +131,8 @@ def run_game(yellow_ai, blue_ai, time_control, start_fen, match_log_path):
             winner = other_player.name
             break
 
-        # Send the entire turn block to the other AI and display the board
+        # Send the entire turn block to the other AI
         other_player._send_command(full_turn_command)
-        print(f"\n--- Board state after {current_player.name}'s turn ---")
-        current_player.display()
-        other_player.display()
 
         # Log the turn with metadata
         with open(match_log_path, 'a') as f:
@@ -202,11 +197,11 @@ def main(config_path):
 
         # Update ratings if not a draw
         if winner != 'draw':
-            loser_name = blue_name if winner == yellow_name else yellow_name
+            loser = blue_name if winner == yellow_name else yellow_name
             # Don't update ratings for the dev build
             if 'target' not in yellow_ai.path and 'target' not in blue_ai.path:
-                 new_winner_rating, new_loser_rating = update_ratings(winner, loser_name, SPOOKY_DIR)
-                 print(f"New ratings: {winner}: {new_winner_rating}, {loser_name}: {new_loser_rating}")
+                 new_winner_rating, new_loser_rating = update_ratings(winner, loser, SPOOKY_DIR)
+                 print(f"New ratings: {winner}: {new_winner_rating}, {loser}: {new_loser_rating}")
 
     # Final results
     summary = f"Final Score:\n{yellow_name}: {scores[yellow_name]}\n{blue_name}: {scores[blue_name]}\nDraws: {scores['draw']}"

@@ -1,0 +1,4 @@
+Final Score:
+spooky: 1
+baseline: 3
+Draws: 0
