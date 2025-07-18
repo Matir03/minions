@@ -1,0 +1,1 @@
+echo "auto nodes 1" | cargo run --release

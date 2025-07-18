@@ -375,14 +375,16 @@ impl SatPositioningSystem {
         Ok(())
     }
 
-    /// Generate all possible moves with random affinity values
+    /// Generate all possible moves with affinity values based on proximity to enemy graveyards
     pub fn generate_move_candidates(
         &self,
-        rng: &mut impl Rng,
+        _rng: &mut impl Rng,
         board: &Board,
         side: Side,
     ) -> Vec<MoveCandidate> {
         let mut candidates = Vec::new();
+
+        let graveyards: Vec<Loc> = board.map.spec().graveyards.clone();
 
         // Get all friendly pieces
         for (loc, piece) in &board.pieces {
@@ -391,8 +393,15 @@ impl SatPositioningSystem {
                 let valid_moves = board.get_theoretical_move_hexes(*loc);
 
                 for to_loc in valid_moves {
-                    // Generate a random affinity value between 0 and 1
-                    let score = rng.gen_range(0.0..1.0);
+                    let min_dist_to_graveyard = graveyards
+                        .iter()
+                        .map(|gy_loc| to_loc.unsigned_dist(gy_loc))
+                        .min()
+                        .unwrap_or(u32::MAX);
+
+                    // Higher score for closer moves. We invert the distance.
+                    // Add 1 to avoid division by zero.
+                    let score = 1.0 / (min_dist_to_graveyard as f64 + 1.0);
 
                     candidates.push(MoveCandidate::Move {
                         from_loc: *loc,
@@ -400,14 +409,19 @@ impl SatPositioningSystem {
                         score,
                     });
                 }
-
                 if piece.unit.stats().blink {
-                    let score = rng.gen_range(0.0..1.0);
-                    candidates.push(MoveCandidate::Blink { loc: *loc, score });
+                    // Blinking doesn't change position, so its score is neutral
+                    // relative to graveyard control.
+                    candidates.push(MoveCandidate::Blink {
+                        loc: *loc,
+                        score: 0.0, // Neutral score
+                    });
                 }
             }
         }
 
+        // Sort candidates by score in descending order
+        candidates.sort_by(|a, b| b.score().partial_cmp(&a.score()).unwrap());
         candidates
     }
 

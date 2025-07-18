@@ -1,3 +1,5 @@
+use std::collections::{HashMap, HashSet};
+
 use crate::core::{
     board::{actions::SpawnAction, BitboardOps, Board},
     convert::FromIndex,
@@ -21,7 +23,7 @@ pub fn generate_heuristic_spawn_actions(
     let mut actions = Vec::new();
 
     // Part 1: Decide what to buy and create `Buy` actions
-    let units_to_buy = purchase_heuristic(side, tech_state, money, rng);
+    let units_to_buy = purchase_heuristic(side, tech_state, money, board);
     for &unit in &units_to_buy {
         money -= unit.stats().cost;
         actions.push(SpawnAction::Buy { unit });
@@ -71,51 +73,104 @@ pub fn generate_heuristic_spawn_actions(
     actions
 }
 
-const WEIGHT_FACTOR: f64 = 1.2;
-/// Decides which units to buy based on available money and tech
-/// weight units by their tech index, buy later units at a higher rate
+/// Decides which units to buy based on countering the enemy's most threatening unit.
 fn purchase_heuristic(
     side: Side,
     tech_state: &TechState,
     mut money: i32,
-    rng: &mut impl Rng,
+    board: &Board,
 ) -> Vec<Unit> {
-    let mut available_units: Vec<_> = tech_state.acquired_techs[side]
+    let opponent = !side;
+
+    let our_acquired_units: std::collections::HashSet<Unit> = tech_state.acquired_techs[side]
         .iter()
-        .filter_map(|tech| {
-            if let Tech::UnitTech(unit) = tech {
-                Some(*unit)
-            } else {
-                None
-            }
+        .filter_map(|tech| match tech {
+            Tech::UnitTech(unit) => Some(*unit),
+            _ => None,
         })
-        .chain(std::iter::once(Unit::Zombie))
         .collect();
 
-    let mut units_with_weights = available_units
+    let enemy_counter_map = tech_state.acquired_techs[opponent]
         .iter()
-        .map(|u| (u, WEIGHT_FACTOR.powi(u.to_index().unwrap() as i32)))
-        .collect::<Vec<_>>();
+        .filter_map(|tech| match tech {
+            Tech::UnitTech(unit) => Some((
+                *unit,
+                unit.counters()
+                    .into_iter()
+                    .filter(|c| our_acquired_units.contains(c))
+                    .collect(),
+            )),
+            _ => None,
+        })
+        .collect::<HashMap<Unit, HashSet<Unit>>>();
+
+    let value_on_board = |units: HashSet<Unit>| {
+        board
+            .pieces
+            .values()
+            .map(|p| {
+                if units.contains(&p.unit) {
+                    p.unit.stats().cost
+                } else {
+                    0
+                }
+            })
+            .sum()
+    };
+
+    let mut unit_to_counter_values = enemy_counter_map
+        .into_iter()
+        .map(|(unit, counters)| {
+            (
+                unit,
+                (
+                    value_on_board(HashSet::from_iter(vec![unit])),
+                    value_on_board(counters),
+                ),
+            )
+        })
+        .collect::<HashMap<Unit, (i32, i32)>>();
 
     let mut units_to_buy = Vec::new();
 
     loop {
-        units_with_weights = units_with_weights
-            .into_iter()
-            .filter(|(u, _)| money >= u.stats().cost)
-            .collect();
+        let buyable_units = our_acquired_units
+            .iter()
+            .filter(|unit| unit.stats().cost <= money)
+            .collect::<HashSet<_>>();
 
-        if units_with_weights.is_empty() {
+        let best_opponent_unit = unit_to_counter_values
+            .iter()
+            .filter(|(unit, _)| unit.counters().iter().any(|c| buyable_units.contains(c)))
+            .max_by_key(|(_, (value_on_board, counter_value))| {
+                (value_on_board - counter_value, value_on_board)
+            })
+            .map(|(&unit, _)| unit);
+
+        if best_opponent_unit.is_none() {
             break;
         }
 
-        let weights: Vec<f64> = units_with_weights.iter().map(|(_, w)| *w).collect();
-        let distr = WeightedIndex::new(&weights).unwrap();
-        let idx = distr.sample(rng);
-        let unit = units_with_weights[idx].0;
+        let unit_to_buy = *best_opponent_unit
+            .unwrap()
+            .counters()
+            .iter()
+            .filter(|c| buyable_units.contains(c))
+            .max_by_key(|unit| unit.stats().cost)
+            .unwrap();
 
-        units_to_buy.push(*unit);
-        money -= unit.stats().cost;
+        units_to_buy.push(unit_to_buy);
+        let unit_cost = unit_to_buy.stats().cost;
+
+        money -= unit_cost;
+
+        for unit in unit_to_buy.anticounters() {
+            unit_to_counter_values
+                .entry(unit)
+                .and_modify(|(_, counter_value)| {
+                    *counter_value += unit_cost;
+                });
+        }
     }
 
     units_to_buy
@@ -163,7 +218,8 @@ mod tests {
     fn test_purchase_heuristic_not_enough_money() {
         let tech_state = new_all_unlocked_tech_state();
         let money = 0;
-        let units = purchase_heuristic(Side::Yellow, &tech_state, money, &mut make_rng());
+        let board = Board::new(&Map::BlackenedShores);
+        let units = purchase_heuristic(Side::Yellow, &tech_state, money, &board);
         assert!(units.is_empty());
     }
 
@@ -171,7 +227,12 @@ mod tests {
     fn test_purchase_heuristic_exact_money() {
         let tech_state = new_all_unlocked_tech_state();
         let money = 1; // Not enough money for any unit
-        let units = purchase_heuristic(Side::Yellow, &tech_state, money, &mut make_rng());
+        let units = purchase_heuristic(
+            Side::Yellow,
+            &tech_state,
+            money,
+            &Board::new(&Map::BlackenedShores),
+        );
         assert!(units.is_empty());
     }
 

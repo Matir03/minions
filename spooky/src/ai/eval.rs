@@ -1,6 +1,6 @@
 //! Position evaluation for single boards
 
-use crate::core::{GameState, GameConfig, Side, ToIndex};
+use crate::core::{tech::SPELL_COST, GameConfig, GameState, Side};
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Eval {
@@ -22,7 +22,9 @@ impl Eval {
     }
 
     pub fn flip(&self) -> Self {
-        Self { winprob: 1.0 - self.winprob }
+        Self {
+            winprob: 1.0 - self.winprob,
+        }
     }
 
     pub fn winprob(&self) -> f32 {
@@ -36,63 +38,40 @@ impl Eval {
 
     /// evaluate position from heuristics
     pub fn heuristic(config: &GameConfig, state: &GameState) -> Self {
-        // Constants from the documentation
-        const C_H: f32 = 12.0;
-        const C_W: f32 = 25.0;
-        const C_M: f32 = 1.0;
-        const C_B: f32 = 1.0;
-        const C_D: f32 = 0.05;
+        const BOARD_POINT_VALUE: i32 = 30;
+        const SIGMOID_SCALE: f32 = 0.01;
+        let have_the_move_bonus = 10 * config.num_boards as i32;
 
-        // C_T depends on number of boards
-        let c_t = 4.0 * state.boards.len() as f32;
+        let mut dollar_diff = 0;
 
-        // Board points to win
-        let w0 = state.board_points[Side::Yellow] as f32;
-        let w1 = state.board_points[Side::Blue] as f32;
-
-        // Money
-        let m0 = state.money[Side::Yellow] as f32;
-        let m1 = state.money[Side::Blue] as f32;
-
-        // Tech score
-        let tech_state = &state.tech_state;
-        let a0 = tech_state.unlock_index[Side::Yellow] as f32;
-        let a1 = tech_state.unlock_index[Side::Blue] as f32;
-        let max_advancement = a0.max(a1);
-        let gamma: f32 = 0.98;
-
-        let mut t0 = 0.0;
-        let mut t1 = 0.0;
-
-        // Calculate tech scores for each side
-        for tech in tech_state.acquired_techs[Side::Yellow].iter() {
-            t0 += gamma.powf(max_advancement - tech.to_index().unwrap() as f32);
-        }
-        for tech in tech_state.acquired_techs[Side::Blue].iter() {
-            t1 += gamma.powf(max_advancement - tech.to_index().unwrap() as f32);
-        }
-
-        let tech_score = t0 - t1 + a0 - a1;
-
-        // Board scores
-        let mut board_score = 0.0;
+        // Dollars on boards
         for board in state.boards.iter() {
-            let mut board_value = 0.0;
             for piece in board.pieces.values() {
-                let value = piece.unit.stats().cost as f32;
-                board_value += match piece.side {
-                    Side::Yellow => value,
-                    Side::Blue => -value,
-                };
+                let value = piece.unit.stats().cost;
+                dollar_diff += value * piece.side.sign();
             }
-            board_score += board_value;
         }
 
-        let hmb = state.side_to_move.sign() as f32;
+        for side in Side::all() {
+            // Dollars on techline
+            let num_techs = state.tech_state.acquired_techs[side].len() as i32;
+            dollar_diff += num_techs * SPELL_COST * config.num_boards as i32 * side.sign();
 
-        // Final score calculation
-        let d = C_W * (w0 - w1) + c_t * tech_score + C_M * (m0 - m1) + C_B * board_score + C_H * hmb;
-        let winprob = d.sigmoid() * C_D;
+            // Money in hand
+            dollar_diff += state.money[side] * side.sign();
+
+            // Board points value
+            dollar_diff += state.board_points[side] * BOARD_POINT_VALUE * side.sign();
+        }
+
+        // Add a small bonus for the side to move
+        dollar_diff += have_the_move_bonus * state.side_to_move.sign();
+
+        // The dollar_diff is from Yellow's perspective. We need to adjust for side_to_move.
+        let perspective_diff = dollar_diff * state.side_to_move.sign();
+
+        // Convert to winprob
+        let winprob = (perspective_diff as f32 * SIGMOID_SCALE).sigmoid();
 
         Eval::new(winprob)
     }

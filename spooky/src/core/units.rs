@@ -1,6 +1,8 @@
 /// Type of attack a unit can perform
 use std::str::FromStr;
 
+use crate::core::tech::NUM_TECHS;
+
 use super::convert::{FromIndex, ToIndex};
 use anyhow::{anyhow, ensure, Context, Result};
 use num_derive::{FromPrimitive, ToPrimitive};
@@ -44,7 +46,7 @@ pub struct UnitStats {
 }
 
 /// Labels for different unit types
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, FromPrimitive, ToPrimitive)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, FromPrimitive, ToPrimitive)]
 pub enum Unit {
     Zombie,
     Initiate,
@@ -157,6 +159,44 @@ impl Unit {
 
     pub fn stats(&self) -> &UnitStats {
         &UNIT_STATS[*self as usize]
+    }
+
+    pub fn counters(&self) -> Vec<Unit> {
+        let mut counters = Vec::new();
+        let self_index = self.to_index().unwrap();
+        if self_index + 1 < NUM_TECHS {
+            counters.push(self_index + 1);
+        }
+        if self_index + 2 < NUM_TECHS {
+            counters.push(self_index + 2);
+        }
+        if self_index >= 4 {
+            counters.push(self_index - 3);
+        }
+        counters
+            .into_iter()
+            .map(Unit::from_index)
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
+    }
+
+    pub fn anticounters(&self) -> Vec<Unit> {
+        let mut anticounters = Vec::new();
+        let self_index = self.to_index().unwrap();
+        if self_index > 0 {
+            anticounters.push(self_index - 1);
+        }
+        if self_index > 1 {
+            anticounters.push(self_index - 2);
+        }
+        if self_index + 3 < NUM_TECHS {
+            anticounters.push(self_index + 3);
+        }
+        anticounters
+            .into_iter()
+            .map(Unit::from_index)
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
     }
 }
 

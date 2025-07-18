@@ -3,15 +3,12 @@
 use crate::core::tech;
 
 use super::{
-    units::Unit, 
+    convert::{FromIndex, ToIndex},
     side::{Side, SideArray},
-    convert::{FromIndex, ToIndex}
+    units::Unit,
 };
-use anyhow::{anyhow, bail, Result, ensure};
-use std::{
-    ops::Index,
-    collections::HashSet as Set
-};
+use anyhow::{anyhow, bail, ensure, Result};
+use std::{collections::HashSet as Set, ops::Index};
 
 pub const SPELL_COST: i32 = 4;
 
@@ -24,7 +21,7 @@ pub enum TechStatus {
 }
 
 /// Different tech types available in the game
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Tech {
     UnitTech(Unit),
     Copycat,
@@ -74,7 +71,7 @@ impl Techline {
 }
 
 impl Index<usize> for Techline {
-    type Output = Tech; 
+    type Output = Tech;
 
     fn index(&self, index: usize) -> &Self::Output {
         &self.techs[index]
@@ -85,9 +82,9 @@ impl Default for Techline {
     fn default() -> Self {
         Self::new(
             (1..=NUM_TECHS)
-            .map(Tech::from_index)
-            .collect::<Result<Vec<_>>>()
-            .unwrap()
+                .map(Tech::from_index)
+                .collect::<Result<Vec<_>>>()
+                .unwrap(),
         )
     }
 }
@@ -101,7 +98,10 @@ pub struct TechAssignment {
 
 impl TechAssignment {
     pub fn new(advance_by: usize, acquire: Vec<usize>) -> Self {
-        Self { advance_by, acquire }
+        Self {
+            advance_by,
+            acquire,
+        }
     }
 
     pub fn num_spells(&self) -> i32 {
@@ -123,7 +123,7 @@ pub struct TechState {
     /// index of next tech to unlock
     pub unlock_index: SideArray<usize>,
     pub status: SideArray<[TechStatus; NUM_TECHS]>,
-    pub acquired_techs: SideArray<Set<Tech>>
+    pub acquired_techs: SideArray<Set<Tech>>,
 }
 
 impl TechState {
@@ -134,21 +134,37 @@ impl TechState {
                 [TechStatus::Locked; NUM_TECHS],
                 [TechStatus::Locked; NUM_TECHS],
             ),
-            acquired_techs: SideArray::new(
-                Set::new(),
-                Set::new(),
-            )
+            acquired_techs: SideArray::new(Set::new(), Set::new()),
         }
     }
 
-    pub fn acquirable(&self, tech_index: usize, side: Side) -> bool {
-        self.status[side][tech_index] == TechStatus::Unlocked &&
-        self.status[!side][tech_index] != TechStatus::Acquired
+    pub fn acquirable(&self, tech_index: usize, side: Side, num_spells: i32) -> bool {
+        if tech_index >= NUM_TECHS
+            || self.status[side][tech_index] == TechStatus::Acquired
+            || self.status[!side][tech_index] == TechStatus::Acquired
+        {
+            return false;
+        }
+
+        let spells_to_buy = (tech_index as i32 - self.unlock_index[side] as i32 + 2).max(1);
+        if num_spells < spells_to_buy {
+            return false;
+        }
+
+        true
     }
 
-    pub fn assign_techs(&mut self, assignment: TechAssignment, side: Side, techline: &Techline) -> Result<()> {
+    pub fn assign_techs(
+        &mut self,
+        assignment: TechAssignment,
+        side: Side,
+        techline: &Techline,
+    ) -> Result<()> {
         let advanced_index = self.unlock_index[side] + assignment.advance_by;
-        ensure!(advanced_index <= techline.techs.len(), "Cannot advance past last tech");
+        ensure!(
+            advanced_index <= techline.techs.len(),
+            "Cannot advance past last tech"
+        );
 
         for i in self.unlock_index[side]..advanced_index {
             self.status[side][i] = TechStatus::Unlocked;
@@ -158,11 +174,14 @@ impl TechState {
 
         for tech_index in assignment.acquire {
             let tech = techline[tech_index];
-            ensure!(tech_index < self.unlock_index[side], "Cannot acquire locked tech");
             ensure!(
-                tech == Tech::Copycat ||
-                self.acquired_techs[side].contains(&Tech::Copycat) ||
-                self.status[!side][tech_index] != TechStatus::Acquired,
+                tech_index < self.unlock_index[side],
+                "Cannot acquire locked tech"
+            );
+            ensure!(
+                tech == Tech::Copycat
+                    || self.acquired_techs[side].contains(&Tech::Copycat)
+                    || self.status[!side][tech_index] != TechStatus::Acquired,
             );
             self.status[side][tech_index] = TechStatus::Acquired;
             self.acquired_techs[side].insert(techline[tech_index]);
@@ -210,8 +229,13 @@ impl TechState {
                     'L' => {
                         // Record the first 'L' as the unlock_index, but continue parsing to fill status array.
                         // This might be refined later if multiple 'L's are disallowed or handled differently.
-                        if state.status[side].iter().take(i).all(|s| *s != TechStatus::Locked) { // only set if this is the first L
-                           state.unlock_index[side] = i;
+                        if state.status[side]
+                            .iter()
+                            .take(i)
+                            .all(|s| *s != TechStatus::Locked)
+                        {
+                            // only set if this is the first L
+                            state.unlock_index[side] = i;
                         }
                         TechStatus::Locked
                     }
@@ -225,29 +249,26 @@ impl TechState {
             }
         }
 
-        state.unlock_index.values = state.status.values
-            .map(|side_techs_full_array|
-                side_techs_full_array[0..num_techs]
-                    .iter()
-                    .position(|&status| status == TechStatus::Locked)
-                    .unwrap_or(num_techs)
-                    .saturating_sub(1)
-            );
-        
-        state.acquired_techs.values = state.status.values
-            .map(|side_techs| 
-                side_techs
-                    .iter()
-                    .enumerate()
-                    .filter(|(_, &status)| status == TechStatus::Acquired)
-                    .map(|(i, _)| techline[i])
-                    .collect()
-            );
+        state.unlock_index.values = state.status.values.map(|side_techs_full_array| {
+            side_techs_full_array[0..num_techs]
+                .iter()
+                .position(|&status| status == TechStatus::Locked)
+                .unwrap_or(num_techs)
+                .saturating_sub(1)
+        });
+
+        state.acquired_techs.values = state.status.values.map(|side_techs| {
+            side_techs
+                .iter()
+                .enumerate()
+                .filter(|(_, &status)| status == TechStatus::Acquired)
+                .map(|(i, _)| techline[i])
+                .collect()
+        });
 
         Ok(state)
     }
 }
-
 
 #[cfg(test)]
 mod tests {

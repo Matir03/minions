@@ -45,6 +45,10 @@ impl Loc {
         (self - other).length()
     }
 
+    pub fn unsigned_dist(&self, other: &Loc) -> u32 {
+        self.dist(other) as u32
+    }
+
     pub fn index(&self) -> usize {
         (self.y as usize) * GRID_LEN + (self.x as usize)
     }
