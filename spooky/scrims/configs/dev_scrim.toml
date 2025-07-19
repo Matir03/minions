@@ -12,4 +12,4 @@ path = "target/release/spooky"
 
 [ai_blue]
 # An example archived build to test against. 
-path = "bin/baseline"
+path = "bin/heuristics0.0"

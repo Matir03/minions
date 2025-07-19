@@ -17,7 +17,7 @@ use z3::{
 
 use lapjv::{lapjv, Matrix};
 
-const DIST_EXP: f64 = 0.9;
+const DIST_EXP: f64 = 0.8;
 
 impl MapSpec {
     fn loc_wt(&self, loc: &Loc) -> f64 {
@@ -393,6 +393,7 @@ impl SatPositioningSystem {
     /// Generate all possible moves with affinity values based on proximity to enemy graveyards
     pub fn generate_move_candidates(
         &self,
+        rng: &mut impl Rng,
         graph: &CombatGraph,
         board: &Board,
         side: Side,
@@ -485,6 +486,9 @@ impl SatPositioningSystem {
         }
 
         const EPS: f64 = 1e-6;
+        const NOISE: f64 = 0.05;
+
+        let unif_distr = rand::distributions::Uniform::new(-NOISE, NOISE);
 
         for (from_loc, to_loc_map) in graph.move_hex_map.iter() {
             let unit_stats = board.get_piece(&from_loc).unwrap().unit.stats();
@@ -522,8 +526,9 @@ impl SatPositioningSystem {
             for (to_loc, _) in to_loc_map {
                 let to_wt = board.map.spec().loc_wt(&to_loc);
                 const SCORE_SIGMOID_SCALE: f64 = 10.0;
-                let score =
-                    ((to_wt - cur_wt) * unit_stats.cost as f64 / SCORE_SIGMOID_SCALE).sigmoid();
+                let score = ((to_wt - cur_wt) * unit_stats.cost as f64 / SCORE_SIGMOID_SCALE)
+                    .sigmoid()
+                    + rng.sample(unif_distr);
 
                 candidates.push(MoveCandidate::Move {
                     from_loc: *from_loc,
@@ -869,7 +874,8 @@ mod tests {
 
         let positioning = SatPositioningSystem {};
         let graph = board.combat_graph(Side::Yellow);
-        let candidates = positioning.generate_move_candidates(&graph, &board, Side::Yellow);
+        let candidates =
+            positioning.generate_move_candidates(&mut make_rng(), &graph, &board, Side::Yellow);
 
         // Should generate some move candidates
         assert!(!candidates.is_empty());
@@ -889,7 +895,8 @@ mod tests {
 
         let positioning = SatPositioningSystem {};
         let graph = board.combat_graph(Side::Yellow);
-        let candidates = positioning.generate_move_candidates(&graph, &board, Side::Yellow);
+        let candidates =
+            positioning.generate_move_candidates(&mut make_rng(), &graph, &board, Side::Yellow);
 
         // Check that they are in descending order
         for i in 1..candidates.len() {
@@ -930,7 +937,8 @@ mod tests {
         let manager = ConstraintManager::new(&ctx, graph.clone(), &board);
 
         let positioning = SatPositioningSystem {};
-        let move_candidates = positioning.generate_move_candidates(&graph, &board, Side::Yellow);
+        let move_candidates =
+            positioning.generate_move_candidates(&mut make_rng(), &graph, &board, Side::Yellow);
         let actions = positioning.generate_non_attack_movements(&manager, &board, move_candidates);
 
         // Should return some actions (even if just staying in place)
@@ -1225,7 +1233,8 @@ mod tests {
         let mut manager = ConstraintManager::new(&ctx, graph.clone(), &board);
 
         let positioning = SatPositioningSystem {};
-        let move_candidates = positioning.generate_move_candidates(&graph, &board, Side::Yellow);
+        let move_candidates =
+            positioning.generate_move_candidates(&mut make_rng(), &graph, &board, Side::Yellow);
 
         let result = positioning
             .combat_reconciliation(&mut manager, &board, Side::Yellow, &move_candidates)

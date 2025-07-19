@@ -165,6 +165,7 @@ impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
             "Generating move candidates",
             || {
                 positioning_system.generate_move_candidates(
+                    rng,
                     &manager.graph,
                     &new_board,
                     self.side_to_move,
