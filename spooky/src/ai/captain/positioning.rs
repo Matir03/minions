@@ -1,4 +1,8 @@
 use crate::ai::captain::combat::constraints::{ConstraintManager, SatVariables};
+use crate::ai::captain::combat::graph::CombatGraph;
+use crate::core::board::piece;
+use crate::core::MapSpec;
+use crate::core::Sigmoid;
 use crate::core::{
     board::{actions::AttackAction, Board},
     Loc, Side,
@@ -12,6 +16,17 @@ use z3::{
 };
 
 use lapjv::{lapjv, Matrix};
+
+const DIST_EXP: f64 = 0.9;
+
+impl MapSpec {
+    fn loc_wt(&self, loc: &Loc) -> f64 {
+        self.graveyards
+            .iter()
+            .map(|g| DIST_EXP.powi(g.dist(loc)))
+            .sum::<f64>()
+    }
+}
 
 /// Represents a potential move with an affinity value
 #[derive(Debug, Clone)]
@@ -378,43 +393,148 @@ impl SatPositioningSystem {
     /// Generate all possible moves with affinity values based on proximity to enemy graveyards
     pub fn generate_move_candidates(
         &self,
-        _rng: &mut impl Rng,
+        graph: &CombatGraph,
         board: &Board,
         side: Side,
     ) -> Vec<MoveCandidate> {
-        let mut candidates = Vec::new();
+        let mut candidates: Vec<MoveCandidate> = Vec::new();
 
-        let graveyards: Vec<Loc> = board.map.spec().graveyards.clone();
+        let graveyards = &board.map.spec().graveyards;
+        let sidedness = graveyards
+            .iter()
+            .map(|g| {
+                let mut total_diff = 0.0;
+                let mut total_wt = 0.0;
 
-        // Get all friendly pieces
-        for (loc, piece) in &board.pieces {
-            if piece.side == side {
-                // Get all possible move destinations for this piece
-                let valid_moves = board.get_theoretical_move_hexes(*loc);
+                for (loc, piece) in &board.pieces {
+                    let dist = g.dist(loc);
+                    let dist_wt = DIST_EXP.powi(dist);
+                    let wt = piece.unit.stats().cost as f64 * dist_wt;
+                    let sd = (side.sign() * piece.side.sign()) as f64;
 
-                for to_loc in valid_moves {
-                    let min_dist_to_graveyard = graveyards
-                        .iter()
-                        .map(|gy_loc| to_loc.unsigned_dist(gy_loc))
-                        .min()
-                        .unwrap_or(u32::MAX);
+                    total_diff += sd * wt;
+                    total_wt += wt;
+                }
 
-                    // Higher score for closer moves. We invert the distance.
-                    // Add 1 to avoid division by zero.
-                    let score = 1.0 / (min_dist_to_graveyard as f64 + 1.0);
+                let sidedness = total_diff / total_wt;
+                (g, sidedness)
+            })
+            .collect::<Vec<_>>();
+
+        // graveyard -> (piece, turns to graveyard)
+        let turns_to_graveyard = graveyards
+            .iter()
+            .map(|g| {
+                let mut turns_to_graveyard = board
+                    .pieces
+                    .iter()
+                    .filter(|(_, piece)| piece.side == side)
+                    .map(|(loc, piece)| {
+                        let dist = g.dist(loc);
+                        let speed = piece.unit.stats().speed;
+                        let turns = if speed == 0 {
+                            f64::INFINITY
+                        } else {
+                            dist as f64 / speed as f64
+                        };
+                        (*loc, turns)
+                    })
+                    .collect::<Vec<_>>();
+
+                turns_to_graveyard.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+
+                (*g, turns_to_graveyard)
+            })
+            .collect::<HashMap<_, _>>();
+
+        let mut chosen_pieces: HashMap<Loc, Loc> = HashMap::new();
+
+        let mut sidedness_decreasing = sidedness.clone();
+        sidedness_decreasing.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+
+        let mut competitiveness_increasing = sidedness.clone();
+        competitiveness_increasing.sort_by(|(_, a), (_, b)| a.abs().partial_cmp(&b.abs()).unwrap());
+
+        for (g, s) in sidedness_decreasing {
+            if s < 0.0 {
+                break;
+            }
+
+            let best_piece = turns_to_graveyard[&g]
+                .iter()
+                .find(|(piece_loc, _)| !chosen_pieces.contains_key(piece_loc));
+
+            if let Some((piece_loc, _)) = best_piece {
+                chosen_pieces.insert(*piece_loc, *g);
+            } else {
+                break;
+            }
+        }
+
+        for (g, _) in competitiveness_increasing {
+            let best_piece = turns_to_graveyard[&g].iter().find(|(piece_loc, _)| {
+                board.get_piece(piece_loc).unwrap().unit.stats().spawn
+                    && !chosen_pieces.contains_key(piece_loc)
+            });
+
+            if let Some((piece_loc, _)) = best_piece {
+                chosen_pieces.insert(*piece_loc, *g);
+            } else {
+                break;
+            }
+        }
+
+        const EPS: f64 = 1e-6;
+
+        for (from_loc, to_loc_map) in graph.move_hex_map.iter() {
+            let unit_stats = board.get_piece(&from_loc).unwrap().unit.stats();
+            if chosen_pieces.contains_key(&from_loc) {
+                let g = chosen_pieces[&from_loc];
+                let g_dist = g.dist(from_loc);
+
+                for to_loc in to_loc_map.keys() {
+                    let delta_dist = (g_dist - to_loc.dist(&g)) as f64;
+                    let score = if delta_dist > 0.0 {
+                        1.0 - (3.0 - delta_dist) * EPS
+                    } else {
+                        (3.0 + delta_dist) * EPS
+                    };
 
                     candidates.push(MoveCandidate::Move {
-                        from_loc: *loc,
-                        to_loc,
+                        from_loc: *from_loc,
+                        to_loc: *to_loc,
                         score,
                     });
+
+                    if unit_stats.blink {
+                        candidates.push(MoveCandidate::Blink {
+                            loc: *from_loc,
+                            score: 0.0,
+                        });
+                    }
                 }
-                if piece.unit.stats().blink {
-                    // Blinking doesn't change position, so its score is neutral
-                    // relative to graveyard control.
+
+                continue;
+            }
+
+            let cur_wt = board.map.spec().loc_wt(from_loc);
+
+            for (to_loc, _) in to_loc_map {
+                let to_wt = board.map.spec().loc_wt(&to_loc);
+                const SCORE_SIGMOID_SCALE: f64 = 10.0;
+                let score =
+                    ((to_wt - cur_wt) * unit_stats.cost as f64 / SCORE_SIGMOID_SCALE).sigmoid();
+
+                candidates.push(MoveCandidate::Move {
+                    from_loc: *from_loc,
+                    to_loc: *to_loc,
+                    score,
+                });
+
+                if unit_stats.blink {
                     candidates.push(MoveCandidate::Blink {
-                        loc: *loc,
-                        score: 0.0, // Neutral score
+                        loc: *from_loc,
+                        score: 0.5,
                     });
                 }
             }
@@ -422,6 +542,19 @@ impl SatPositioningSystem {
 
         // Sort candidates by score in descending order
         candidates.sort_by(|a, b| b.score().partial_cmp(&a.score()).unwrap());
+        // println!(
+        //     "Move candidates: {:#?}",
+        //     candidates
+        //         .iter()
+        //         .map(|c| format!(
+        //             "{}{}: {}",
+        //             c.from_loc(),
+        //             c.to_loc().map_or("*".to_string(), |l| l.to_string()),
+        //             c.score()
+        //         ))
+        //         .collect::<Vec<_>>()
+        // );
+
         candidates
     }
 
@@ -715,7 +848,9 @@ fn loc_var_in_hexes<'ctx>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ai::captain::combat::constraints::generate_move_from_sat_model;
+    use crate::ai::captain::combat::{
+        constraints::generate_move_from_sat_model, graph::CombatGraph,
+    };
     use crate::ai::rng::make_rng;
     use crate::core::{board::Board, map::Map, side::Side, units::Unit};
     use z3::Context;
@@ -732,9 +867,9 @@ mod tests {
             crate::core::loc::Loc::new(1, 1),
         ));
 
-        let mut positioning = SatPositioningSystem {};
-        let candidates =
-            positioning.generate_move_candidates(&mut make_rng(), &board, Side::Yellow);
+        let positioning = SatPositioningSystem {};
+        let graph = board.combat_graph(Side::Yellow);
+        let candidates = positioning.generate_move_candidates(&graph, &board, Side::Yellow);
 
         // Should generate some move candidates
         assert!(!candidates.is_empty());
@@ -752,12 +887,9 @@ mod tests {
         let map = Map::BlackenedShores;
         let board = Board::new(&map);
 
-        let mut positioning = SatPositioningSystem {};
-        let mut candidates =
-            positioning.generate_move_candidates(&mut make_rng(), &board, Side::Yellow);
-
-        // Sort by affinity value
-        candidates.sort_by(|a, b| b.score().partial_cmp(&a.score()).unwrap());
+        let positioning = SatPositioningSystem {};
+        let graph = board.combat_graph(Side::Yellow);
+        let candidates = positioning.generate_move_candidates(&graph, &board, Side::Yellow);
 
         // Check that they are in descending order
         for i in 1..candidates.len() {
@@ -795,11 +927,10 @@ mod tests {
 
         let ctx = Context::new(&z3::Config::new());
         let graph = board.combat_graph(Side::Yellow);
-        let manager = ConstraintManager::new(&ctx, graph, &board);
+        let manager = ConstraintManager::new(&ctx, graph.clone(), &board);
 
-        let mut positioning = SatPositioningSystem {};
-        let move_candidates =
-            positioning.generate_move_candidates(&mut make_rng(), &board, Side::Yellow);
+        let positioning = SatPositioningSystem {};
+        let move_candidates = positioning.generate_move_candidates(&graph, &board, Side::Yellow);
         let actions = positioning.generate_non_attack_movements(&manager, &board, move_candidates);
 
         // Should return some actions (even if just staying in place)
@@ -1091,11 +1222,10 @@ mod tests {
 
         let ctx = Context::new(&z3::Config::new());
         let graph = board.combat_graph(Side::Yellow);
-        let mut manager = ConstraintManager::new(&ctx, graph, &board);
+        let mut manager = ConstraintManager::new(&ctx, graph.clone(), &board);
 
-        let mut positioning = SatPositioningSystem {};
-        let move_candidates =
-            positioning.generate_move_candidates(&mut make_rng(), &board, Side::Yellow);
+        let positioning = SatPositioningSystem {};
+        let move_candidates = positioning.generate_move_candidates(&graph, &board, Side::Yellow);
 
         let result = positioning
             .combat_reconciliation(&mut manager, &board, Side::Yellow, &move_candidates)

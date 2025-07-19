@@ -163,7 +163,13 @@ impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
         // --- Generate move candidates ---
         let move_candidates = run_timed(
             "Generating move candidates",
-            || positioning_system.generate_move_candidates(rng, &new_board, self.side_to_move),
+            || {
+                positioning_system.generate_move_candidates(
+                    &manager.graph,
+                    &new_board,
+                    self.side_to_move,
+                )
+            },
             |_| "done".to_string(),
         );
 

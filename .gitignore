@@ -35,4 +35,4 @@ lerna-debug.log*
 
 # Python
 /spooky/scrims/venv/
-
+/spooky/scrims/results/

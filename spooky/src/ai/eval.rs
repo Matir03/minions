@@ -1,6 +1,6 @@
 //! Position evaluation for single boards
 
-use crate::core::{tech::SPELL_COST, GameConfig, GameState, Side};
+use crate::core::{tech::SPELL_COST, utils::Sigmoid, GameConfig, GameState, Side};
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Eval {
@@ -74,15 +74,5 @@ impl Eval {
         let winprob = (perspective_diff as f32 * SIGMOID_SCALE).sigmoid();
 
         Eval::new(winprob)
-    }
-}
-
-trait Sigmoid {
-    fn sigmoid(self) -> f32;
-}
-
-impl Sigmoid for f32 {
-    fn sigmoid(self) -> f32 {
-        1.0 / (1.0 + (-self).exp())
     }
 }
