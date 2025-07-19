@@ -58,10 +58,6 @@ impl<'a> Engine<'a> {
         Ok(())
     }
 
-    pub fn end_turn(&mut self) -> Result<()> {
-        self.state.end_turn()
-    }
-
     pub fn take_turn(&mut self, turn: GameTurn) -> Result<Option<Side>> {
         self.state.take_turn(turn)?;
         Ok(self.state.winner())

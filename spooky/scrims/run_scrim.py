@@ -27,8 +27,8 @@ class UmiProcess:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
+            shell=True,
             bufsize=1,
-            universal_newlines=True
         )
         self._send_command("umi")
         self._wait_for_response("umiok")
@@ -39,13 +39,14 @@ class UmiProcess:
         self.proc.stdin.flush()
 
     def _wait_for_response(self, expected_prefix):
+        lines = []
         while True:
             line = self.proc.stdout.readline().strip()
             if line:
+                lines.append(line)
                 print(f"< {self.name}: {line}")
                 if line.startswith(expected_prefix):
-                    return line
-            time.sleep(0.01) # Avoid busy-waiting
+                    return lines
 
     def set_position(self, fen):
         if fen == "startpos":
@@ -56,35 +57,10 @@ class UmiProcess:
     def play(self, time_control):
         self._send_command(f"play {time_control}")
         
-        info_lines = []
-        turn_lines = []
-        in_turn = False
-
-        while True:
-            # Check if the process terminated unexpectedly
-            if self.proc.poll() is not None:
-                stderr_output = self.proc.stderr.read()
-                print(f"!! Engine {self.name} terminated unexpectedly with exit code {self.proc.returncode}.")
-                if stderr_output:
-                    print(f"!! Stderr from {self.name}:\n{stderr_output}")
-                raise EnginePanicError(f"Engine {self.name} panicked.")
-
-            line = self.proc.stdout.readline().strip()
-            if not line:
-                time.sleep(0.01)
-                continue
-
-            print(f"< {self.name}: {line}")
-
-            if line.startswith("info"):
-                info_lines.append(line)
-            elif line.startswith("turn"):
-                in_turn = True
-                turn_lines.append(line)
-            elif in_turn:
-                turn_lines.append(line)
-                if line.startswith("endturn"):
-                    break
+        info_lines = self._wait_for_response("turn")
+        turn_line = info_lines.pop()
+        turn_lines = [turn_line]
+        turn_lines.extend(self._wait_for_response("endturn"))
 
         winner_side = None
         if 'winner' in turn_lines[-1]:
@@ -95,9 +71,6 @@ class UmiProcess:
     def quit(self):
         self._send_command("quit")
         self.proc.wait()
-    
-    def display(self):
-        self._send_command("display")
 
 def run_game(yellow_ai, blue_ai, time_control, start_fen, match_log_path):
     """Run a single game between two AIs."""
@@ -112,13 +85,10 @@ def run_game(yellow_ai, blue_ai, time_control, start_fen, match_log_path):
 
     while True:
         try:
-            current_player.display()
             turn_lines, info_lines, declared_winner = current_player.play(time_control)
         except EnginePanicError:
             winner = other_player.name
             break
-
-        full_turn_command = '\n'.join(turn_lines)
 
         # Check for game over
         if declared_winner:
@@ -132,7 +102,8 @@ def run_game(yellow_ai, blue_ai, time_control, start_fen, match_log_path):
             break
 
         # Send the entire turn block to the other AI
-        other_player._send_command(full_turn_command)
+        for line in turn_lines:
+            other_player._send_command(line)
 
         # Log the turn with metadata
         with open(match_log_path, 'a') as f:

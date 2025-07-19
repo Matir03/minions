@@ -96,9 +96,7 @@ pub fn handle_command<'a>(cmd: &str, engine: &mut Engine<'a>) -> Result<Option<G
             Ok(None)
         }
         "turn" => {
-            let spells = if parts.len() >= 2 {
-                ensure!(parts[1] == "spells", "invalid turn arguments");
-
+            let spells = if parts.len() >= 2 && parts[1] == "spells" {
                 let spells = parts[2..]
                     .iter()
                     .map(|s| s.parse::<Spell>())
