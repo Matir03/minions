@@ -2,7 +2,7 @@
 
 use anyhow::{bail, ensure, Context, Result};
 use spooky::{
-    core::{GameAction, GameConfig, Spell},
+    core::{GameAction, GameConfig, GameState, Spell},
     engine::{Engine, SearchOptions},
 };
 use std::io::{self, Write};
@@ -56,12 +56,12 @@ pub fn handle_command<'a>(cmd: &str, engine: &mut Engine<'a>) -> Result<Option<G
                     let config = GameConfig::from_fen(&fen)?;
                     Ok(Some(config))
                 }
-                // "fen" if parts.len() >= 3 => {
-                //     let fen = parts[2..].join(" ");
-                //     let (config, state) = parse_fen(&fen)?;
-                //     engine.config = config;
-                //     engine.state = state;
-                // }
+                "fen" if parts.len() >= 3 => {
+                    let fen = parts[2..].join(" ");
+                    let state = GameState::from_fen(&fen, &engine.config)?;
+                    engine.state = state;
+                    Ok(None)
+                }
                 _ => bail!("invalid position command"),
             }
         }

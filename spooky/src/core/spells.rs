@@ -1,9 +1,4 @@
-use super::{
-    side::Side,
-    board::Board,
-    units::Unit,
-    loc::Loc,
-};
+use super::{board::Board, loc::Loc, side::Side, units::Unit};
 use anyhow::{anyhow, ensure};
 use std::{fmt::Display, str::FromStr};
 
@@ -44,13 +39,8 @@ impl FromStr for Spell {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SpellCast {
-    CastShield {
-        target: Loc,
-    },
-    CastReposition {
-        from_sq: Loc,
-        to_sq: Loc,
-    }
+    CastShield { target: Loc },
+    CastReposition { from_sq: Loc, to_sq: Loc },
 }
 
 use anyhow::Result;
@@ -95,4 +85,3 @@ impl FromStr for SpellCast {
         }
     }
 }
-

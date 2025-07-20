@@ -1,12 +1,13 @@
 use anyhow::{anyhow, bail, ensure, Context, Result};
-
+use hashbag::HashBag;
 
 use crate::core::{
+    board::{BoardState, Modifiers, PieceState, RefCell},
     loc::{Loc, GRID_LEN},
     map::Map,
     side::Side,
     units::Unit,
-    board::{Modifiers, PieceState, RefCell},
+    Spell,
 };
 
 use super::{Board, Piece};
@@ -14,14 +15,40 @@ use super::{Board, Piece};
 impl<'a> Board<'a> {
     /// Convert board state to FEN notation
     pub fn to_fen(&self) -> String {
+        // Build the complete FEN string with all components separated by |
+        let mut components = Vec::new();
+
+        // Component 1: Board state
+        components.push(self.state.to_fen());
+
+        // Component 2: Yellow reinforcements
+        components.push(reinforcements_to_fen(&self.reinforcements[Side::Yellow]));
+
+        // Component 3: Blue reinforcements
+        components.push(reinforcements_to_fen(&self.reinforcements[Side::Blue]));
+
+        // Component 4: Yellow spells
+        components.push(spells_to_fen(&self.spells[Side::Yellow]));
+
+        // Component 5: Blue spells
+        components.push(spells_to_fen(&self.spells[Side::Blue]));
+
+        // Component 6: Board position
+        components.push(self.position_to_fen());
+
+        components.join("|")
+    }
+
+    /// Convert just the board position to FEN notation
+    fn position_to_fen(&self) -> String {
         let mut fen = String::new();
         let mut empty_count = 0;
-        
+
         for y in 0..10 {
             if y > 0 {
                 fen.push('/');
             }
-            
+
             for x in 0..10 {
                 let loc = Loc { y, x };
                 if let Ok(piece) = self.get_piece(&loc) {
@@ -42,7 +69,7 @@ impl<'a> Board<'a> {
                     empty_count += 1;
                 }
             }
-            
+
             if empty_count > 0 {
                 if empty_count == 10 {
                     fen.push('0');
@@ -52,16 +79,57 @@ impl<'a> Board<'a> {
                 empty_count = 0;
             }
         }
-        
+
         fen
     }
 
     /// Create a board from FEN notation
     pub fn from_fen(fen: &str, map: &'a Map) -> Result<Self> {
         let mut board = Self::new(map);
-        let parts: Vec<&str> = fen.split('/').collect();
 
-        ensure!(parts.len() == 10, "Invalid FEN: must have 10 rows");
+        let components = fen.split("|").collect::<Vec<&str>>();
+
+        let position = if components.len() == 6 {
+            // New format: state|yellow_reinforcements|blue_reinforcements|yellow_spells|blue_spells|position
+            let (
+                state,
+                yellow_reinforcements,
+                blue_reinforcements,
+                yellow_spells,
+                blue_spells,
+                position,
+            ) = (
+                components[0],
+                components[1],
+                components[2],
+                components[3],
+                components[4],
+                components[5],
+            );
+
+            board.state = BoardState::from_fen(state)?;
+
+            board.reinforcements[Side::Yellow] = reinforcements_from_fen(yellow_reinforcements)?;
+            board.reinforcements[Side::Blue] = reinforcements_from_fen(blue_reinforcements)?;
+
+            board.spells[Side::Yellow] = spells_from_fen(yellow_spells)?;
+            board.spells[Side::Blue] = spells_from_fen(blue_spells)?;
+
+            position
+        } else if components.len() == 1 {
+            // Old format: just the position
+            // Keep default values for state, reinforcements, and spells
+            fen
+        } else {
+            bail!(
+                "Invalid FEN format: expected 1 or 6 components separated by '|', got {}",
+                components.len()
+            );
+        };
+
+        let parts: Vec<&str> = position.split('/').collect();
+
+        ensure!(parts.len() == 10, "Invalid position FEN: must have 10 rows");
 
         for (y, row_str) in parts.iter().enumerate() {
             let mut x = 0;
@@ -70,10 +138,17 @@ impl<'a> Board<'a> {
             } else {
                 for c in row_str.chars() {
                     if let Some(digit) = c.to_digit(10) {
-                        ensure!(digit != 0, "FEN digit cannot be 0 unless it's the only char in the row");
+                        ensure!(
+                            digit != 0,
+                            "FEN digit cannot be 0 unless it's the only char in the row"
+                        );
                         x += digit as i32;
                     } else {
-                        let side = if c.is_uppercase() { Side::Yellow } else { Side::Blue };
+                        let side = if c.is_uppercase() {
+                            Side::Yellow
+                        } else {
+                            Side::Blue
+                        };
                         let unit_char = c.to_ascii_lowercase();
                         let unit = Unit::from_fen_char(unit_char)
                             .ok_or_else(|| anyhow!("Invalid unit char: {}", unit_char))?;
@@ -90,9 +165,76 @@ impl<'a> Board<'a> {
                     }
                 }
             }
-            ensure!(x == 10, "Invalid FEN: row {} does not sum to 10, got {}", y, x);
+            ensure!(
+                x == 10,
+                "Invalid FEN: row {} does not sum to 10, got {}",
+                y,
+                x
+            );
         }
 
         Ok(board)
     }
+}
+
+impl BoardState {
+    fn to_fen(&self) -> String {
+        match self {
+            Self::FirstTurn => "f".to_string(),
+            Self::Normal => "n".to_string(),
+            Self::Reset1 => "1".to_string(),
+            Self::Reset2 => "2".to_string(),
+        }
+    }
+
+    fn from_fen(fen: &str) -> Result<Self> {
+        match fen {
+            "f" => Ok(Self::FirstTurn),
+            "n" => Ok(Self::Normal),
+            "1" => Ok(Self::Reset1),
+            "2" => Ok(Self::Reset2),
+            _ => Err(anyhow!("Invalid board state: {}", fen)),
+        }
+    }
+}
+
+fn reinforcements_from_fen(fen: &str) -> Result<HashBag<Unit>> {
+    let mut reinforcements = HashBag::new();
+    for char in fen.chars() {
+        reinforcements
+            .insert(Unit::from_fen_char(char).context("Invalid unit char in reinforcements")?);
+    }
+    Ok(reinforcements)
+}
+
+fn spells_from_fen(fen: &str) -> Result<HashBag<Spell>> {
+    if fen.is_empty() {
+        return Ok(HashBag::new());
+    }
+    let mut spells = HashBag::new();
+    for spell in fen.split(",") {
+        spells.insert(spell.parse()?);
+    }
+    Ok(spells)
+}
+
+fn reinforcements_to_fen(reinforcements: &HashBag<Unit>) -> String {
+    let mut fen = String::new();
+    for (unit, count) in reinforcements.set_iter() {
+        for _ in 0..count {
+            fen.push(unit.to_fen_char());
+        }
+    }
+    fen
+}
+
+fn spells_to_fen(spells: &HashBag<Spell>) -> String {
+    // let mut fens = Vec::new();
+    // for (spell, count) in spells.set_iter() {
+    //     for _ in 0..count {
+    //         fens.push(spell.to_string());
+    //     }
+    // }
+    // fens.join(",")
+    "".to_string()
 }

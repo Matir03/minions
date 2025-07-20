@@ -1,6 +1,6 @@
-use std::collections::HashMap;
-use hashbag::HashBag;
 use super::{bitboards::Bitboards, piece::Piece};
+use hashbag::HashBag;
+use std::collections::HashMap;
 
 use crate::core::{
     loc::Loc,
@@ -71,10 +71,7 @@ pub struct Board<'a> {
 impl<'a> Board<'a> {
     pub const START_FEN: &'static str = "0/2ZZ6/1ZNZ6/1ZZ7/0/0/7zz1/6znz1/6zz2/0";
     pub const NECROMANCER_START_LOC: SideArray<Loc> = SideArray {
-        values: [
-            Loc { x: 2, y: 2 },
-            Loc { x: 7, y: 7 },
-        ]
+        values: [Loc { x: 2, y: 2 }, Loc { x: 7, y: 7 }],
     };
     pub const GRAVEYARDS_TO_WIN: i32 = 8;
 }
