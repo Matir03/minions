@@ -50,7 +50,7 @@ impl<'a> Board<'a> {
             }
 
             for x in 0..10 {
-                let loc = Loc { y, x };
+                let loc = Loc { x, y };
                 if let Ok(piece) = self.get_piece(&loc) {
                     if empty_count > 0 {
                         if empty_count == 10 {

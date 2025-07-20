@@ -6,10 +6,16 @@ set -e
 SCRIPT_DIR=$(dirname "$(realpath "$0")")
 SPOOKY_DIR=$(dirname "$SCRIPT_DIR")
 
+if [ -z "$1" ]; then
+    CONFIG="${SPOOKY_DIR}/scrims/configs/self_play.toml"
+else
+    CONFIG="$1"
+fi
+
 # Build the latest release version
 echo "Building current code..."
 cargo build --release --manifest-path="${SPOOKY_DIR}/Cargo.toml"
 
 # Run the scrimmage
-echo "\nStarting development scrimmage..."
-"${SPOOKY_DIR}/scrims/venv/bin/python3" "${SPOOKY_DIR}/scrims/run_scrim.py" "${SPOOKY_DIR}/scrims/configs/dev_scrim.toml"
+echo "\nStarting scrimmage..."
+"${SPOOKY_DIR}/scrims/venv/bin/python3" "${SPOOKY_DIR}/scrims/run_scrim.py" "${CONFIG}"

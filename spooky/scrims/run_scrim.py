@@ -102,8 +102,11 @@ def run_game(yellow_ai, blue_ai, time_control, start_fen, match_log_path):
             break
 
         # Send the entire turn block to the other AI
-        for line in turn_lines:
-            other_player._send_command(line)
+        # for line in turn_lines:
+        #     other_player._send_command(line)
+        current_player._send_command("getfen")
+        fen = current_player._wait_for_response("")[0]
+        other_player.set_position(fen)
 
         # Log the turn with metadata
         with open(match_log_path, 'a') as f:

@@ -4,6 +4,7 @@ pub mod action;
 pub mod board;
 pub mod convert;
 pub mod display;
+pub mod fen;
 pub mod game;
 pub mod loc;
 pub mod map;
