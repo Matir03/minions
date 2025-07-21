@@ -772,6 +772,9 @@ impl SatPositioningSystem {
             actions.extend(moves.rev());
         }
         for cycle in cycles {
+            if cycle.len() <= 1 {
+                continue;
+            }
             actions.push(AttackAction::MoveCyclic { locs: cycle });
         }
         actions
