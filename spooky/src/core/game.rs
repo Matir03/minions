@@ -259,7 +259,7 @@ impl<'a> GameState<'a> {
         }
 
         // Process tech assignments
-        let spells_bought = (turn.tech_assignment.num_spells() - 1).min(0);
+        let spells_bought = (turn.tech_assignment.num_spells() - 1).max(0);
         let total_spell_cost = spells_bought * self.config.spell_cost();
         ensure!(self.money[self.side_to_move] >= total_spell_cost);
         self.money[self.side_to_move] -= total_spell_cost;

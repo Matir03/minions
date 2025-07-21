@@ -8,7 +8,7 @@ use super::{
     units::Unit,
 };
 use anyhow::{anyhow, bail, ensure, Result};
-use std::{collections::HashSet as Set, ops::Index};
+use std::{collections::HashSet, ops::Index};
 
 pub const SPELL_COST: i32 = 4;
 
@@ -27,6 +27,22 @@ pub enum Tech {
     Copycat,
     Thaumaturgy,
     Metamagic,
+}
+
+impl Tech {
+    pub fn counters(&self) -> Vec<Tech> {
+        match self {
+            Tech::UnitTech(unit) => {
+                let unit_idx = unit.to_index().unwrap() as i32;
+                [unit_idx + 1, unit_idx + 2, unit_idx - 3]
+                    .into_iter()
+                    .filter(|i| *i >= 1 && *i <= Unit::NUM_UNITS as i32)
+                    .map(|i| Tech::UnitTech(Unit::from_index(i as usize).unwrap()))
+                    .collect()
+            }
+            _ => vec![],
+        }
+    }
 }
 
 impl FromIndex for Tech {
@@ -67,6 +83,10 @@ impl Techline {
 
     pub fn len(&self) -> usize {
         self.techs.len()
+    }
+
+    pub fn index_of(&self, tech: Tech) -> usize {
+        self.techs.iter().position(|&t| t == tech).unwrap()
     }
 }
 
@@ -123,7 +143,7 @@ pub struct TechState {
     /// index of next tech to unlock
     pub unlock_index: SideArray<usize>,
     pub status: SideArray<[TechStatus; NUM_TECHS]>,
-    pub acquired_techs: SideArray<Set<Tech>>,
+    pub acquired_techs: SideArray<HashSet<Tech>>,
 }
 
 impl TechState {
@@ -134,24 +154,27 @@ impl TechState {
                 [TechStatus::Locked; NUM_TECHS],
                 [TechStatus::Locked; NUM_TECHS],
             ),
-            acquired_techs: SideArray::new(Set::new(), Set::new()),
+            acquired_techs: SideArray::new(HashSet::new(), HashSet::new()),
         }
     }
 
-    pub fn acquirable(&self, tech_index: usize, side: Side, num_spells: i32) -> bool {
-        if tech_index >= NUM_TECHS
-            || self.status[side][tech_index] == TechStatus::Acquired
+    pub fn acquirable(
+        &self,
+        tech: Tech,
+        techline: &Techline,
+        side: Side,
+        num_buyable_spells: i32,
+    ) -> bool {
+        let tech_index = techline.techs.iter().position(|&t| t == tech).unwrap();
+
+        if self.status[side][tech_index] == TechStatus::Acquired
             || self.status[!side][tech_index] == TechStatus::Acquired
         {
             return false;
         }
 
-        let spells_to_buy = (tech_index as i32 - self.unlock_index[side] as i32 + 2).max(1);
-        if num_spells < spells_to_buy {
-            return false;
-        }
-
-        true
+        let spells_to_buy = (tech_index as i32 - self.unlock_index[side] as i32 + 1).max(0);
+        spells_to_buy <= num_buyable_spells
     }
 
     pub fn assign_techs(
@@ -249,12 +272,11 @@ impl TechState {
             }
         }
 
-        state.unlock_index.values = state.status.values.map(|side_techs_full_array| {
-            side_techs_full_array[0..num_techs]
+        state.unlock_index.values = state.status.values.map(|side_techs| {
+            side_techs
                 .iter()
                 .position(|&status| status == TechStatus::Locked)
                 .unwrap_or(num_techs)
-                .saturating_sub(1)
         });
 
         state.acquired_techs.values = state.status.values.map(|side_techs| {

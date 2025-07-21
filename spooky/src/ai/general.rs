@@ -6,7 +6,7 @@ use crate::core::{
     convert::ToIndex,
     side::SideArray,
     tech::{TechAssignment, TechState, NUM_TECHS},
-    GameConfig, Side, Unit,
+    FromIndex, GameConfig, Side, Tech, Unit,
 };
 
 use rand::{distributions::Bernoulli, prelude::*};
@@ -35,82 +35,77 @@ impl GeneralNodeState {
 }
 
 impl NodeState<TechAssignment> for GeneralNodeState {
+    // (money, config)
     type Args = (i32, GameConfig);
 
     fn propose_move(&self, _rng: &mut impl Rng, args: &Self::Args) -> (TechAssignment, Self) {
         let (money, config) = args;
         let spell_cost = config.spell_cost();
-        let num_spells = money / spell_cost + 1;
+        let num_buyable_spells = money / spell_cost;
         let techline = &config.techline;
         let side = self.side;
-        let opponent = !side;
 
         let our_techs = &self.tech_state.acquired_techs[side];
-        let enemy_techs_set = &self.tech_state.acquired_techs[opponent];
+        let enemy_techs_set = &self.tech_state.acquired_techs[!side];
 
         let mut enemy_techs: StdVec<_> = enemy_techs_set.iter().copied().collect();
         enemy_techs.sort();
 
-        let get_counters = |i: usize| -> StdVec<usize> {
-            let mut counters = StdVec::new();
-            if i + 1 < NUM_TECHS {
-                counters.push(i + 1);
-            }
-            if i + 2 < NUM_TECHS {
-                counters.push(i + 2);
-            }
-            if i >= 4 {
-                counters.push(i - 3);
-            }
-            counters
-        };
-
         let mut highest_uncountered_enemy_tech = None;
         for &enemy_tech in enemy_techs.iter().rev() {
-            let enemy_tech_idx = enemy_tech.to_index().unwrap();
-            let counters = get_counters(enemy_tech_idx);
-            let is_countered = counters.iter().any(|&c| {
-                let tech = techline.techs[c];
-                our_techs.contains(&tech)
-            });
+            let counters = enemy_tech.counters();
+            let is_countered = counters.iter().any(|&c| our_techs.contains(&c));
             if !is_countered {
                 highest_uncountered_enemy_tech = Some(enemy_tech);
                 break;
             }
         }
 
-        let mut target_tech_idx = None;
+        let mut target_tech = None;
 
         if let Some(enemy_tech) = highest_uncountered_enemy_tech {
-            let enemy_idx = enemy_tech.to_index().unwrap();
             // Prioritize countering the highest uncountered enemy unit.
-            let counters = get_counters(enemy_idx);
-            target_tech_idx = counters
+            let counters = enemy_tech.counters();
+            println!("counters: {:?}", counters);
+            target_tech = counters
                 .into_iter()
-                .filter(|&idx| self.tech_state.acquirable(idx, side, num_spells))
-                .max(); // Tech to the highest available counter
+                .filter(|&t| {
+                    self.tech_state
+                        .acquirable(t, techline, side, num_buyable_spells)
+                })
+                .max();
+            println!("target_tech: {:?}", target_tech);
         } else {
             // If all enemy units are countered, press the advantage.
             if let Some(&our_highest_tech) = our_techs.iter().max() {
                 let our_highest_tech_idx = our_highest_tech.to_index().unwrap();
                 let n_plus_3 = our_highest_tech_idx + 3;
                 let n_plus_5 = our_highest_tech_idx + 5;
-
-                if self.tech_state.acquirable(n_plus_3, side, num_spells) {
-                    target_tech_idx = Some(n_plus_3);
-                } else if self.tech_state.acquirable(n_plus_5, side, num_spells) {
-                    target_tech_idx = Some(n_plus_5);
-                }
-            }
-            if target_tech_idx.is_none() {
-                // Fallback: tech to the highest available unit.
-                target_tech_idx = (0..self.tech_state.unlock_index[side])
-                    .filter(|&i| self.tech_state.acquirable(i, side, num_spells))
+                target_tech = [n_plus_3, n_plus_5]
+                    .into_iter()
+                    .filter_map(|i| Unit::from_index(i).ok())
+                    .map(Tech::UnitTech)
+                    .filter(|t| {
+                        self.tech_state
+                            .acquirable(*t, techline, side, num_buyable_spells)
+                    })
+                    .max();
+            } else {
+                // no techs: tech to the highest gettable tech
+                target_tech = techline
+                    .techs
+                    .iter()
+                    .filter(|t| {
+                        self.tech_state
+                            .acquirable(**t, techline, side, num_buyable_spells)
+                    })
+                    .copied()
                     .max();
             }
         }
 
-        let assignment = if let Some(idx) = target_tech_idx {
+        let assignment = if let Some(t) = target_tech {
+            let idx = techline.index_of(t);
             let num_advance = (idx as i32 - self.tech_state.unlock_index[side] as i32 + 1).max(0);
             TechAssignment::new(num_advance as usize, vec![idx])
         } else {
@@ -134,15 +129,9 @@ impl NodeState<TechAssignment> for GeneralNodeState {
         }
 
         let mut new_tech_state = self.tech_state.clone();
-        if new_tech_state
+        new_tech_state
             .assign_techs(assignment.clone(), side, techline)
-            .is_err()
-        {
-            return (
-                TechAssignment::new(0, vec![]),
-                Self::new(self.side, self.tech_state.clone(), SideArray::new(0, 0)),
-            );
-        }
+            .unwrap();
 
         let new_node_state = Self::new(!self.side, new_tech_state, new_delta_money);
 
