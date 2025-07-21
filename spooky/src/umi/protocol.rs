@@ -121,7 +121,7 @@ pub fn handle_command<'a>(cmd: &str, engine: &mut Engine<'a>) -> Result<Option<G
             let action_name = parts[1];
             let action_args = &parts[2..];
 
-            let action = GameAction::from_args(action_name, action_args)?;
+            let action = GameAction::try_from_args(action_name, action_args)?;
             engine.do_action(action)?;
             Ok(None)
         }

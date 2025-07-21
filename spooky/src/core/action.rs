@@ -6,16 +6,15 @@ use super::{
     tech::TechAssignment,
 };
 
-use anyhow::{bail, ensure, Result};
+use anyhow::{bail, ensure, Context, Result};
 use hashbag::HashBag;
 use std::fmt::Display;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GameAction {
     BuySpell(Spell),
-    AdvanceTech(usize),
-    AcquireTech(usize),
     GiveSpell(usize, Spell),
+    TechAction(TechAssignment),
     BoardSetupAction(usize, SetupAction),
     BoardAttackAction(usize, AttackAction),
     BoardSpawnAction(usize, SpawnAction),
@@ -48,11 +47,8 @@ impl GameTurn {
             GameAction::BuySpell(spell) => {
                 self.spells.insert(spell);
             }
-            GameAction::AdvanceTech(num_techs) => {
-                self.tech_assignment.advance(num_techs);
-            }
-            GameAction::AcquireTech(tech_index) => {
-                self.tech_assignment.acquire(tech_index);
+            GameAction::TechAction(tech_assignment) => {
+                self.tech_assignment = tech_assignment;
             }
             GameAction::GiveSpell(board_index, spell) => {
                 let k = self.spells.remove(&spell);
@@ -91,15 +87,11 @@ impl Display for GameTurn {
         out.push('\n');
 
         // Tech
-        if self.tech_assignment.advance_by > 0 {
-            out.push_str(&format!(
-                "action adv_tech {}\n",
-                self.tech_assignment.advance_by
-            ));
-        }
+        out.push_str(&format!("action tech {}", self.tech_assignment.advance_by));
         for &tech_idx in &self.tech_assignment.acquire {
-            out.push_str(&format!("action acq_tech {}\n", tech_idx));
+            out.push_str(&format!(" {}", tech_idx));
         }
+        out.push('\n');
 
         // Spell assignment
         for (i, &spell) in self.spell_assignment.iter().enumerate() {
@@ -127,22 +119,24 @@ impl Display for GameTurn {
 }
 
 impl GameAction {
-    pub fn from_args(action_name: &str, args: &[&str]) -> Result<Self> {
+    pub fn try_from_args(action_name: &str, args: &[&str]) -> Result<Self> {
         match action_name {
             "buy_spell" => {
                 ensure!(args.len() == 1, "buy_spell requires 1 argument");
                 let spell = args[0].parse()?;
                 Ok(GameAction::BuySpell(spell))
             }
-            "adv_tech" => {
-                ensure!(args.len() == 1, "adv_tech requires 1 argument");
-                let num_techs = args[0].parse()?;
-                Ok(GameAction::AdvanceTech(num_techs))
-            }
-            "acq_tech" => {
-                ensure!(args.len() == 1, "acq_tech requires 1 argument");
-                let tech_index = args[0].parse()?;
-                Ok(GameAction::AcquireTech(tech_index))
+            "tech" => {
+                ensure!(args.len() >= 1, "tech requires at least 1 argument");
+                let advance_by = args[0].parse()?;
+                let acquire = args[1..]
+                    .iter()
+                    .map(|s| s.parse().context("Invalid tech index"))
+                    .collect::<Result<Vec<_>>>()?;
+
+                Ok(GameAction::TechAction(TechAssignment::new(
+                    advance_by, acquire,
+                )))
             }
             "give_spell" => {
                 ensure!(args.len() == 2, "give_spell requires 2 arguments");

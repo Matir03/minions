@@ -110,7 +110,7 @@ impl Default for Techline {
 }
 
 // assignment of techs during a generaling phase
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TechAssignment {
     pub advance_by: usize,
     pub acquire: Vec<usize>,
@@ -215,80 +215,6 @@ impl TechState {
 
     pub fn can_buy(&self, side: Side, unit: Unit) -> bool {
         self.acquired_techs[side].contains(&Tech::UnitTech(unit))
-    }
-
-    pub fn to_fen(&self) -> String {
-        let mut fen = String::new();
-
-        for (i, side_techs) in self.status.iter().enumerate() {
-            if i > 0 {
-                fen.push('|');
-            }
-            for status in side_techs {
-                fen.push(match status {
-                    TechStatus::Locked => 'L',
-                    TechStatus::Unlocked => 'U',
-                    TechStatus::Acquired => 'A',
-                });
-            }
-        }
-
-        fen
-    }
-
-    pub fn from_fen(fen: &str, techline: &Techline) -> Result<Self> {
-        let mut state = Self::new();
-        let num_techs = techline.techs.len();
-
-        let side_strs = fen.split('|');
-
-        ensure!(side_strs.clone().count() == 2);
-        for (side_index, side_str) in side_strs.enumerate() {
-            ensure!(side_str.len() == num_techs);
-
-            let side = Side::from_index(side_index)?;
-            for (i, c) in side_str.chars().enumerate() {
-                state.status[side][i] = match c {
-                    'L' => {
-                        // Record the first 'L' as the unlock_index, but continue parsing to fill status array.
-                        // This might be refined later if multiple 'L's are disallowed or handled differently.
-                        if state.status[side]
-                            .iter()
-                            .take(i)
-                            .all(|s| *s != TechStatus::Locked)
-                        {
-                            // only set if this is the first L
-                            state.unlock_index[side] = i;
-                        }
-                        TechStatus::Locked
-                    }
-                    'U' => TechStatus::Unlocked,
-                    'A' => {
-                        state.acquired_techs[side].insert(techline[i]);
-                        TechStatus::Acquired
-                    }
-                    _ => bail!("Invalid tech status"),
-                };
-            }
-        }
-
-        state.unlock_index.values = state.status.values.map(|side_techs| {
-            side_techs
-                .iter()
-                .position(|&status| status == TechStatus::Locked)
-                .unwrap_or(num_techs)
-        });
-
-        state.acquired_techs.values = state.status.values.map(|side_techs| {
-            side_techs
-                .iter()
-                .enumerate()
-                .filter(|(_, &status)| status == TechStatus::Acquired)
-                .map(|(i, _)| techline[i])
-                .collect()
-        });
-
-        Ok(state)
     }
 }
 
