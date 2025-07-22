@@ -40,6 +40,11 @@ pub fn handle_command<'a>(cmd: &str, engine: &mut Engine<'a>) -> Result<Option<G
             engine.set_option(option_name, option_value)?;
             Ok(None)
         }
+        "config" if parts.len() >= 2 => {
+            let fen = parts[1..].join(" ");
+            let config = GameConfig::from_fen(&fen)?;
+            Ok(Some(config))
+        }
         "position" => {
             ensure!(
                 parts.len() >= 2,
@@ -50,11 +55,6 @@ pub fn handle_command<'a>(cmd: &str, engine: &mut Engine<'a>) -> Result<Option<G
                 "startpos" => {
                     engine.reset_game();
                     Ok(None)
-                }
-                "config" if parts.len() >= 3 => {
-                    let fen = parts[2..].join(" ");
-                    let config = GameConfig::from_fen(&fen)?;
-                    Ok(Some(config))
                 }
                 "fen" if parts.len() >= 3 => {
                     let fen = parts[2..].join(" ");

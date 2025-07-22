@@ -14,6 +14,8 @@ use super::{
 };
 use crate::core::convert::{FromIndex, ToIndex};
 
+const START_MONEY_PER_BOARD: i32 = 6;
+
 /// Static configuration for a Minions game
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GameConfig {
@@ -21,7 +23,6 @@ pub struct GameConfig {
     pub points_to_win: i32,
     pub maps: Vec<Map>,
     pub techline: Techline,
-    pub start_money: i32,
 }
 
 impl Default for GameConfig {
@@ -32,25 +33,17 @@ impl Default for GameConfig {
             points_to_win: 2,
             maps: vec![Map::BlackenedShores, Map::MidnightLake],
             techline: Techline::default(),
-            start_money: 12,
         }
     }
 }
 
 impl GameConfig {
-    pub fn new(
-        num_boards: usize,
-        points_to_win: i32,
-        maps: Vec<Map>,
-        techline: Techline,
-        start_money: i32,
-    ) -> Self {
+    pub fn new(num_boards: usize, points_to_win: i32, maps: Vec<Map>, techline: Techline) -> Self {
         Self {
             num_boards,
             points_to_win,
             maps,
             techline,
-            start_money,
         }
     }
 
@@ -60,112 +53,6 @@ impl GameConfig {
 
     pub fn spell_cost(&self) -> i32 {
         SPELL_COST * self.num_boards as i32
-    }
-
-    /// Convert config to FEN notation
-    pub fn to_fen(&self) -> Result<String> {
-        let mut fen = String::new();
-
-        fen.push_str(&self.num_boards.to_string());
-        fen.push(' ');
-        fen.push_str(&self.points_to_win.to_string());
-        fen.push(' ');
-
-        fen.push_str(
-            &self
-                .maps
-                .iter()
-                .map(|m| m.to_index())
-                .collect::<Result<Vec<_>>>()?
-                .iter()
-                .map(|i| i.to_string())
-                .collect::<Vec<_>>()
-                .join(","),
-        );
-        fen.push(' ');
-
-        fen.push_str(&self.techline.techs.len().to_string());
-        fen.push(' ');
-
-        fen.push_str(
-            &self
-                .techline
-                .techs
-                .iter()
-                .map(|t| t.to_index())
-                .collect::<Result<Vec<_>>>()?
-                .iter()
-                .map(|i| i.to_string())
-                .collect::<Vec<_>>()
-                .join(","),
-        );
-
-        Ok(fen)
-    }
-
-    /// Parse config from FEN notation
-    pub fn from_fen(fen: &str) -> Result<Self> {
-        let mut parts = fen.split_whitespace();
-
-        // Parse number of boards
-        let num_boards = parts
-            .next()
-            .context("Missing number of boards")?
-            .parse::<usize>()
-            .context("Invalid number of boards")?;
-
-        // Parse points to win
-        let points_to_win = parts
-            .next()
-            .context("Missing points to win")?
-            .parse::<i32>()
-            .context("Invalid points to win")?;
-
-        // Parse maps
-        let map_indices = parts
-            .next()
-            .context("Missing maps")?
-            .split(',')
-            .map(|s| s.parse::<usize>().context("Invalid map index"))
-            .collect::<Result<Vec<_>>>()?;
-
-        let maps = map_indices
-            .into_iter()
-            .map(Map::from_index)
-            .collect::<Result<Vec<_>>>()?;
-
-        // Parse techline length
-        let techline_len = parts
-            .next()
-            .context("Missing techline length")?
-            .parse::<usize>()
-            .context("Invalid techline length")?;
-
-        // Parse techline
-        let tech_indices = parts
-            .next()
-            .context("Missing techline")?
-            .split(',')
-            .map(|s| s.parse::<usize>().context("Invalid tech index"))
-            .collect::<Result<Vec<_>>>()?;
-
-        ensure!(
-            tech_indices.len() == techline_len,
-            "Invalid techline length"
-        );
-
-        let techs = tech_indices
-            .into_iter()
-            .map(Tech::from_index)
-            .collect::<Result<Vec<_>>>()?;
-
-        Ok(Self {
-            num_boards,
-            points_to_win,
-            maps,
-            techline: Techline { techs },
-            start_money: 12, // TODO: parse from FEN?
-        })
     }
 }
 
@@ -211,7 +98,6 @@ impl<'a> GameState<'a> {
                 Board::from_fen(Board::START_FEN, map).expect("Failed to create board from FEN")
             })
             .collect();
-        let start_money = config.start_money;
         Self {
             config,
             side_to_move: Side::Yellow,
@@ -219,7 +105,7 @@ impl<'a> GameState<'a> {
             boards,
             board_points: SideArray::new(0, 0),
             tech_state: TechState::new(),
-            money: SideArray::new(start_money, start_money),
+            money: SideArray::new(0, config.num_boards as i32 * START_MONEY_PER_BOARD),
             winner: None,
         }
     }
@@ -343,7 +229,7 @@ mod tests {
             1,
             boards,
             TechState::new(),
-            SideArray::new(config.start_money, config.start_money),
+            SideArray::new(0, config.num_boards as i32 * START_MONEY_PER_BOARD),
         );
 
         let state_fen = state.to_fen().unwrap();

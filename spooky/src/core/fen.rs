@@ -1,6 +1,6 @@
 use crate::core::convert::{FromIndex, ToIndex};
-use crate::core::tech::{TechState, TechStatus, Techline};
-use crate::core::{Board, GameConfig, GameState, Side, SideArray};
+use crate::core::tech::{Tech, TechState, TechStatus, Techline};
+use crate::core::{Board, GameConfig, GameState, Map, Side, SideArray, Unit};
 use anyhow::{anyhow, bail, ensure, Context, Result};
 
 impl<'a> GameState<'a> {
@@ -215,5 +215,114 @@ impl TechState {
         });
 
         Ok(state)
+    }
+}
+
+impl GameConfig {
+    /// Convert config to FEN notation
+    pub fn to_fen(&self) -> Result<String> {
+        let mut fen = String::new();
+
+        fen.push_str(&self.points_to_win.to_string());
+        fen.push(' ');
+
+        fen.push_str(
+            &self
+                .maps
+                .iter()
+                .map(|m| m.to_fen())
+                .collect::<Result<Vec<_>>>()?
+                .join(","),
+        );
+        fen.push(' ');
+
+        fen.push_str(
+            &self
+                .techline
+                .techs
+                .iter()
+                .map(|t| t.to_fen())
+                .collect::<Result<Vec<_>>>()?
+                .join(","),
+        );
+
+        Ok(fen)
+    }
+
+    /// Parse config from FEN notation
+    pub fn from_fen(fen: &str) -> Result<Self> {
+        let mut parts = fen.split_whitespace();
+
+        // Parse points to win
+        let points_to_win = parts
+            .next()
+            .context("Missing points to win")?
+            .parse::<i32>()
+            .context("Invalid points to win")?;
+
+        // Parse maps
+        let maps = parts
+            .next()
+            .context("Missing maps")?
+            .split(',')
+            .map(Map::from_fen)
+            .collect::<Result<Vec<_>>>()?;
+
+        // Parse techline
+        let techs = parts
+            .next()
+            .context("Missing techline")?
+            .split(',')
+            .map(Tech::from_fen)
+            .collect::<Result<Vec<_>>>()?;
+
+        Ok(Self {
+            num_boards: maps.len(),
+            points_to_win,
+            maps,
+            techline: Techline { techs },
+        })
+    }
+}
+
+impl Map {
+    pub fn to_fen(&self) -> Result<String> {
+        match self {
+            Map::AllLand => Ok("AllLand".to_string()),
+            Map::BlackenedShores => Ok("BlackenedShores".to_string()),
+            Map::MidnightLake => Ok("MidnightLake".to_string()),
+        }
+    }
+
+    pub fn from_fen(fen: &str) -> Result<Self> {
+        match fen {
+            "AllLand" => Ok(Map::AllLand),
+            "BlackenedShores" => Ok(Map::BlackenedShores),
+            "MidnightLake" => Ok(Map::MidnightLake),
+            _ => bail!("Invalid map"),
+        }
+    }
+}
+
+impl Tech {
+    pub fn to_fen(&self) -> Result<String> {
+        match self {
+            Tech::Copycat => Ok("1".to_string()),
+            Tech::Thaumaturgy => Ok("2".to_string()),
+            Tech::Metamagic => Ok("3".to_string()),
+            Tech::UnitTech(unit) => Ok(unit.to_fen_char().to_string()),
+        }
+    }
+
+    pub fn from_fen(fen: &str) -> Result<Self> {
+        let c = fen.chars().next().context("Invalid tech")?;
+        let tech = match c {
+            '1' => Self::Copycat,
+            '2' => Self::Thaumaturgy,
+            '3' => Self::Metamagic,
+            _ => Self::UnitTech(Unit::from_fen_char(c).context("Invalid tech")?),
+        };
+
+        Ok(tech)
     }
 }
