@@ -83,7 +83,7 @@ impl NodeState<TechAssignment> for GeneralNodeState {
                 let n_plus_5 = our_highest_tech_idx + 5;
                 target_tech = [n_plus_3, n_plus_5]
                     .into_iter()
-                    .filter_map(|i| Unit::from_index(i).ok())
+                    .filter_map(|i| Unit::from_index(i as usize).ok())
                     .map(Tech::UnitTech)
                     .filter(|t| {
                         self.tech_state

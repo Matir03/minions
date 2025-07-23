@@ -165,7 +165,12 @@ impl TechState {
         side: Side,
         num_buyable_spells: i32,
     ) -> bool {
-        let tech_index = techline.techs.iter().position(|&t| t == tech).unwrap();
+        let maybe_tech_index = techline.techs.iter().position(|&t| t == tech);
+
+        let tech_index = match maybe_tech_index {
+            Some(i) => i,
+            None => return false,
+        };
 
         if self.status[side][tech_index] == TechStatus::Acquired
             || self.status[!side][tech_index] == TechStatus::Acquired
