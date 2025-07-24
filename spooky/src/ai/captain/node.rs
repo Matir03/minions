@@ -286,7 +286,7 @@ impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
         let (spawn_actions, money_after_spawn) = run_timed(
             "Spawn phase",
             || {
-                if new_board.state.phases().contains(&Phase::Spawn) {
+                if new_board.state.phases().contains(&Phase::Spawn) && new_board.winner.is_none() {
                     let spawn_actions = generate_heuristic_spawn_actions(
                         &new_board,
                         self.side_to_move,

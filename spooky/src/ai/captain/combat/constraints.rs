@@ -671,6 +671,10 @@ pub fn generate_move_from_sat_model<'ctx>(
 
                     if defender_damage[defender] >= defender_stats.defense {
                         defenders_dead.insert(*defender);
+                        if defender_stats.necromancer {
+                            // no actions after killing necromancer
+                            return actions;
+                        }
                         break;
                     }
                 }
