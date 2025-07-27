@@ -220,23 +220,7 @@ impl<'a> Board<'a> {
 
         match action {
             AttackAction::Move { from_loc, to_loc } => {
-                let piece = self.get_piece(&from_loc).context("No piece to move")?;
-                if piece.side != side {
-                    bail!("Cannot move opponent's piece");
-                }
-                if !piece.state.can_move() {
-                    bail!("Piece has already moved or is exhausted");
-                }
-                if self.get_piece(&to_loc).is_ok() {
-                    bail!(format!("Destination square is occupied: {}", action));
-                }
-
-                let mut piece_to_move = self
-                    .remove_piece(&from_loc)
-                    .expect("Piece should exist here");
-                piece_to_move.state.moved = true;
-                piece_to_move.loc = to_loc;
-                self.add_piece(piece_to_move);
+                self.move_piece(side, &from_loc, &to_loc)?;
 
                 Ok(0)
             }

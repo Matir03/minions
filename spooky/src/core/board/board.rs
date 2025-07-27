@@ -88,13 +88,6 @@ impl<'a> Board<'a> {
         Ok(())
     }
 
-    pub fn move_piece(&mut self, mut piece: Piece, to_loc: &Loc) {
-        self.remove_piece(&piece.loc);
-        piece.loc = *to_loc;
-        piece.state.moved = true;
-        self.add_piece(piece);
-    }
-
     // returns (removed, bounce)
     fn try_attack(
         &mut self,
@@ -176,31 +169,51 @@ impl<'a> Board<'a> {
         Ok((remove, bounce))
     }
 
-    pub fn path(&self, from: Loc, to: Loc) -> Result<Vec<Loc>> {
-        let delta = &to - &from;
-        let dist = from.dist(&to);
+    pub fn verify_path(&self, piece: &Piece, to: &Loc) -> Result<()> {
+        let speed = piece.unit.stats().speed;
+        let from = &piece.loc;
+        let delta = to - from;
 
-        if dist == 0 {
-            return Ok(vec![from]);
-        }
+        let paths = PATH_MAPS[speed as usize].get(&delta).context(format!(
+            "location {} too far for piece {} at {}",
+            to, piece, from
+        ))?;
 
-        if dist as usize >= PATH_MAPS.len() {
-            bail!("No path found for distance {}", dist);
-        }
+        for path in paths {
+            let path_valid = path.iter().all(|delta| {
+                let loc = from + delta;
+                self.can_pass_through(piece, loc)
+            });
 
-        if let Some(paths) = PATH_MAPS[dist as usize].get(&delta) {
-            if let Some(path_deltas) = paths.get(0) {
-                let mut result_path = vec![from];
-                let mut current = from;
-                for d in path_deltas {
-                    current = &current + d;
-                    result_path.push(current);
-                }
-                return Ok(result_path);
+            if path_valid {
+                return Ok(());
             }
         }
 
-        bail!("No path found for delta {:?}", delta)
+        Err(anyhow!(
+            "No valid path found for piece {} from {} to {}",
+            piece,
+            from,
+            to
+        ))
+    }
+
+    pub fn can_pass_through(&self, piece: &Piece, loc: Loc) -> bool {
+        let terrain_ok = match self.map.get_terrain(&loc) {
+            Some(t) => t.allows(&piece.unit),
+            None => true,
+        };
+
+        if !terrain_ok {
+            return false;
+        }
+
+        let other = match self.get_piece(&loc) {
+            Ok(p) => p,
+            Err(_) => return true,
+        };
+
+        other.side == piece.side || piece.unit.stats().flying
     }
 
     pub fn spawn_piece(&mut self, side: Side, loc: Loc, unit: Unit) -> Result<()> {
@@ -211,6 +224,33 @@ impl<'a> Board<'a> {
         let mut piece = Piece::new(unit, side, loc);
         piece.state = PieceState::spawned();
         self.add_piece(piece);
+        Ok(())
+    }
+
+    pub fn check_valid_move(&self, side: Side, from: &Loc, to: &Loc) -> Result<()> {
+        let piece = self.get_piece(from)?;
+        ensure!(piece.side == side, "Cannot move opponent's piece");
+        ensure!(
+            piece.state.can_move(),
+            "Piece has already moved or is exhausted"
+        );
+        ensure!(
+            self.get_piece(to).is_err(),
+            "Destination square is occupied"
+        );
+
+        self.verify_path(piece, to)
+    }
+
+    pub fn move_piece(&mut self, side: Side, from: &Loc, to: &Loc) -> Result<()> {
+        self.check_valid_move(side, from, to)?;
+
+        let mut piece = self.remove_piece(from).unwrap();
+
+        piece.loc = *to;
+        piece.state.moved = true;
+        self.add_piece(piece);
+
         Ok(())
     }
 
@@ -227,11 +267,7 @@ impl<'a> Board<'a> {
                 "Piece in cycle has already moved or is exhausted"
             );
 
-            let dist = self.path(from, to).context("No path for cycle move")?.len() as i32 - 1;
-            ensure!(
-                dist <= piece.unit.stats().speed,
-                "Move distance exceeds piece speed in cycle"
-            );
+            self.verify_path(piece, &to)?;
         }
 
         Ok(())
