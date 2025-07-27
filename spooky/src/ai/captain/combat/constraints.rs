@@ -54,6 +54,7 @@ pub struct SatVariables<'ctx> {
 
     // Movement variables for friendly units that need to move out of the way
     // Only included post hoc for friendly units whose movements end up being relevant to combat
+    // includes passive attackers that need to move out of the way
     pub move_hex: HashMap<Loc, Z3Loc<'ctx>>, // what hex friendly unit is moving to
     pub move_time: HashMap<Loc, Z3Time<'ctx>>, // when the friendly unit moves
 
@@ -168,7 +169,7 @@ impl<'ctx> SatVariables<'ctx> {
             Z3Time::new_const(ctx, format!("move_time_{}", loc), BV_TIME_SIZE),
         );
 
-        if blink {
+        if blink && !self.blink.contains_key(&loc) {
             self.blink
                 .insert(loc, Bool::new_const(ctx, format!("blink_{}", loc)));
         }
@@ -299,6 +300,7 @@ impl<'ctx> ConstraintManager<'ctx> {
                 }
             }
 
+            // Path constraints
             for attack_hex in valid_attack_hexes {
                 let dnf = &self.graph.move_hex_map[attacker][&attack_hex];
 
@@ -515,7 +517,7 @@ impl<'ctx> ConstraintManager<'ctx> {
     }
 
     pub fn untouched(&self, loc: &Loc) -> bool {
-        !self.variables.move_hex.contains_key(loc) && !self.graph.attackers.contains(loc)
+        !self.variables.move_hex.contains_key(loc) // && !self.graph.attackers.contains(loc)
     }
 
     pub fn untouched_friendly_units(&self) -> HashSet<Loc> {

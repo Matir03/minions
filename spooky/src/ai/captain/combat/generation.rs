@@ -40,11 +40,8 @@ impl CombatGenerationSystem {
             .collect::<Vec<_>>();
 
         let mut constraint_set = constraints.iter().cloned().collect::<HashSet<_>>();
-        let mut n = 0;
 
-        for i in 0.. {
-            n = i;
-
+        loop {
             let cur_constraints = constraint_set.iter().cloned().collect::<Vec<_>>();
             let is_sat = manager.solver.check_assumptions(&cur_constraints);
 
@@ -60,7 +57,7 @@ impl CombatGenerationSystem {
                         .iter()
                         .rev()
                         .find(|c| unsat_core_set.contains(c))
-                        .unwrap();
+                        .context("unsat without a bad constraint")?;
 
                     constraint_set.remove(bad_constraint);
                 }
@@ -81,13 +78,17 @@ impl CombatGenerationSystem {
 
         self.death_prophet.receive_feedback(active_constraints);
 
+        for constraint in constraint_set {
+            manager.solver.assert(&constraint);
+        }
+
         Ok(())
     }
 
     /// Create a Z3 constraint for a removal assumption
     fn create_assumption_constraint<'ctx>(
         &self,
-        variables: &'ctx SatVariables<'ctx>,
+        variables: &SatVariables<'ctx>,
         assumption: &RemovalAssumption,
         ctx: &'ctx z3::Context,
     ) -> Bool<'ctx> {

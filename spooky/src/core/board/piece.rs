@@ -19,7 +19,7 @@ pub struct PieceState {
 
 impl PieceState {
     pub fn can_move(&self) -> bool {
-        !self.moved && !self.exhausted
+        !self.moved && !self.exhausted && self.attacks_used == 0
     }
 
     pub fn can_attack(&self) -> bool {

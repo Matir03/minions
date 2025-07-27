@@ -92,8 +92,8 @@ impl SatPositioningSystem {
 
     /// Stage 1: Combat reconciliation - ensuring friendly pieces in the way of attacking pieces can get out of the way
     /// returns whether the attack is at all possible
-    /// if it is, it will return true and the solver will be in a state where the attack can be positioned
-    /// if it is not, it will return false and the caller can try a different attack
+    /// if it is, it will return None and the solver will be in a state where the attack can be positioned
+    /// if it is not, it will return Some(constraints) and the caller can try a different attack
     pub fn combat_reconciliation<'ctx>(
         &self,
         manager: &mut ConstraintManager<'ctx>,
@@ -121,10 +121,10 @@ impl SatPositioningSystem {
                 }
             };
 
-            // Compute the untouched friendly units and the overlapping units
+            // Compute the overlapping units
             let untouched_friendly_units = manager.untouched_friendly_units();
             let overlapping_units =
-                self.compute_overlapping_units(manager, &model, &untouched_friendly_units);
+                self.compute_overlapping_units(manager, &untouched_friendly_units, &model);
 
             if overlapping_units.is_empty() {
                 // No conflicts, proceed to attack positioning
@@ -144,7 +144,6 @@ impl SatPositioningSystem {
                 manager,
                 &untouched_friendly_units,
                 &overlapping_units,
-                board,
             );
             // check the strong assumptions
             let is_sat = manager.solver.check_assumptions(&strong_move_assumptions);
@@ -155,7 +154,7 @@ impl SatPositioningSystem {
                     break;
                 }
                 z3::SatResult::Unsat => {
-                    // we need to resolve the potential conflicts that will be caused by the weaker assumptions
+                    // we need to resolve the potential conflicts
                     continue;
                 }
                 z3::SatResult::Unknown => {
@@ -170,12 +169,12 @@ impl SatPositioningSystem {
         Ok(None)
     }
 
-    /// Collect overlapping units data without borrowing solver mutably
+    /// Compute overlapping units
     fn compute_overlapping_units<'ctx>(
         &self,
         manager: &ConstraintManager<'ctx>,
-        model: &z3::Model<'ctx>,
         untouched_friendly_units: &HashSet<Loc>,
+        model: &z3::Model<'ctx>,
     ) -> Vec<Loc> {
         let mut overlapping_units = Vec::new();
 
@@ -192,8 +191,21 @@ impl SatPositioningSystem {
             let hex_val = model.eval(attack_hex_var, true).unwrap().as_u64().unwrap();
             let attack_hex = Loc::from_z3(hex_val);
 
-            if untouched_friendly_units.contains(&attack_hex) {
-                overlapping_units.push(*attacker);
+            let is_overlapping = if manager.graph.attackers.contains(&attack_hex) {
+                let other_attacker_passive_var = &manager.variables.passive[&attack_hex];
+                let other_is_passive = model
+                    .eval(other_attacker_passive_var, true)
+                    .unwrap()
+                    .as_bool()
+                    .unwrap();
+
+                other_is_passive
+            } else {
+                true
+            };
+
+            if is_overlapping && untouched_friendly_units.contains(&attack_hex) {
+                overlapping_units.push(attack_hex);
             }
         }
 
@@ -206,7 +218,6 @@ impl SatPositioningSystem {
         manager: &ConstraintManager<'ctx>,
         untouched_friendly_units: &HashSet<Loc>,
         overlapping_units: &[Loc],
-        board: &Board,
     ) -> Vec<Bool<'ctx>> {
         let mut assumptions = Vec::new();
 
@@ -259,6 +270,18 @@ impl SatPositioningSystem {
         let move_hex_var = &manager.variables.move_hex[&friend];
         let friend_move = manager.variables.friend_move(&friend);
 
+        // non-passive attackers should have move = attack_move
+        if manager.variables.attack_hex.contains_key(&friend) {
+            let attack_hex_var = &manager.variables.attack_hex[&friend];
+            let passive_var = &manager.variables.passive[&friend];
+            let same_hex = move_hex_var._eq(attack_hex_var);
+            let same_time =
+                manager.variables.move_time[&friend]._eq(&manager.variables.attack_time[&friend]);
+            let constraint = passive_var.implies(&Bool::and(manager.ctx, &[&same_hex, &same_time]));
+            manager.solver.assert(&constraint);
+            constraints.push(constraint);
+        }
+
         // Cannot be the same as the attack_hex of any non-passive attacker unless one of the pieces is blinking
         for attacker in &manager.graph.attackers {
             if attacker == &friend {
@@ -298,9 +321,9 @@ impl SatPositioningSystem {
         constraints.push(theoretical_hex_constraint);
 
         // add DNF constraints on the move
-        for attack_hex in theoretical_move_hexes {
-            let dnf = &manager.graph.move_hex_map[&friend][&attack_hex];
-            let condition = move_hex_var._eq(&attack_hex.as_z3(manager.ctx));
+        for move_hex in theoretical_move_hexes {
+            let dnf = &manager.graph.move_hex_map[&friend][&move_hex];
+            let condition = move_hex_var._eq(&move_hex.as_z3(manager.ctx));
 
             if let Some(dnf) = dnf {
                 let path_constraint = manager.create_dnf_constraint(
@@ -342,8 +365,8 @@ impl SatPositioningSystem {
         // Iterate through the filtered list
         let mut i = 0;
         while i < combat_relevant_moves.len() {
-            let candidate = &combat_relevant_moves[i];
             i += 1;
+            let candidate = &combat_relevant_moves[i - 1];
 
             if allocated_pieces.contains(&candidate.from_loc()) {
                 continue;
@@ -378,8 +401,8 @@ impl SatPositioningSystem {
                     manager.solver.pop(1);
                 }
                 z3::SatResult::Unknown => {
-                    manager.solver.pop(1);
-                    bail!(
+                    // This should never happen
+                    panic!(
                         "Unknown result from SAT solver: {:?}",
                         manager.solver.get_reason_unknown().unwrap()
                     );
@@ -391,6 +414,7 @@ impl SatPositioningSystem {
     }
 
     /// Generate all possible moves with affinity values based on proximity to enemy graveyards
+    /// TODO: move this to death prophet
     pub fn generate_move_candidates(
         &self,
         rng: &mut impl Rng,
@@ -637,15 +661,11 @@ impl SatPositioningSystem {
         board: &Board,
         move_candidates: &[MoveCandidate],
     ) -> HashMap<Loc, Option<Loc>> {
-        let mut yet_to_move: HashSet<Loc> = manager
-            .graph
-            .friends
+        let mut yet_to_move: HashSet<Loc> = board
+            .pieces
             .iter()
-            .filter(|loc| {
-                !manager.variables.move_hex.contains_key(loc)
-                    && !manager.graph.attackers.contains(loc)
-            })
-            .cloned()
+            .filter(|(loc, piece)| piece.state.can_move() && manager.graph.friends.contains(loc))
+            .map(|(loc, _)| *loc)
             .collect();
 
         let to_be_processed: Vec<MoveCandidate> = move_candidates
@@ -656,7 +676,14 @@ impl SatPositioningSystem {
                     && match candidate {
                         MoveCandidate::Move { to_loc, .. } => {
                             // to a valid destination
-                            !board.pieces.contains_key(&to_loc) || yet_to_move.contains(&to_loc)
+                            board
+                                .verify_path(
+                                    &board.get_piece(&candidate.from_loc()).unwrap(),
+                                    to_loc,
+                                )
+                                .is_ok()
+                                && (yet_to_move.contains(&to_loc)
+                                    || !board.pieces.contains_key(&to_loc))
                         }
                         MoveCandidate::Blink { .. } => true,
                     }
