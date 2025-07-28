@@ -69,7 +69,7 @@ pub struct Board<'a> {
 // impl<'a> Eq for Board<'a> {}
 
 impl<'a> Board<'a> {
-    pub const START_FEN: &'static str = "0/2ZZ6/1ZNZ6/1ZZ7/0/0/7zz1/6znz1/6zz2/0";
+    pub const START_FEN: &'static str = "f|I|i|||0/2ZZ6/1ZNZ6/1ZZ7/0/0/7zz1/6znz1/6zz2/0";
     pub const NECROMANCER_START_LOC: SideArray<Loc> = SideArray {
         values: [Loc { x: 2, y: 2 }, Loc { x: 7, y: 7 }],
     };

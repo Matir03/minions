@@ -116,13 +116,9 @@ impl<'a> Board<'a> {
             board.spells[Side::Blue] = spells_from_fen(blue_spells)?;
 
             position
-        } else if components.len() == 1 {
-            // Old format: just the position
-            // Keep default values for state, reinforcements, and spells
-            fen
         } else {
             bail!(
-                "Invalid FEN format: expected 1 or 6 components separated by '|', got {}",
+                "Invalid FEN format: expected 6 components separated by '|', got {}",
                 components.len()
             );
         };
