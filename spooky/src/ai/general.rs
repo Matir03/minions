@@ -66,7 +66,6 @@ impl NodeState<TechAssignment> for GeneralNodeState {
         if let Some(enemy_tech) = highest_uncountered_enemy_tech {
             // Prioritize countering the highest uncountered enemy unit.
             let counters = enemy_tech.counters();
-            println!("counters: {:?}", counters);
             target_tech = counters
                 .into_iter()
                 .filter(|&t| {
@@ -74,14 +73,13 @@ impl NodeState<TechAssignment> for GeneralNodeState {
                         .acquirable(t, techline, side, num_buyable_spells)
                 })
                 .max();
-            println!("target_tech: {:?}", target_tech);
         } else {
             // If all enemy units are countered, press the advantage.
             if let Some(&our_highest_tech) = our_techs.iter().max() {
                 let our_highest_tech_idx = our_highest_tech.to_index().unwrap();
                 let n_plus_3 = our_highest_tech_idx + 3;
-                let n_plus_5 = our_highest_tech_idx + 5;
-                target_tech = [n_plus_3, n_plus_5]
+                let n_plus_6 = our_highest_tech_idx + 6;
+                target_tech = [n_plus_3, n_plus_6]
                     .into_iter()
                     .filter_map(|i| Unit::from_index(i as usize).ok())
                     .map(Tech::UnitTech)
