@@ -3,7 +3,9 @@ use crate::core::{
     loc::Loc,
     side::Side,
     spells::{Spell, SpellCast},
+    tech::TechState,
     units::Unit,
+    Tech,
 };
 use anyhow::{bail, ensure, Context, Result};
 use std::fmt::Display;
@@ -280,6 +282,7 @@ impl<'a> Board<'a> {
         &mut self,
         side: Side,
         money: &mut i32,
+        techs: &TechState,
         action: SpawnAction,
     ) -> Result<()> {
         ensure!(
@@ -292,6 +295,12 @@ impl<'a> Board<'a> {
                 let cost = unit.stats().cost;
                 if *money < cost {
                     bail!("Not enough money to buy unit");
+                }
+
+                if !techs.acquired_techs[side].contains(&Tech::UnitTech(unit))
+                    && !Unit::BASIC_UNITS.contains(&unit)
+                {
+                    bail!("Unit not unlocked");
                 }
                 *money -= cost;
                 self.reinforcements[side].insert(unit);
@@ -328,10 +337,11 @@ impl<'a> Board<'a> {
         side: Side,
         money: i32,
         spawn_actions: &[SpawnAction],
+        tech_state: &TechState,
     ) -> Result<i32> {
         let mut money = money;
         for action in spawn_actions {
-            self.do_spawn_action(side, &mut money, action.clone())?;
+            self.do_spawn_action(side, &mut money, tech_state, action.clone())?;
         }
         Ok(money)
     }
@@ -342,6 +352,7 @@ impl<'a> Board<'a> {
         side: Side,
         board_turn: BoardTurn,
         money: i32,
+        tech_state: &TechState,
     ) -> Result<(i32, i32)> {
         if self.state.phases().contains(&Phase::Setup) {
             ensure!(board_turn.setup_action.is_some(), "Setup action required");
@@ -354,7 +365,7 @@ impl<'a> Board<'a> {
         }
 
         let rebate = self.do_attacks(side, &board_turn.attack_actions)?;
-        let money = self.do_spawns(side, money, &board_turn.spawn_actions)?;
+        let money = self.do_spawns(side, money, &board_turn.spawn_actions, &tech_state)?;
 
         Ok((money, rebate))
     }

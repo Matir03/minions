@@ -48,7 +48,7 @@ impl Tech {
 impl FromIndex for Tech {
     fn from_index(idx: usize) -> Result<Self> {
         Ok(match idx {
-            1..=23 => Tech::UnitTech(Unit::from_index(idx)?),
+            1..=23 => Tech::UnitTech(Unit::from_index(idx + 1)?),
             24 => Tech::Copycat,
             25 => Tech::Thaumaturgy,
             26 => Tech::Metamagic,
@@ -60,14 +60,14 @@ impl FromIndex for Tech {
 impl ToIndex for Tech {
     fn to_index(&self) -> Result<usize> {
         Ok(match self {
-            Tech::Copycat => 24,
-            Tech::Thaumaturgy => 25,
-            Tech::Metamagic => 26,
-            Tech::UnitTech(unit) => unit.to_index()?,
+            Tech::Copycat => 23,
+            Tech::Thaumaturgy => 24,
+            Tech::Metamagic => 25,
+            Tech::UnitTech(unit) => unit.to_index()? - 1,
         })
     }
 }
-pub const NUM_TECHS: usize = 26;
+pub const NUM_TECHS: usize = 25;
 
 /// Represents the tech tree structure
 #[derive(Debug, Clone, PartialEq, Eq)]

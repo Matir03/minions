@@ -85,6 +85,7 @@ pub enum Unit {
 
 impl Unit {
     pub const NUM_UNITS: usize = 33;
+    pub const BASIC_UNITS: [Unit; 2] = [Unit::Zombie, Unit::Initiate];
     /// Convert a unit label to its FEN character representation
     pub fn to_fen_char(self) -> char {
         match self {

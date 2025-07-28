@@ -174,8 +174,12 @@ impl<'a> GameState<'a> {
 
         for (board_idx, board_turn) in turn.board_turns.into_iter().enumerate() {
             let board = &mut self.boards[board_idx];
-            let (money, rebate) =
-                board.take_turn(self.side_to_move, board_turn, self.money[self.side_to_move])?;
+            let (money, rebate) = board.take_turn(
+                self.side_to_move,
+                board_turn,
+                self.money[self.side_to_move],
+                &self.tech_state,
+            )?;
             self.money[self.side_to_move] = money;
             self.money[!self.side_to_move] += rebate;
         }

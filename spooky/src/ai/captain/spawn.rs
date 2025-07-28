@@ -91,7 +91,7 @@ fn purchase_heuristic(
                 None
             }
         })
-        .chain(std::iter::once(Unit::Zombie))
+        .chain([Unit::Zombie, Unit::Initiate].into_iter())
         .collect();
 
     let mut units_with_weights = available_units

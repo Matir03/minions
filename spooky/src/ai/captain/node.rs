@@ -295,7 +295,7 @@ impl<'a> NodeState<BoardTurn> for BoardNodeState<'a> {
                         rng,
                     );
                     let money_after_spawn = new_board
-                        .do_spawns(self.side_to_move, money, &spawn_actions)
+                        .do_spawns(self.side_to_move, money, &spawn_actions, &tech_state)
                         .unwrap();
                     (spawn_actions, money_after_spawn)
                 } else {
