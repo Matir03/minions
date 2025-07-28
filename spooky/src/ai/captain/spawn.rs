@@ -23,11 +23,13 @@ pub fn generate_heuristic_spawn_actions(
     let mut actions = Vec::new();
 
     // Part 1: Decide what to buy and create `Buy` actions
+    println!("applying purchase heuristic");
     let units_to_buy = purchase_heuristic(side, tech_state, money, rng);
     for &unit in &units_to_buy {
         money -= unit.stats().cost;
         actions.push(SpawnAction::Buy { unit });
     }
+    println!("bought {} units", units_to_buy.len());
 
     // Part 2: Decide what to spawn from all available reinforcements (original + newly bought)
     let mut all_units_to_potentially_spawn = board.reinforcements[side].clone();
@@ -91,7 +93,7 @@ fn purchase_heuristic(
                 None
             }
         })
-        .chain([Unit::Zombie, Unit::Initiate].into_iter())
+        .chain(Unit::BASIC_UNITS.into_iter())
         .collect();
 
     let mut units_with_weights = available_units
@@ -102,6 +104,12 @@ fn purchase_heuristic(
     let mut units_to_buy = Vec::new();
 
     loop {
+        println!(
+            "available units: {:?}; money: {}; units_to_buy: {}",
+            units_with_weights,
+            money,
+            units_to_buy.len()
+        );
         units_with_weights = units_with_weights
             .into_iter()
             .filter(|(u, _)| money >= u.stats().cost)

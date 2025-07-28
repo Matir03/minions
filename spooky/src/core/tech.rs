@@ -48,10 +48,10 @@ impl Tech {
 impl FromIndex for Tech {
     fn from_index(idx: usize) -> Result<Self> {
         Ok(match idx {
-            1..=23 => Tech::UnitTech(Unit::from_index(idx + 1)?),
-            24 => Tech::Copycat,
-            25 => Tech::Thaumaturgy,
-            26 => Tech::Metamagic,
+            1..=22 => Tech::UnitTech(Unit::from_index(idx + Unit::BASIC_UNITS.len() - 1)?),
+            23 => Tech::Copycat,
+            24 => Tech::Thaumaturgy,
+            25 => Tech::Metamagic,
             _ => bail!("Invalid tech index: {}", idx),
         })
     }
@@ -63,7 +63,7 @@ impl ToIndex for Tech {
             Tech::Copycat => 23,
             Tech::Thaumaturgy => 24,
             Tech::Metamagic => 25,
-            Tech::UnitTech(unit) => unit.to_index()? - 1,
+            Tech::UnitTech(unit) => unit.to_index()? - Unit::BASIC_UNITS.len() + 1,
         })
     }
 }
