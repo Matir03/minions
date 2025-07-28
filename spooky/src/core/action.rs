@@ -11,13 +11,37 @@ use hashbag::HashBag;
 use std::fmt::Display;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BoardAction {
+    Setup(SetupAction),
+    Attack(AttackAction),
+    Spawn(SpawnAction),
+}
+
+impl BoardAction {
+    pub fn from_args(action_name: &str, args: &[&str]) -> Result<Self> {
+        let setup_action = SetupAction::from_args(action_name, args);
+        if setup_action.is_ok() {
+            return Ok(BoardAction::Setup(setup_action?));
+        }
+        let attack_action = AttackAction::from_args(action_name, args);
+        if attack_action.is_ok() {
+            return Ok(BoardAction::Attack(attack_action?));
+        }
+        let spawn_action = SpawnAction::from_args(action_name, args);
+        if spawn_action.is_ok() {
+            return Ok(BoardAction::Spawn(spawn_action?));
+        }
+
+        bail!("Unknown board action: {}", action_name)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum GameAction {
     BuySpell(Spell),
     GiveSpell(usize, Spell),
     TechAction(TechAssignment),
-    BoardSetupAction(usize, SetupAction),
-    BoardAttackAction(usize, AttackAction),
-    BoardSpawnAction(usize, SpawnAction),
+    BoardAction(usize, BoardAction),
 }
 
 /// Represents a complete turn in the game
@@ -57,15 +81,17 @@ impl GameTurn {
                 }
                 self.spell_assignment[board_index] = spell;
             }
-            GameAction::BoardSetupAction(board_index, action) => {
-                self.board_turns[board_index].setup_action = Some(action);
-            }
-            GameAction::BoardAttackAction(board_index, action) => {
-                self.board_turns[board_index].attack_actions.push(action);
-            }
-            GameAction::BoardSpawnAction(board_index, action) => {
-                self.board_turns[board_index].spawn_actions.push(action);
-            }
+            GameAction::BoardAction(board_index, action) => match action {
+                BoardAction::Setup(action) => {
+                    self.board_turns[board_index].setup_action = Some(action);
+                }
+                BoardAction::Attack(action) => {
+                    self.board_turns[board_index].attack_actions.push(action);
+                }
+                BoardAction::Spawn(action) => {
+                    self.board_turns[board_index].spawn_actions.push(action);
+                }
+            },
         }
 
         Ok(())
@@ -103,13 +129,13 @@ impl Display for GameTurn {
         // Board turns
         for (i, board_turn) in self.board_turns.iter().enumerate() {
             if let Some(action) = &board_turn.setup_action {
-                out.push_str(&format!("action b_setup {} {}\n", i, action));
+                out.push_str(&format!("action board {} {}\n", i, action));
             }
             for action in &board_turn.attack_actions {
-                out.push_str(&format!("action b_attack {} {}\n", i, action));
+                out.push_str(&format!("action board {} {}\n", i, action));
             }
             for action in &board_turn.spawn_actions {
-                out.push_str(&format!("action b_spawn {} {}\n", i, action));
+                out.push_str(&format!("action board {} {}\n", i, action));
             }
         }
 
@@ -144,32 +170,16 @@ impl GameAction {
                 let spell = args[1].parse()?;
                 Ok(GameAction::GiveSpell(board_index, spell))
             }
-            "b_setup" => {
+            "board" => {
                 ensure!(
-                    args.len() >= 2,
-                    "board setup action requires at least 2 arguments"
+                    args.len() >= 3,
+                    "board action requires at least 3 arguments"
                 );
                 let board_index = args[0].parse()?;
-                let action = SetupAction::from_args(args[1], &args[2..])?;
-                Ok(GameAction::BoardSetupAction(board_index, action))
-            }
-            "b_attack" => {
-                ensure!(
-                    args.len() >= 2,
-                    "board attack action requires at least 2 arguments"
-                );
-                let board_index = args[0].parse()?;
-                let action = AttackAction::from_args(args[1], &args[2..])?;
-                Ok(GameAction::BoardAttackAction(board_index, action))
-            }
-            "b_spawn" => {
-                ensure!(
-                    args.len() >= 2,
-                    "board spawn action requires at least 2 arguments"
-                );
-                let board_index = args[0].parse()?;
-                let action = SpawnAction::from_args(args[1], &args[2..])?;
-                Ok(GameAction::BoardSpawnAction(board_index, action))
+                let action_name = args[1];
+                let action_args = &args[2..];
+                let action = BoardAction::from_args(action_name, action_args)?;
+                Ok(GameAction::BoardAction(board_index, action))
             }
             _ => bail!("Unknown game action: {}", action_name),
         }
