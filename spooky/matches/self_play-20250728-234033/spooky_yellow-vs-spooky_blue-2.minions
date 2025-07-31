@@ -1,0 +1,1101 @@
+turn [info eval winprob 0.5199894] [info nps 72.31058495358457 nodes 1 time 0.013829234]
+action tech 1
+action board 0 move d1e1
+action board 0 move b3a4
+action board 0 move c1c0
+action board 0 move b2b1
+action board 0 move d2e2
+action board 0 move c2d2
+action board 0 move c3c4
+action board 1 move d1e1
+action board 1 move c1d1
+action board 1 move b3a3
+action board 1 move c3d3
+action board 1 move d2c3
+action board 1 move c2d2
+action board 1 move b2b1
+endturn
+
+turn [info eval winprob 0.55477923] [info nps 67.588963127855 nodes 1 time 0.014795315]
+action tech 1 0
+action board 0 move i6i5
+action board 0 move h6h5
+action board 0 move h7h6
+action board 0 move h8h7
+action board 0 move g8f9
+action board 0 move i7j7
+action board 0 move g7f7
+action board 0 spawn I g6
+action board 1 move h8i8
+action board 1 move i6i5
+action board 1 move i7i6
+action board 1 move g7g6
+action board 1 move h6g7
+action board 1 move g8g9
+action board 1 move h7g8
+action board 1 spawn I h7
+endturn
+
+turn [info eval winprob 0.5049999] [info nps 78.69355478539049 nodes 1 time 0.012707521]
+action tech 1 1
+action board 0 move d2d3
+action board 0 move e2f2
+action board 0 move b1c1
+action board 0 move e1f0
+action board 0 move c4b5
+action board 0 spawn I d2
+action board 1 move c3c4
+action board 1 move b1b0
+action board 1 move e1f0
+action board 1 move d2e1
+action board 1 move d1d2
+action board 1 spawn I d1
+endturn
+
+turn [info eval winprob 0.5523079] [info nps 71.00787512839112 nodes 1 time 0.014082945]
+action tech 1
+action board 0 move h5h4
+action board 0 move h6h5
+action board 0 move f7e8
+action board 0 move i5i4
+action board 0 move g6i5
+action board 0 move h7g7
+action board 0 buy Z
+action board 0 spawn Z j4
+action board 1 move i8j8
+action board 1 move h7f7
+action board 1 move g8h7
+action board 1 move i5j4
+action board 1 move i6i5
+action board 1 buy Z
+action board 1 spawn Z f6
+endturn
+
+turn [info eval winprob 0.5199894] [info nps 72.46578455516443 nodes 1 time 0.013799616]
+action tech 1
+action board 0 move c1c2
+action board 0 move d3d4
+action board 0 move f2f3
+action board 0 move d2f2
+action board 0 move b5b6
+action board 0 move f0g0
+action board 0 buy I
+action board 0 spawn I f1
+action board 1 move c4b5
+action board 1 move d1f1
+action board 1 move_cyclic e1 f0
+action board 1 buy Z
+action board 1 spawn Z g0
+endturn
+
+turn [info eval winprob 0.5448789] [info nps 75.06963647153191 nodes 1 time 0.013320965]
+action tech 2 3
+action board 0 move g7h7
+action board 0 move e8d8
+action board 0 move h4g4
+action board 0 move h5h4
+action board 0 move i4h5
+action board 0 move i5j3
+action board 0 move j4i5
+action board 1 move h7h6
+action board 1 move f6g5
+action board 1 move i5h5
+action board 1 move f7d8
+action board 1 move g7f7
+action board 1 move j4j3
+endturn
+
+turn [info eval winprob 0.5374298] [info nps 60.14619736192764 nodes 1 time 0.016626155]
+action tech 2 4
+action board 0 move f3f4
+action board 0 move f2g3
+action board 0 move c2c3
+action board 0 move d4c5
+action board 0 move f1f3
+action board 1 move f1h1
+action board 1 move e1f1
+action board 1 move g0g1
+action board 1 move f0g0
+action board 1 move b5b6
+endturn
+
+turn [info eval winprob 0.5448789] [info nps 47.41727132380771 nodes 1 time 0.021089362]
+action tech 2 5
+action board 0 move h4h3
+action board 0 attack g4f4
+action board 0 move h5g5
+action board 0 move i5j4
+action board 0 move h7h6
+action board 1 move h6i5
+action board 1 move f7f6
+action board 1 move j3i3
+action board 1 move g5h4
+action board 1 move h5g5
+endturn
+
+turn [info eval winprob 0.5324543] [info nps 34.69621692574447 nodes 1 time 0.028821586]
+action tech 2 6
+action board 0 attack g3g4
+action board 0 move c3c4
+action board 0 move c5d4
+action board 1 move h1i2
+action board 1 move g1g2
+action board 1 move d2c3
+action board 1 move g0h0
+action board 1 move f1g0
+endturn
+
+turn [info eval winprob 0.5448789] [info nps 34.549137043747116 nodes 1 time 0.028944283]
+action tech 2 7
+action board 0 move h3g4
+action board 0 attack g4g3
+action board 0 move j4i4
+action board 0 move g5h4
+action board 0 move h6h5
+action board 1 move i3j2
+action board 1 move h4h3
+action board 1 move i5j4
+action board 1 move f6e6
+action board 1 move g5f6
+endturn
+
+turn [info eval winprob 0.529964] [info nps 28.574283550559326 nodes 1 time 0.034996503]
+action tech 2 8
+action board 0 move f3f4
+action board 0 move c4c3
+action board 0 move d4e4
+action board 0 spawn I e3
+action board 1 move g2h2
+action board 1 attack i2j2
+action board 1 move c3c4
+action board 1 move h0i0
+action board 1 move g0g1
+endturn
+
+turn [info eval winprob 0.5399149] [info nps 44.897207842644264 nodes 1 time 0.0222731]
+action tech 2 9
+action board 0 attack g4f4
+action board 0 move h4h3
+action board 0 move i4h4
+action board 0 move h5g5
+action board 1 attack h3h2
+action board 1 move f6f7
+action board 1 move j4j3
+endturn
+
+turn [info eval winprob 0.529964] [info nps 32.98060901794729 nodes 1 time 0.030320847]
+action tech 2 10
+action board 0 move e4f4
+action board 0 move e3f3
+action board 0 move c3c2
+action board 0 spawn I f2
+action board 1 attack i2h3
+action board 1 move c4b5
+endturn
+
+turn [info eval winprob 0.5374298] [info nps 30.521979258788992 nodes 1 time 0.032763275]
+action tech 2 11
+action board 0 move g4g3
+action board 0 move g5f5
+action board 0 attack g3f3
+action board 0 move h3g4
+action board 0 move h4g5
+action board 1 move j3j2
+action board 1 attack j2i2
+action board 1 move f7g7
+endturn
+
+turn [info eval winprob 0.529964] [info nps 38.481553309438596 nodes 1 time 0.025986477]
+action tech 2 12
+action board 0 attack f4g4
+action board 0 move c2c3
+action board 0 move f2f3
+action board 0 spawn I f2
+action board 1 move g1f2
+action board 1 move b5c4
+action board 1 spawn I h0
+endturn
+
+turn [info eval winprob 0.529964] [info nps 35.90127751823947 nodes 1 time 0.027854162]
+action tech 2 13
+action board 0 move f5g4
+action board 0 attack g3f3
+action board 0 move g5f5
+action board 0 spawn Z g2
+action board 1 move g7h6
+action board 1 move j2j1
+action board 1 move e6d6
+endturn
+
+turn [info eval winprob 0.5374298] [info nps 32.518383617810656 nodes 1 time 0.030751836]
+action tech 2 14
+action board 0 attack f4f5
+action board 0 attack f2g2
+action board 0 move c3c4
+action board 0 spawn I f1
+action board 1 move i0i1
+action board 1 move h0j0
+endturn
+
+turn [info eval winprob 0.529964] [info nps 36.988921300225684 nodes 1 time 0.027035122]
+action tech 2 15
+action board 0 move g3f3
+action board 0 attack f3f2
+action board 0 attack g4f4
+action board 0 spawn Z f2
+action board 1 move d6c6
+action board 1 move h6h5
+endturn
+
+turn [info eval winprob 0.5349429] [info nps 37.67621826616907 nodes 1 time 0.026541942]
+action tech 2 16
+action board 0 attack f4g4
+action board 0 attack f1f2
+action board 0 move c4d4
+action board 0 spawn I f0
+action board 1 move i1i2
+action board 1 attack j0j1
+action board 1 attack b6c6
+action board 1 move c4c5
+endturn
+
+turn [info eval winprob 0.52747226] [info nps 35.21773080327277 nodes 1 time 0.028394788]
+action tech 2 17
+action board 0 move f3e4
+action board 0 attack e4d4
+action board 0 spawn Z j2
+action board 1 move j1i1
+action board 1 attack i1j0
+action board 1 move h5h6
+endturn
+
+turn [info eval winprob 0.5399149] [info nps 55.14320386756786 nodes 1 time 0.018134601]
+action tech 1
+action board 0 move f4g4
+action board 0 move f0e2
+action board 0 move f1f3
+action board 0 buy O
+action board 0 spawn O e1
+action board 0 spawn Z f1
+action board 1 move i2j1
+action board 1 move c5b5
+action board 1 buy I
+action board 1 spawn I j0
+action board 1 spawn I i2
+endturn
+
+turn [info eval winprob 0.5049999] [info nps 28.73738120038455 nodes 1 time 0.034797882]
+action tech 1
+action board 0 move e4e3
+action board 0 move j3h3
+action board 0 attack e3e2
+action board 0 move j2i2
+action board 0 move d8e7
+action board 0 buy Q
+action board 0 spawn Q e2
+action board 1 move i1h2
+action board 1 attack h2i2
+action board 1 move h6h5
+action board 1 buy Q
+action board 1 spawn Q h1
+endturn
+
+turn [info eval winprob 0.54983395] [info nps 31.53843574972523 nodes 1 time 0.031707343]
+action tech 1 18
+action board 0 move e1d3
+action board 0 attack d3e3
+action board 0 blink d3
+action board 0 move f1f2
+action board 0 buy Z
+action board 0 buy I
+action board 0 spawn O g2
+action board 0 spawn I g3
+action board 0 spawn I e4
+action board 0 spawn Z f4
+action board 1 move f2g2
+action board 1 move j0i0
+action board 1 move j1i1
+action board 1 attack i1h1
+action board 1 move b5a6
+action board 1 buy O
+action board 1 spawn O h0
+action board 1 spawn I j0
+endturn
+
+turn [info eval winprob 0.48500445] [info nps 27.124116703139563 nodes 1 time 0.03686756]
+action tech 1 19
+action board 0 move e3d4
+action board 0 move e2f1
+action board 0 attack f1g0
+action board 0 attack f1f2
+action board 0 blink f1
+action board 0 move h3g5
+action board 0 move i2h2
+action board 0 move e7d7
+action board 0 buy Q
+action board 0 spawn Q d3
+action board 0 spawn Q e3
+action board 1 move h2h1
+action board 1 attack h1i0
+action board 1 move h5h6
+action board 1 buy Z
+action board 1 spawn Q i0
+action board 1 spawn Z g1
+endturn
+
+turn [info eval winprob 0.5572479] [info nps 26.675017013992726 nodes 1 time 0.037488261]
+action tech 2 20
+action board 0 blink g2
+action board 0 move e4f5
+action board 0 attack g3h2
+action board 0 move f4e4
+action board 0 spawn O f2
+action board 1 blink h0
+action board 1 attack i1i0
+action board 1 move j0j1
+action board 1 move a6b5
+action board 1 spawn O i0
+action board 1 spawn I j0
+endturn
+
+turn [info eval winprob 0.5] [info nps 31.598890259613636 nodes 1 time 0.031646681]
+action tech 2 21
+action board 0 move d3e2
+action board 0 attack e2f2
+action board 0 attack e2f2
+action board 0 blink e2
+action board 0 attack e3f3
+action board 0 attack e3f3
+action board 0 attack e3e4
+action board 0 blink e3
+action board 0 move g5f6
+action board 0 move d4c5
+action board 0 attack c5b6
+action board 0 move d7e7
+action board 0 spawn Q c4
+action board 0 spawn Q d4
+action board 1 attack h1i0
+action board 1 attack g1g2
+action board 1 move h6i6
+action board 1 spawn Q h0
+endturn
+
+turn [info eval winprob 0.5423979] [info nps 32.93470158574989 nodes 1 time 0.030363111]
+action tech 1
+action board 0 move g3e3
+action board 0 attack f5f6
+action board 0 move a4b3
+action board 0 move g4g3
+action board 0 buy O
+action board 0 buy J
+action board 0 buy A
+action board 0 spawn O e2
+action board 0 spawn J f2
+action board 0 spawn A g2
+action board 0 spawn Z h2
+action board 1 move j1i0
+action board 1 move b5c5
+action board 1 buy R
+action board 1 buy O
+action board 1 spawn R j1
+action board 1 spawn O h2
+action board 1 spawn O i2
+endturn
+
+turn [info eval winprob 0.5049999] [info nps 34.06056615813674 nodes 1 time 0.029359465]
+action tech 1
+action board 0 move d4d3
+action board 0 attack d3e3
+action board 0 attack d3e3
+action board 0 attack d3e2
+action board 0 attack d3e2
+action board 0 blink d3
+action board 0 move c4c3
+action board 0 attack c3b3
+action board 0 blink c3
+action board 0 move e7f6
+action board 0 move c5c6
+action board 0 buy Q
+action board 0 buy Z
+action board 0 spawn Q c5
+action board 0 spawn Q b6
+action board 0 spawn Q d6
+action board 0 spawn Z b7
+action board 1 move h1g2
+action board 1 attack g2h2
+action board 1 attack h0i0
+action board 1 attack h0i0
+action board 1 move i6i5
+action board 1 buy C
+action board 1 spawn C h1
+endturn
+
+turn [info eval winprob 0.52747226] [info nps 29.218390522489102 nodes 1 time 0.03422502]
+action tech 1
+action board 0 move f2e3
+action board 0 attack f5f6
+action board 0 move h2h3
+action board 0 move g2g1
+action board 0 move g3g4
+action board 0 buy Y
+action board 0 spawn Y g0
+action board 1 move i1i0
+action board 1 move i2h5
+action board 1 attack h5g6
+action board 1 attack j1h1
+action board 1 move c5c4
+action board 1 move j0i1
+action board 1 buy Y
+action board 1 spawn Y j0
+action board 1 spawn O h1
+endturn
+
+turn [info eval winprob 0.5099987] [info nps 36.28334725343951 nodes 1 time 0.027560853]
+action tech 1
+action board 0 move c5d4
+action board 0 attack d4e3
+action board 0 move c6c5
+action board 0 move b7c6
+action board 0 move d6d7
+action board 0 buy E
+action board 0 spawn E c4
+action board 1 attack h0i0
+action board 1 attack h0i0
+action board 1 attack h0i0
+action board 1 attack h0i0
+action board 1 attack h0i0
+action board 1 attack h0i0
+action board 1 attack h0i0
+action board 1 move j8j7
+action board 1 move d8f8
+action board 1 move g1f1
+action board 1 move i5h6
+endturn
+
+turn [info eval winprob 0.4353637] [info nps 45.04104207315269 nodes 1 time 0.022201973]
+action tech 1
+action board 0 move g0e2
+action board 0 move f5e4
+action board 0 attack e2c4
+action board 0 move g4h4
+action board 0 move g1g2
+action board 0 buy B
+action board 0 buy J
+action board 0 spawn B g1
+action board 0 spawn J h1
+action board 1 setup N Y
+action board 1 move b2b1
+action board 1 move d1e1
+action board 1 move c1d1
+action board 1 move c3d3
+action board 1 move d2c3
+action board 1 move b3a3
+action board 1 move c2b3
+endturn
+
+turn [info eval winprob 0.6294831] [info nps 45.88458622496084 nodes 1 time 0.021793811]
+action tech 1
+action board 0 move d4e3
+action board 0 attack e3e4
+action board 0 attack e3e4
+action board 0 attack e3e2
+action board 0 attack e3e2
+action board 0 attack e3e2
+action board 0 attack e3e2
+action board 0 attack e3e2
+action board 0 blink e3
+action board 0 move d7d8
+action board 0 move_cyclic c6 c5 b6
+action board 0 buy D
+action board 0 buy Z
+action board 0 spawn D b5
+action board 0 spawn Q b7
+action board 1 setup N Q
+action board 1 move h8g9
+action board 1 move g7f7
+action board 1 move g8f8
+action board 1 move i6i5
+action board 1 move h7i6
+action board 1 move i7j7
+action board 1 move h6g6
+action board 1 buy E
+action board 1 buy I
+action board 1 spawn E h6
+action board 1 spawn I h7
+action board 1 spawn I i7
+endturn
+
+turn [info eval winprob 0.42311472] [info nps 73.84541584642871 nodes 1 time 0.013541802]
+action tech 1
+action board 0 move g1g0
+action board 0 move c0b1
+action board 0 move h4g4
+action board 0 move h3i3
+action board 0 move g2f3
+action board 0 move h1g2
+action board 0 buy O
+action board 0 buy Y
+action board 0 spawn Y f2
+action board 0 spawn O e3
+action board 1 move e1e2
+action board 1 move d1c2
+action board 1 move c3c4
+action board 1 move b1b0
+action board 1 move b3b4
+action board 1 buy B
+action board 1 buy R
+action board 1 spawn Y b3
+action board 1 spawn R c3
+action board 1 spawn B a4
+action board 1 spawn I a5
+endturn
+
+turn [info eval winprob 0.6201064] [info nps 64.06913315744221 nodes 1 time 0.01560814]
+action tech 0
+action board 0 move b5d3
+action board 0 attack d3e3
+action board 0 move b7b8
+action board 0 move_cyclic c6 c5
+action board 0 buy H
+action board 0 buy L
+action board 0 spawn H b5
+action board 0 spawn L b7
+action board 1 move h6h5
+action board 1 move h7h6
+action board 1 move f8g7
+action board 1 move i5j4
+action board 1 move i6i5
+action board 1 move f7e8
+action board 1 move i7j8
+action board 1 move j7i7
+action board 1 buy E
+action board 1 buy Z
+action board 1 spawn E i4
+action board 1 spawn Q i6
+action board 1 spawn Z h7
+endturn
+
+turn [info eval winprob 0.42800388] [info nps 45.239315299343794 nodes 1 time 0.022104667]
+action tech 0
+action board 0 move g2g3
+action board 0 move g0e2
+action board 0 move f3e3
+action board 0 attack e2d3
+action board 0 move f2d4
+action board 0 attack d4b5
+action board 0 move b1c1
+action board 0 move g4f4
+action board 0 move i3j3
+action board 0 buy R
+action board 0 buy R
+action board 0 spawn R f2
+action board 0 spawn R d3
+action board 1 move c4d4
+action board 1 move b3c4
+action board 1 move a4b3
+action board 1 move c3e3
+action board 1 move b4b5
+action board 1 move e2f1
+action board 1 move a5b6
+action board 1 buy R
+action board 1 buy M
+action board 1 spawn R e2
+action board 1 spawn M f2
+endturn
+
+turn [info eval winprob 0.62245935] [info nps 51.57695242619273 nodes 1 time 0.019388505]
+action tech 0
+action board 0 move c5c4
+action board 0 attack c4d3
+action board 0 attack c4d3
+action board 0 attack c4d3
+action board 0 attack c4d3
+action board 0 attack c4d3
+action board 0 attack c4d3
+action board 0 attack c4d3
+action board 0 attack c4d3
+action board 0 attack c4d4
+action board 0 attack c4d4
+action board 0 attack c4d4
+action board 0 attack c4d4
+action board 0 attack c4d4
+action board 0 move b8a8
+action board 0 move_cyclic c6 b6 b7
+action board 0 buy Q
+action board 0 buy Q
+action board 0 buy Q
+action board 0 spawn Q b8
+action board 1 move g7f7
+action board 1 move h7g7
+action board 1 move i6h7
+action board 1 move i7i6
+action board 1 move h5g5
+action board 1 move e8d8
+action board 1 move h6h4
+action board 1 move i4i3
+action board 1 move i5i4
+action board 1 move j4i5
+action board 1 buy D
+action board 1 spawn D h3
+endturn
+
+turn [info eval winprob 0.4402863] [info nps 34.09083161174634 nodes 1 time 0.0293334]
+action tech 0
+action board 0 move e3d3
+action board 0 attack d3c4
+action board 0 attack d3c4
+action board 0 attack d3c4
+action board 0 attack d3c4
+action board 0 attack d3c4
+action board 0 move g3f3
+action board 0 attack f3c4
+action board 0 move f4g4
+action board 0 move c1c0
+action board 0 move f2g2
+action board 0 move e2g0
+action board 0 buy J
+action board 0 buy R
+action board 0 spawn R g1
+action board 0 spawn J h1
+action board 1 move e3g2
+action board 1 move e2f3
+action board 1 move b3b4
+action board 1 move b6a6
+action board 1 move b5b6
+action board 1 move f2g1
+action board 1 move f1f2
+action board 1 move c4d5
+action board 1 move c2b2
+action board 1 buy R
+action board 1 buy O
+action board 1 spawn R g0
+action board 1 spawn O h0
+endturn
+
+turn [info eval winprob 0.61301416] [info nps 37.994577793803046 nodes 1 time 0.026319545]
+action tech 0
+action board 0 move c6c5
+action board 0 attack c5d3
+action board 0 move a8a9
+action board 0 move b6c6
+action board 0 move b7b6
+action board 0 move b8c8
+action board 0 buy X
+action board 0 buy Q
+action board 0 spawn X b5
+action board 0 spawn Q b7
+action board 1 move h4h2
+action board 1 move h3h1
+action board 1 move i3i2
+action board 1 attack h1g1
+action board 1 attack i2h0
+action board 1 attack i2h0
+action board 1 attack i2f2
+action board 1 move g5f6
+action board 1 attack f6f3
+action board 1 move f7e8
+action board 1 move h7h6
+action board 1 move i6h7
+action board 1 move i4i3
+action board 1 buy L
+action board 1 buy L
+action board 1 spawn L i1
+action board 1 spawn L j2
+endturn
+
+turn [info eval winprob 0.4255575] [info nps 22.849909228735587 nodes 1 time 0.04376385]
+action tech 0
+action board 0 move g2e4
+action board 0 attack f3c6
+action board 0 move g1g3
+action board 0 move h1g1
+action board 0 buy Y
+action board 0 buy A
+action board 0 spawn Y g2
+action board 0 spawn A h2
+action board 1 move f3f1
+action board 1 move d5e6
+action board 1 attack e6f6
+action board 1 attack g2i2
+action board 1 move b2b3
+action board 1 move b6a7
+action board 1 move a6b6
+action board 1 move g0i0
+action board 1 move b4c5
+action board 1 move d4e3
+action board 1 buy R
+action board 1 buy K
+action board 1 spawn R f0
+action board 1 spawn K g0
+endturn
+
+turn [info eval winprob 0.608259] [info nps 28.031818468634654 nodes 1 time 0.035673747]
+action tech 0
+action board 0 move b5d5
+action board 0 attack c5e4
+action board 0 move a9a8
+action board 0 move b7c6
+action board 0 move c8d7
+action board 0 buy D
+action board 0 buy Z
+action board 0 spawn D b5
+action board 0 spawn Q b7
+action board 1 move d8d7
+action board 1 move h1g1
+action board 1 move h2j0
+action board 1 move g6f6
+action board 1 attack g1g0
+action board 1 move i1j1
+action board 1 attack j1i0
+action board 1 move j2i2
+action board 1 attack i2g2
+action board 1 move h7h8
+action board 1 move e8d9
+action board 1 move h6g6
+action board 1 move i5h6
+action board 1 move g7f7
+action board 1 move i3h4
+action board 1 buy V
+action board 1 buy L
+action board 1 buy G
+action board 1 spawn L i0
+action board 1 spawn V i1
+action board 1 spawn G h3
+endturn
+
+turn [info eval winprob 0.42067575] [info nps 21.546417868168543 nodes 1 time 0.046411427]
+action tech 0
+action board 0 move g3e3
+action board 0 move g2f4
+action board 0 move g1f2
+action board 0 attack f2c5
+action board 0 attack f3c5
+action board 0 move h2g3
+action board 0 buy B
+action board 0 buy Y
+action board 0 spawn Y e2
+action board 0 spawn B g2
+action board 1 move f1e2
+action board 1 move f0f2
+action board 1 move b6c7
+action board 1 move c5d6
+action board 1 attack d6d7
+action board 1 move e6g4
+action board 1 attack g4i2
+action board 1 move b3c3
+action board 1 move a7b6
+action board 1 buy J
+action board 1 buy Y
+action board 1 spawn Y e1
+action board 1 spawn J f1
+endturn
+
+turn [info eval winprob 0.6201064] [info nps 27.727330211069585 nodes 1 time 0.036065499]
+action tech 0
+action board 0 move b5d3
+action board 0 attack d3e2
+action board 0 move d5e4
+action board 0 attack e4f3
+action board 0 blink d7
+action board 0 move c6d6
+action board 0 move b7c6
+action board 0 move a8b7
+action board 0 buy E
+action board 0 spawn E b5
+action board 0 spawn Q c5
+action board 1 move f6e6
+action board 1 move h4g5
+action board 1 move j1i2
+action board 1 attack i2g4
+action board 1 attack g1f1
+action board 1 move i0h1
+action board 1 attack h1f2
+action board 1 move j0h2
+action board 1 move f7e8
+action board 1 move h6h7
+action board 1 move d9e9
+action board 1 move h8i7
+action board 1 buy C
+action board 1 buy Q
+action board 1 spawn C g2
+action board 1 spawn Q h4
+endturn
+
+turn [info eval winprob 0.40854102] [info nps 20.349133336515937 nodes 1 time 0.049142142]
+action tech 0
+action board 0 move g0e2
+action board 0 attack e2d3
+action board 0 move f4d5
+action board 0 attack d5b5
+action board 0 move g3f3
+action board 0 attack f3e4
+action board 0 attack f3e4
+action board 0 attack f3e4
+action board 0 attack f3e4
+action board 0 attack f3e4
+action board 0 move c0d0
+action board 0 move e3e4
+action board 0 move g2e3
+action board 0 move f2g2
+action board 0 buy M
+action board 0 buy Y
+action board 0 buy A
+action board 0 spawn Y f2
+action board 0 spawn M g3
+action board 0 spawn A h3
+action board 1 move e3f2
+action board 1 attack d6e6
+action board 1 attack e2g2
+action board 1 move e1f1
+action board 1 attack f1h1
+action board 1 move c7c5
+action board 1 move c3d2
+action board 1 buy Y
+action board 1 buy O
+action board 1 buy A
+action board 1 spawn Y e1
+action board 1 spawn O e3
+action board 1 spawn A c4
+endturn
+
+turn [info eval winprob 0.61538374] [info nps 27.46452050847154 nodes 1 time 0.036410612]
+action tech 0
+action board 0 attack c6d5
+action board 0 attack c6d5
+action board 0 attack c6d5
+action board 0 attack c6d5
+action board 0 attack c6d5
+action board 0 blink c6
+action board 0 move c5d4
+action board 0 attack d4e4
+action board 0 attack d4e4
+action board 0 attack d4e4
+action board 0 attack d4e4
+action board 0 attack d4e4
+action board 0 attack d4e4
+action board 0 attack d4e4
+action board 0 attack d4e4
+action board 0 attack d4e3
+action board 0 attack d4e3
+action board 0 move b6c6
+action board 0 move b7b6
+action board 0 move j7j6
+action board 0 move f9g8
+action board 0 move d6d7
+action board 0 move d8e7
+action board 0 buy Q
+action board 0 buy L
+action board 0 buy Q
+action board 0 buy V
+action board 0 spawn L c5
+action board 0 spawn V d5
+action board 0 spawn Q d6
+action board 0 spawn Q b7
+action board 1 move g1f3
+action board 1 attack f3e3
+action board 1 move i1i0
+action board 1 move g5f6
+action board 1 move i2i3
+action board 1 move i7h8
+action board 1 move h3g4
+action board 1 move e8d8
+action board 1 move h4i4
+action board 1 move e9d9
+action board 1 move h2j1
+action board 1 buy D
+action board 1 buy L
+action board 1 buy Z
+action board 1 spawn D j0
+action board 1 spawn L i1
+action board 1 spawn Z i2
+endturn
+
+turn [info eval winprob 0.42800388] [info nps 21.280622762954334 nodes 1 time 0.046991106]
+action tech 0
+action board 0 move e2e4
+action board 0 move f2d3
+action board 0 attack e4d5
+action board 0 attack d3c5
+action board 0 move f3e3
+action board 0 attack g2d4
+action board 0 attack e3d4
+action board 0 attack e3d4
+action board 0 attack e3d4
+action board 0 attack e3d4
+action board 0 attack e3d4
+action board 0 move d0c0
+action board 0 move g3f3
+action board 0 move_cyclic g4 h3
+action board 0 buy R
+action board 0 buy B
+action board 0 spawn R e2
+action board 0 spawn B f2
+action board 1 move e1e3
+action board 1 move f1g2
+action board 1 attack g2i1
+action board 1 move d6e4
+action board 1 attack e4f3
+action board 1 move d3c3
+action board 1 move e2d3
+action board 1 move d2e2
+action board 1 move f2g1
+action board 1 move b6b5
+action board 1 move c5b6
+action board 1 move c4d4
+action board 1 buy Y
+action board 1 buy O
+action board 1 spawn Y d2
+action board 1 spawn O b4
+endturn
+
+turn [info eval winprob 0.59868765] [info nps 37.98083547811111 nodes 1 time 0.026329068]
+action tech 0
+action board 0 blink b7
+action board 0 move e7f6
+action board 0 move d7e7
+action board 0 move d6d7
+action board 0 move c6d6
+action board 0 move b6c6
+action board 0 move j6i7
+action board 0 move g8g7
+action board 0 buy D
+action board 0 buy Q
+action board 0 spawn D d5
+action board 1 move i0h1
+action board 1 move j1h2
+action board 1 move i3h3
+action board 1 move g4g3
+action board 1 attack h1g1
+action board 1 attack h3g2
+action board 1 move i4h4
+action board 1 move d9e8
+action board 1 move h7g7
+action board 1 move j0i1
+action board 1 move h8g8
+action board 1 move i2j1
+action board 1 move f6e7
+action board 1 buy C
+action board 1 buy Q
+action board 1 buy Q
+action board 1 spawn C g2
+action board 1 spawn Q i2
+action board 1 spawn Q e6
+endturn
+
+turn [info eval winprob 0.4750208] [info nps 20.011823385492615 nodes 1 time 0.049970459]
+action tech 0
+action board 0 move g4g5
+action board 0 attack g5f6
+action board 0 attack g5f6
+action board 0 attack g5f6
+action board 0 attack g5f6
+action board 0 attack g5f6
+action board 0 move e4c5
+action board 0 attack c5d5
+action board 0 move e3d4
+action board 0 move g2g3
+action board 0 attack g3f6
+action board 0 move f2g0
+action board 0 move e2e4
+action board 0 move h3g4
+action board 0 move d3b4
+action board 0 buy B
+action board 0 buy R
+action board 0 spawn R f2
+action board 0 spawn B g2
+action board 1 move d2f2
+action board 1 attack f2h2
+action board 1 move e3f4
+action board 1 attack f4h3
+action board 1 move e4f5
+action board 1 attack f5e6
+action board 1 move e2e3
+action board 1 move d3e2
+action board 1 move d4d3
+action board 1 move b4d4
+action board 1 move b6a6
+action board 1 move b5b6
+action board 1 move c3c4
+action board 1 buy J
+action board 1 buy M
+action board 1 spawn M e1
+action board 1 spawn J f1
+endturn
+
+turn [info eval winprob 0.54983395] [info nps 28.33352170403013 nodes 1 time 0.035293883]
+action tech 0
+action board 0 attack c6c5
+action board 0 attack c6c5
+action board 0 move e7f6
+action board 0 attack f6g5
+action board 0 move i7j6
+action board 0 move d7d8
+action board 0 move d6d7
+action board 0 buy D
+action board 0 spawn D d6
+action board 0 spawn Q e7
+action board 0 spawn Q c8
+action board 1 move g2g0
+action board 1 attack g0f1
+action board 1 move i1g1
+action board 1 attack g1f2
+action board 1 move g6f6
+action board 1 move h4g5
+action board 1 attack f6f5
+action board 1 attack f6f5
+action board 1 blink f6
+action board 1 move e7f6
+action board 1 move g3f3
+action board 1 attack f3e3
+action board 1 move g7g6
+action board 1 move h1h2
+action board 1 move e8f7
+action board 1 buy D
+action board 1 spawn D f5
+action board 1 spawn Q e6
+endturn
+
+turn [info eval winprob 0.47252768] [info nps 20.48538060812901 nodes 1 time 0.0488153]
+action tech 0
+action board 0 move g4g5
+action board 0 attack g5f6
+action board 0 move g3f4
+action board 0 move b4b5
+action board 0 move d4c5
+action board 0 attack b5c6
+action board 0 attack c5c6
+action board 0 attack c5c6
+action board 0 attack c5c6
+action board 0 attack c5c6
+action board 0 move f2h2
+action board 0 move g2g3
+action board 0 move e4c6
+action board 0 buy M
+action board 0 buy Y
+action board 0 buy A
+action board 0 spawn Y h1
+action board 0 spawn M i1
+action board 0 spawn A f2
+action board 1 move d3e3
+action board 1 attack e3f3
+action board 1 attack e3f3
+action board 1 attack e3f3
+action board 1 attack e3f3
+action board 1 move d4d7
+action board 1 attack d7d8
+action board 1 blink d7
+action board 1 move e1f1
+action board 1 move f4g3
+action board 1 attack f1g1
+action board 1 attack g3g1
+action board 1 attack e2g1
+action board 1 move c4d3
+action board 1 move a6b4
+action board 1 buy Y
+action board 1 buy B
+action board 1 spawn Y f0
+action board 1 spawn B e1
+action board 1 spawn O g1
+endturn
+
+Winner: spooky_yellow

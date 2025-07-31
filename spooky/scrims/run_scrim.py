@@ -18,9 +18,9 @@ class EnginePanicError(Exception):
 
 class UmiProcess:
     """A wrapper for a subprocess running a UMI-compatible chess engine."""
-    def __init__(self, path):
+    def __init__(self, path, name):
         self.path = os.path.abspath(path)
-        self.name = os.path.basename(path)
+        self.name = name
         self.proc = subprocess.Popen(
             [self.path],
             stdin=subprocess.PIPE,
@@ -144,11 +144,10 @@ def main(config_path):
     # Initialize AIs
     yellow_path = os.path.join(SPOOKY_DIR, config['ai_yellow']['path'])
     blue_path = os.path.join(SPOOKY_DIR, config['ai_blue']['path'])
-    yellow_ai = UmiProcess(yellow_path)
-    blue_ai = UmiProcess(blue_path)
-
-    yellow_name = os.path.basename(yellow_ai.path)
-    blue_name = os.path.basename(blue_ai.path)
+    yellow_name = os.path.basename(yellow_path) + "_yellow"
+    blue_name = os.path.basename(blue_path) + "_blue"
+    yellow_ai = UmiProcess(yellow_path, yellow_name)
+    blue_ai = UmiProcess(blue_path, blue_name)
 
     print(f"Starting scrimmage: {yellow_name} vs {blue_name}")
     print(f"Yellow ELO: {get_rating(yellow_name, SPOOKY_DIR)}")
