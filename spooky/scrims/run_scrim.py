@@ -68,6 +68,10 @@ class UmiProcess:
 
         return turn_lines, info_lines, winner_side
 
+    def get_fen(self):
+        self._send_command("getfen")
+        return self._wait_for_response("")[0]
+
     def quit(self):
         self._send_command("quit")
         self.proc.wait()
@@ -84,6 +88,7 @@ def run_game(yellow_ai, blue_ai, time_control, start_fen, match_log_path):
     winner = 'draw' # Default to draw if game exits unexpectedly
 
     while True:
+        pre_turn_fen = current_player.get_fen()
         try:
             turn_lines, info_lines, declared_winner = current_player.play(time_control)
         except EnginePanicError:
@@ -104,14 +109,14 @@ def run_game(yellow_ai, blue_ai, time_control, start_fen, match_log_path):
         # Send the entire turn block to the other AI
         # for line in turn_lines:
         #     other_player._send_command(line)
-        current_player._send_command("getfen")
-        fen = current_player._wait_for_response("")[0]
+        fen = current_player.get_fen()
         other_player.set_position(fen)
 
         # Log the turn with metadata
         with open(match_log_path, 'a') as f:
             info_metadata = " ".join([f"[{info}]" for info in info_lines])
-            log_entry = turn_lines[0]
+            log_entry = f"fen {pre_turn_fen}"
+            log_entry += '\n' + turn_lines[0]
             if info_metadata:
                 log_entry += ' ' + info_metadata
             log_entry += '\n' + '\n'.join(turn_lines[1:])

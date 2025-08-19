@@ -37,3 +37,6 @@ lerna-debug.log*
 # Python
 /spooky/scrims/venv/
 /spooky/scrims/results/
+
+# matches
+/spooky/matches

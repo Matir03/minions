@@ -1,7 +1,7 @@
 /// Type of attack a unit can perform
 use std::str::FromStr;
 
-use crate::core::tech::NUM_TECHS;
+use crate::core::{tech::NUM_TECHS, Side};
 
 use super::convert::{FromIndex, ToIndex};
 use anyhow::{anyhow, ensure, Context, Result};
@@ -122,6 +122,13 @@ impl Unit {
             Unit::ZombieNecromancer => 'N',
             Unit::ManaNecromancer => 'N',
             Unit::TerrainNecromancer => 'N',
+        }
+    }
+
+    pub fn to_fen_char_side(self, side: Side) -> char {
+        match side {
+            Side::Yellow => self.to_fen_char().to_ascii_uppercase(),
+            Side::Blue => self.to_fen_char().to_ascii_lowercase(),
         }
     }
 

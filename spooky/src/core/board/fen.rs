@@ -22,10 +22,16 @@ impl<'a> Board<'a> {
         components.push(self.state.to_fen());
 
         // Component 2: Yellow reinforcements
-        components.push(reinforcements_to_fen(&self.reinforcements[Side::Yellow]));
+        components.push(reinforcements_to_fen(
+            &self.reinforcements[Side::Yellow],
+            Side::Yellow,
+        ));
 
         // Component 3: Blue reinforcements
-        components.push(reinforcements_to_fen(&self.reinforcements[Side::Blue]));
+        components.push(reinforcements_to_fen(
+            &self.reinforcements[Side::Blue],
+            Side::Blue,
+        ));
 
         // Component 4: Yellow spells
         components.push(spells_to_fen(&self.spells[Side::Yellow]));
@@ -60,10 +66,7 @@ impl<'a> Board<'a> {
                         }
                         empty_count = 0;
                     }
-                    let mut c = piece.unit.to_fen_char();
-                    if piece.side == Side::Blue {
-                        c = c.to_ascii_lowercase();
-                    }
+                    let c = piece.unit.to_fen_char_side(piece.side);
                     fen.push(c);
                 } else {
                     empty_count += 1;
@@ -214,11 +217,11 @@ fn spells_from_fen(fen: &str) -> Result<HashBag<Spell>> {
     Ok(spells)
 }
 
-fn reinforcements_to_fen(reinforcements: &HashBag<Unit>) -> String {
+fn reinforcements_to_fen(reinforcements: &HashBag<Unit>, side: Side) -> String {
     let mut fen = String::new();
     for (unit, count) in reinforcements.set_iter() {
         for _ in 0..count {
-            fen.push(unit.to_fen_char());
+            fen.push(unit.to_fen_char_side(side));
         }
     }
     fen
