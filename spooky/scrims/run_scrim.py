@@ -95,23 +95,6 @@ def run_game(yellow_ai, blue_ai, time_control, start_fen, match_log_path):
             winner = other_player.name
             break
 
-        # Check for game over
-        if declared_winner:
-            if declared_winner.lower() == 'yellow':
-                winner = yellow_ai.name
-            else:
-                winner = blue_ai.name
-            break
-        if len(turn_lines) <= 2: # An empty turn block means no legal moves
-            winner = other_player.name
-            break
-
-        # Send the entire turn block to the other AI
-        # for line in turn_lines:
-        #     other_player._send_command(line)
-        fen = current_player.get_fen()
-        other_player.set_position(fen)
-
         # Log the turn with metadata
         with open(match_log_path, 'a') as f:
             info_metadata = " ".join([f"[{info}]" for info in info_lines])
@@ -122,6 +105,20 @@ def run_game(yellow_ai, blue_ai, time_control, start_fen, match_log_path):
             log_entry += '\n' + '\n'.join(turn_lines[1:])
             f.write(log_entry + '\n\n')
 
+        # Check for game over
+        if declared_winner:
+            if declared_winner.lower() == 'yellow':
+                winner = yellow_ai.name
+            else:
+                winner = blue_ai.name
+            break
+
+        # Send the entire turn block to the other AI
+        # for line in turn_lines:
+        #     other_player._send_command(line)
+        fen = current_player.get_fen()
+        other_player.set_position(fen)
+
         # Swap players
         current_player, other_player = other_player, current_player
         turn_num += 1
@@ -130,9 +127,6 @@ def run_game(yellow_ai, blue_ai, time_control, start_fen, match_log_path):
         if turn_num > 200:
             winner = "draw"
             break
-
-    with open(match_log_path, 'a') as f:
-        f.write(f"Winner: {winner}\n")
 
     return winner
 
