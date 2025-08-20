@@ -1,6 +1,10 @@
 use anyhow::{anyhow, bail, ensure, Context, Result};
 use hashbag::HashBag;
-use std::{borrow::BorrowMut, cell::RefCell, collections::HashMap};
+use std::{
+    borrow::BorrowMut,
+    cell::RefCell,
+    collections::{HashMap, HashSet},
+};
 
 use super::{
     actions::{AttackAction, SetupAction, SpawnAction},
@@ -336,18 +340,22 @@ impl<'a> Board<'a> {
         let to_bounce = self
             .pieces
             .drain()
-            .filter(|(_, piece)| !piece.unit.stats().necromancer)
-            .collect::<Vec<_>>();
+            .map(|(_, piece)| (piece.unit, piece.side))
+            .filter(|(unit, _)| !unit.stats().necromancer)
+            .collect::<HashSet<_>>();
 
         let new_board = Board::from_fen(Self::START_FEN, self.map).unwrap();
         self.pieces = new_board.pieces;
         self.winner = new_board.winner;
         self.state = new_board.state;
         self.bitboards = new_board.bitboards;
-        self.spells = new_board.spells;
 
-        for (_, piece) in to_bounce {
-            self.add_reinforcement(piece.unit, piece.side);
+        for (unit, side) in to_bounce {
+            self.add_reinforcement(unit, side);
+        }
+
+        for side in Side::all() {
+            self.reinforcements[side].retain(|_, _| 1);
         }
     }
 

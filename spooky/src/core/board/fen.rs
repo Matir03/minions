@@ -224,7 +224,9 @@ fn reinforcements_to_fen(reinforcements: &HashBag<Unit>, side: Side) -> String {
             fen.push(unit.to_fen_char_side(side));
         }
     }
-    fen
+    let mut chars: Vec<char> = fen.chars().collect();
+    chars.sort();
+    chars.into_iter().collect()
 }
 
 fn spells_to_fen(spells: &HashBag<Spell>) -> String {

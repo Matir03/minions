@@ -1,12 +1,12 @@
+use super::convert::{FromIndex, ToIndex};
 use anyhow::{anyhow, Result};
+use colored::Color;
 use num_derive::{FromPrimitive, ToPrimitive};
 use num_traits::{FromPrimitive, ToPrimitive};
-use super::convert::{FromIndex, ToIndex};
-use std::ops::{Index, IndexMut, Not, Add};
-use colored::Color;
+use std::ops::{Add, Index, IndexMut, Not};
 
 /// Side/player in the game
-#[derive(Debug, Clone, Copy, PartialEq, Eq, FromPrimitive, ToPrimitive)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, FromPrimitive, ToPrimitive, Hash)]
 pub enum Side {
     Yellow,
     Blue,
@@ -41,15 +41,13 @@ impl Side {
 
 impl FromIndex for Side {
     fn from_index(idx: usize) -> Result<Self> {
-        FromPrimitive::from_usize(idx)
-            .ok_or_else(|| anyhow!("Invalid side index: {}", idx))
+        FromPrimitive::from_usize(idx).ok_or_else(|| anyhow!("Invalid side index: {}", idx))
     }
 }
 
 impl ToIndex for Side {
     fn to_index(&self) -> Result<usize> {
-        ToPrimitive::to_usize(self)
-            .ok_or_else(|| anyhow!("Invalid side value"))
+        ToPrimitive::to_usize(self).ok_or_else(|| anyhow!("Invalid side value"))
     }
 }
 
@@ -62,7 +60,7 @@ impl Not for Side {
             Side::Blue => Side::Yellow,
         }
     }
-}   
+}
 
 /// Array indexed by game side
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -72,9 +70,7 @@ pub struct SideArray<T> {
 
 impl<T> SideArray<T> {
     pub fn new(s0: T, s1: T) -> Self {
-        Self {
-            values: [s0, s1],
-        }
+        Self { values: [s0, s1] }
     }
 
     pub fn get(&self, side: Side) -> Result<&T> {
@@ -152,19 +148,19 @@ mod tests {
     #[test]
     fn test_side_array() {
         let mut array = SideArray::new(5, 10);
-        
+
         // Test get
         assert_eq!(*array.get(Side::Yellow).unwrap(), 5);
         assert_eq!(*array.get(Side::Blue).unwrap(), 10);
-        
+
         // Test get_mut
         *array.get_mut(Side::Yellow).unwrap() = 15;
         assert_eq!(*array.get(Side::Yellow).unwrap(), 15);
-        
+
         // Test iter
         let values: Vec<_> = array.iter().copied().collect();
         assert_eq!(values, vec![15, 10]);
-        
+
         // Test iter_mut
         for v in array.iter_mut() {
             *v *= 2;
