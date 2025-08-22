@@ -11,7 +11,7 @@ struct GraphvizBuilder {
     // clusters
     game_cluster: String,
     general_cluster: String,
-    boards_cluster: String,
+    board_clusters: Vec<String>,
     cross_edges: String,
 
     // visited sets
@@ -25,7 +25,7 @@ impl GraphvizBuilder {
         Self {
             game_cluster: String::new(),
             general_cluster: String::new(),
-            boards_cluster: String::new(),
+            board_clusters: Vec::new(),
             cross_edges: String::new(),
             seen_game: HashSet::new(),
             seen_general: HashSet::new(),
@@ -86,7 +86,7 @@ impl GraphvizBuilder {
                 "  {} -> {} [style=dashed,label=\"board {}\"];",
                 node_name, board_name, i
             );
-            self.emit_board(*board_ref);
+            self.emit_board(i, *board_ref);
         }
 
         // Recurse into Game children
@@ -121,7 +121,7 @@ impl GraphvizBuilder {
         }
     }
 
-    fn emit_board(&mut self, node: BoardNodeRef) {
+    fn emit_board(&mut self, idx: usize, node: BoardNodeRef) {
         let id = Self::ptr_id(node);
         if !self.seen_board.insert(id) {
             return;
@@ -132,16 +132,23 @@ impl GraphvizBuilder {
         let winprob = b.stats.eval.winprob;
         let side = b.state.side_to_move;
         let _ = writeln!(
-            self.boards_cluster,
-            "  {} [label=\"Board\\nvisits={} win={:.3}\\nside={:?}\"];",
-            node_name, visits, winprob, side
+            self.board_cluster(idx),
+            "  {} [label=\"Board {}\\nvisits={} win={:.3}\\nside={:?}\"];",
+            node_name, idx, visits, winprob, side
         );
         for edge in b.edges.iter() {
             let child_ref = edge.child;
             let child_name = Self::board_node_id(child_ref);
-            let _ = writeln!(self.boards_cluster, "  {} -> {};", node_name, child_name);
-            self.emit_board(child_ref);
+            let _ = writeln!(self.board_cluster(idx), "  {} -> {};", node_name, child_name);
+            self.emit_board(idx, child_ref);
         }
+    }
+
+    fn board_cluster(&mut self, idx: usize) -> &mut String {
+        while self.board_clusters.len() <= idx {
+            self.board_clusters.push(String::new());
+        }
+        &mut self.board_clusters[idx]
     }
 }
 
@@ -173,12 +180,15 @@ pub fn export_search_tree<'a>(tree: &SearchTree<'a>) -> String {
     dot.push_str(&gv.general_cluster);
     dot.push_str("  }\n\n");
 
-    // Boards cluster
-    dot.push_str("  subgraph cluster_boards {\n");
-    dot.push_str("    label=\"Board Trees\";\n");
-    dot.push_str("    color=\"#54A24B\";\n");
-    dot.push_str(&gv.boards_cluster);
-    dot.push_str("  }\n\n");
+    // Board clusters (one per board index)
+    for (i, cluster) in gv.board_clusters.iter().enumerate() {
+        if cluster.is_empty() { continue; }
+        dot.push_str(&format!("  subgraph cluster_board_{} {{\n", i));
+        dot.push_str(&format!("    label=\"Board {}\";\n", i));
+        dot.push_str("    color=\"#54A24B\";\n");
+        dot.push_str(cluster);
+        dot.push_str("  }\n\n");
+    }
 
     // Cross links
     dot.push_str(&gv.cross_edges);
