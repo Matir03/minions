@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::collections::HashSet;
+use std::collections::{HashSet, BTreeMap};
 use std::fmt::Write as _;
 
 use crate::ai::captain::node::BoardNodeRef;
@@ -18,6 +18,14 @@ struct GraphvizBuilder {
     seen_game: HashSet<usize>,
     seen_general: HashSet<usize>,
     seen_board: HashSet<usize>,
+
+    // per-rank groupings for LR layout
+    // Game: key by absolute ply from game state (sorted by BTreeMap)
+    game_ranks: BTreeMap<usize, Vec<String>>,
+    // General: depth from the root general node
+    general_ranks: Vec<Vec<String>>,
+    // Boards: [board_idx][depth]
+    board_ranks: Vec<Vec<Vec<String>>>,
 }
 
 impl GraphvizBuilder {
@@ -30,6 +38,9 @@ impl GraphvizBuilder {
             seen_game: HashSet::new(),
             seen_general: HashSet::new(),
             seen_board: HashSet::new(),
+            game_ranks: BTreeMap::new(),
+            general_ranks: Vec::new(),
+            board_ranks: Vec::new(),
         }
     }
 
@@ -61,32 +72,36 @@ impl GraphvizBuilder {
         let visits = b.stats.visits;
         let winprob = b.stats.eval.winprob;
         let side = b.state.game_state.side_to_move;
-        let ply = b.state.game_state.ply;
+        let ply = b.state.game_state.ply as usize;
         let _ = writeln!(
             self.game_cluster,
             "  {} [label=\"Game\\nvisits={} win={:.3}\\nside={:?} ply={}\"];",
             node_name, visits, winprob, side, ply
         );
+        // Track rank groupings for game nodes by ply
+        self.game_ranks.entry(ply).or_default().push(node_name.clone());
 
         // Link to General and Board nodes (cross edges)
         let gen_ref = b.state.general_node;
         let gen_name = Self::general_node_id(gen_ref);
         let _ = writeln!(
             self.cross_edges,
-            "  {} -> {} [style=dashed,label=\"general\"];",
+            "  {} -> {} [style=dashed,label=\"general\",constraint=false];",
             node_name, gen_name
         );
-        self.emit_general(gen_ref);
+        // Start General traversal with depth 0 (first call will drive full traversal)
+        self.emit_general(gen_ref, 0);
 
         let b = node.borrow();
         for (i, board_ref) in b.state.board_nodes.iter().enumerate() {
             let board_name = Self::board_node_id(*board_ref);
             let _ = writeln!(
                 self.cross_edges,
-                "  {} -> {} [style=dashed,label=\"board {}\"];",
+                "  {} -> {} [style=dashed,label=\"board {}\",constraint=false];",
                 node_name, board_name, i
             );
-            self.emit_board(i, *board_ref);
+            // Start Board traversal (per board) with depth 0
+            self.emit_board(i, *board_ref, 0);
         }
 
         // Recurse into Game children
@@ -98,7 +113,7 @@ impl GraphvizBuilder {
         }
     }
 
-    fn emit_general(&mut self, node: GeneralNodeRef) {
+    fn emit_general(&mut self, node: GeneralNodeRef, depth: usize) {
         let id = Self::ptr_id(node);
         if !self.seen_general.insert(id) {
             return;
@@ -113,15 +128,20 @@ impl GraphvizBuilder {
             "  {} [label=\"General\\nvisits={} win={:.3}\\nside={:?}\"];",
             node_name, visits, winprob, side
         );
+        // Track rank groupings by depth within General
+        while self.general_ranks.len() <= depth {
+            self.general_ranks.push(Vec::new());
+        }
+        self.general_ranks[depth].push(node_name.clone());
         for edge in b.edges.iter() {
             let child_ref = edge.child;
             let child_name = Self::general_node_id(child_ref);
             let _ = writeln!(self.general_cluster, "  {} -> {};", node_name, child_name);
-            self.emit_general(child_ref);
+            self.emit_general(child_ref, depth + 1);
         }
     }
 
-    fn emit_board(&mut self, idx: usize, node: BoardNodeRef) {
+    fn emit_board(&mut self, idx: usize, node: BoardNodeRef, depth: usize) {
         let id = Self::ptr_id(node);
         if !self.seen_board.insert(id) {
             return;
@@ -136,11 +156,19 @@ impl GraphvizBuilder {
             "  {} [label=\"Board {}\\nvisits={} win={:.3}\\nside={:?}\"];",
             node_name, idx, visits, winprob, side
         );
+        // Track rank groupings by depth within this board subtree
+        while self.board_ranks.len() <= idx {
+            self.board_ranks.push(Vec::new());
+        }
+        while self.board_ranks[idx].len() <= depth {
+            self.board_ranks[idx].push(Vec::new());
+        }
+        self.board_ranks[idx][depth].push(node_name.clone());
         for edge in b.edges.iter() {
             let child_ref = edge.child;
             let child_name = Self::board_node_id(child_ref);
             let _ = writeln!(self.board_cluster(idx), "  {} -> {};", node_name, child_name);
-            self.emit_board(idx, child_ref);
+            self.emit_board(idx, child_ref, depth + 1);
         }
     }
 
@@ -161,7 +189,7 @@ pub fn export_search_tree<'a>(tree: &SearchTree<'a>) -> String {
     // Assemble DOT document with clusters and cross links
     let mut dot = String::new();
     dot.push_str("digraph SpookyMCTS {\n");
-    dot.push_str("  graph [fontname=\"Helvetica\"];\n");
+    dot.push_str("  graph [fontname=\"Helvetica\", compound=true];\n");
     dot.push_str("  node  [shape=box, fontname=\"Helvetica\"];\n");
     dot.push_str("  edge  [fontname=\"Helvetica\"];\n");
     dot.push_str("  rankdir=LR;\n\n");
@@ -170,28 +198,82 @@ pub fn export_search_tree<'a>(tree: &SearchTree<'a>) -> String {
     dot.push_str("  subgraph cluster_game {\n");
     dot.push_str("    label=\"Game Tree\";\n");
     dot.push_str("    color=\"#4C78A8\";\n");
+    dot.push_str("    left_anchor [shape=point, width=0, height=0, label=\"\"];\n");
     dot.push_str(&gv.game_cluster);
+    // Per-ply rank groups for Game
+    for (_ply, nodes) in gv.game_ranks.iter() {
+        if nodes.is_empty() { continue; }
+        dot.push_str("    { rank=same; ");
+        for n in nodes.iter() {
+            dot.push_str(n);
+            dot.push_str("; ");
+        }
+        dot.push_str("}\n");
+    }
     dot.push_str("  }\n\n");
 
+    // Right side container
+    dot.push_str("  subgraph cluster_right {\n");
+    dot.push_str("    label=\"Right Side\";\n");
+    dot.push_str("    color=\"#999999\";\n");
+    dot.push_str("    right_anchor [shape=point, width=0, height=0, label=\"\"];\n");
+
     // General cluster
-    dot.push_str("  subgraph cluster_general {\n");
-    dot.push_str("    label=\"General Trees\";\n");
-    dot.push_str("    color=\"#F58518\";\n");
-    dot.push_str(&gv.general_cluster);
-    dot.push_str("  }\n\n");
+    dot.push_str("    subgraph cluster_general {\n");
+    dot.push_str("      label=\"General\";\n");
+    dot.push_str("      color=\"#F58518\";\n");
+    dot.push_str("      gen_anchor [shape=point, width=0, height=0, label=\"\"];\n");
+    dot.push_str(&gv.general_cluster.replace("\n", "\n      "));
+    // Per-depth rank groups for General
+    for nodes in gv.general_ranks.iter() {
+        if nodes.is_empty() { continue; }
+        dot.push_str("      { rank=same; ");
+        for n in nodes.iter() {
+            dot.push_str(n);
+            dot.push_str("; ");
+        }
+        dot.push_str("}\n");
+    }
+    dot.push_str("    }\n\n");
 
     // Board clusters (one per board index)
     for (i, cluster) in gv.board_clusters.iter().enumerate() {
         if cluster.is_empty() { continue; }
-        dot.push_str(&format!("  subgraph cluster_board_{} {{\n", i));
-        dot.push_str(&format!("    label=\"Board {}\";\n", i));
-        dot.push_str("    color=\"#54A24B\";\n");
-        dot.push_str(cluster);
-        dot.push_str("  }\n\n");
+        dot.push_str(&format!("    subgraph cluster_board_{} {{\n", i));
+        dot.push_str(&format!("      label=\"Board {}\";\n", i));
+        dot.push_str("      color=\"#54A24B\";\n");
+        dot.push_str(&format!("      board_{}_anchor [shape=point, width=0, height=0, label=\"\"];\n", i));
+        dot.push_str(&cluster.replace("\n", "\n      "));
+        // Per-depth rank groups for this Board
+        if i < gv.board_ranks.len() {
+            for nodes in gv.board_ranks[i].iter() {
+                if nodes.is_empty() { continue; }
+                dot.push_str("      { rank=same; ");
+                for n in nodes.iter() {
+                    dot.push_str(n);
+                    dot.push_str("; ");
+                }
+                dot.push_str("}\n");
+            }
+        }
+        dot.push_str("    }\n\n");
     }
+
+    dot.push_str("  }\n\n");
 
     // Cross links
     dot.push_str(&gv.cross_edges);
+
+    // Anchors to force left/right split and vertical stacking on right
+    dot.push_str("  { rank=same; left_anchor; right_anchor; }\n");
+    dot.push_str("  left_anchor -> right_anchor [style=invis, weight=100];\n");
+    // Force all right-side region anchors into the same rank (same column in LR)
+    dot.push_str("  { rank=same; right_anchor; gen_anchor");
+    for i in 0..gv.board_clusters.len() {
+        if gv.board_clusters[i].is_empty() { continue; }
+        dot.push_str(&format!("; board_{}_anchor", i));
+    }
+    dot.push_str("; }\n");
 
     dot.push_str("}\n");
 
