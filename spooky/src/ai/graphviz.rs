@@ -265,7 +265,6 @@ pub fn export_search_tree<'a>(tree: &SearchTree<'a>) -> String {
     dot.push_str(&gv.cross_edges);
 
     // Anchors to force left/right split and vertical stacking on right
-    dot.push_str("  { rank=same; left_anchor; right_anchor; }\n");
     dot.push_str("  left_anchor -> right_anchor [style=invis, weight=100];\n");
     // Force all right-side region anchors into the same rank (same column in LR)
     dot.push_str("  { rank=same; right_anchor; gen_anchor");
@@ -274,6 +273,33 @@ pub fn export_search_tree<'a>(tree: &SearchTree<'a>) -> String {
         dot.push_str(&format!("; board_{}_anchor", i));
     }
     dot.push_str("; }\n");
+
+    // Ensure all Game ranks precede right-side ranks by forcing earliest right nodes
+    // to be strictly to the right of every Game ply representative.
+    for (_ply, nodes) in gv.game_ranks.iter() {
+        if let Some(game_rep) = nodes.first() {
+            // General root rank representative (depth 0)
+            if let Some(gen0) = gv.general_ranks.get(0) {
+                if let Some(gen_rep) = gen0.first() {
+                    dot.push_str(&format!(
+                        "  {} -> {} [style=invis, weight=200, minlen=1];\n",
+                        game_rep, gen_rep
+                    ));
+                }
+            }
+            // Each board's root rank representative (depth 0)
+            for branks in gv.board_ranks.iter() {
+                if let Some(b0) = branks.get(0) {
+                    if let Some(board_rep) = b0.first() {
+                        dot.push_str(&format!(
+                            "  {} -> {} [style=invis, weight=200, minlen=1];\n",
+                            game_rep, board_rep
+                        ));
+                    }
+                }
+            }
+        }
+    }
 
     dot.push_str("}\n");
 
