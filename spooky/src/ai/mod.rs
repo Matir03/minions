@@ -7,6 +7,7 @@ pub mod general;
 pub mod mcts;
 pub mod rng;
 pub mod search;
+pub mod graphviz;
 
 // Re-export key types
 pub use eval::Eval;

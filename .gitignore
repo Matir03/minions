@@ -34,9 +34,8 @@ lerna-debug.log*
 *.sw?
 *.metals
 
-# Python
+# Spooky artifacts
 /spooky/scrims/venv/
 /spooky/scrims/results/
-
-# matches
 /spooky/matches
+/spooky/graphviz
