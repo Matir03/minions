@@ -63,6 +63,8 @@ pub struct MCTSEdge<'a, Node, Turn> {
 #[derive(Debug)]
 pub struct MCTSNode<'a, State: NodeState<Turn>, Turn> {
     pub stats: NodeStats,
+    pub phantom_stats: NodeStats,
+    pub update_phantom: bool,
     pub edges: Vec<'a, MCTSEdge<'a, Self, Turn>>,
     pub state: State,
     pub side: Side,
@@ -72,6 +74,8 @@ impl<'a, State: NodeState<Turn> + PartialEq, Turn> MCTSNode<'a, State, Turn> {
     pub fn new(state: State, side: Side, arena: &'a Bump) -> Self {
         Self {
             stats: NodeStats::new(),
+            phantom_stats: NodeStats::new(),
+            update_phantom: true,
             edges: Vec::new_in(arena),
             state,
             side,
@@ -100,7 +104,6 @@ impl<'a, State: NodeState<Turn> + PartialEq, Turn> MCTSNode<'a, State, Turn> {
 
         let mut best_child_index = 0;
         let mut best_uct = f32::NEG_INFINITY;
-        let mut total_score: f32 = 0.0;
         let ln_n = (self.stats.visits as f32).ln();
 
         for (i, child) in self.children().enumerate() {
@@ -112,28 +115,18 @@ impl<'a, State: NodeState<Turn> + PartialEq, Turn> MCTSNode<'a, State, Turn> {
                 best_child_index = i;
                 best_uct = uct;
             }
-
-            let score = stats.eval.unwrap().score(self.side);
-
-            total_score += score;
         }
 
-        let num_children = self.edges.len();
-        let avg_score = total_score / num_children as f32;
-
-        let phantom_stats = NodeStats {
-            visits: num_children as u32,
-            eval: Some(Eval::new(avg_score, self.side)),
-        };
-
-        let phantom_uct = phantom_stats.uct(ln_n, rng, self.side);
+        let phantom_uct = self.phantom_stats.uct(ln_n, rng, self.side);
 
         if best_uct <= phantom_uct {
             let child_index = self.make_child(search_args, rng, args);
 
+            self.update_phantom = true;
             return (true, child_index);
         }
 
+        self.update_phantom = false;
         (false, best_child_index)
     }
 
@@ -169,6 +162,9 @@ impl<'a, State: NodeState<Turn> + PartialEq, Turn> MCTSNode<'a, State, Turn> {
 
     pub fn update(&mut self, eval: &Eval) {
         self.stats.update(eval);
+        if self.update_phantom {
+            self.phantom_stats.update(eval);
+        }
     }
 
     pub fn make_child(
