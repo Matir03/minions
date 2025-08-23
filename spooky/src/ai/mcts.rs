@@ -29,14 +29,12 @@ impl NodeStats {
     }
 
     pub fn uct(&self, ln_n: f32, rng: &mut impl Rng, side: Side) -> f32 {
-        const C: f32 = 1.5;
-        const EPS: f32 = 0.1;
+        const C: f32 = 0.1;
 
         let w = self.eval.unwrap().score(side);
         let n0 = self.visits as f32;
-        let r = rng.gen_range(-EPS..EPS);
 
-        w + C * (ln_n / (n0 + 1.0)).sqrt() + r
+        w + C * (ln_n / n0).sqrt()
     }
 
     pub fn update(&mut self, eval: &Eval) {
@@ -124,7 +122,7 @@ impl<'a, State: NodeState<Turn> + PartialEq, Turn> MCTSNode<'a, State, Turn> {
         let avg_score = total_score / num_children as f32;
 
         let phantom_stats = NodeStats {
-            visits: 1 + num_children as u32,
+            visits: num_children as u32,
             eval: Some(Eval::new(avg_score, self.side)),
         };
 
