@@ -27,6 +27,9 @@ impl Eval {
 
     /// evaluate position without calculating moves
     pub fn static_eval(config: &GameConfig, state: &GameState) -> Self {
+        if let Some(winner) = state.winner {
+            return Eval::new(1.0, winner);
+        }
         Eval::heuristic(config, state)
     }
 

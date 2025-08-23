@@ -142,6 +142,10 @@ impl<'a> NodeState<GameTurn> for GameNodeState<'a> {
         let mut next_board_points = self.game_state.board_points.clone();
         next_board_points.add_assign(&total_board_delta_points);
 
+        let next_winner = [current_side, !current_side]
+            .into_iter()
+            .find(|&side| next_board_points[side] >= self.game_state.config.points_to_win);
+
         let next_game_state = GameState {
             config: self.game_state.config,
             tech_state: next_tech_state,
@@ -150,7 +154,7 @@ impl<'a> NodeState<GameTurn> for GameNodeState<'a> {
             board_points: next_board_points,
             money: next_money,
             ply: self.game_state.ply + 1,
-            winner: self.game_state.winner,
+            winner: next_winner,
         };
 
         let num_boards = self.game_state.config.num_boards;
@@ -173,3 +177,9 @@ impl<'a> NodeState<GameTurn> for GameNodeState<'a> {
 
 pub type GameNode<'a> = MCTSNode<'a, GameNodeState<'a>, GameTurn>;
 pub type GameNodeRef<'a> = &'a RefCell<GameNode<'a>>;
+
+impl<'a> GameNode<'a> {
+    pub fn is_terminal(&self) -> bool {
+        self.state.game_state.winner.is_some()
+    }
+}
