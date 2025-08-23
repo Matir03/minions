@@ -73,10 +73,14 @@ impl GraphvizBuilder {
         let side = b.state.game_state.side_to_move;
         let winprob = b.stats.eval.unwrap().score(side);
         let ply = b.state.game_state.ply as usize;
+        let border_color = match side {
+            crate::core::side::Side::Yellow => "yellow",
+            crate::core::side::Side::Blue => "blue",
+        };
         let _ = writeln!(
             self.game_cluster,
-            "  {} [label=\"Game\\nvisits={} win={:.3}\\nside={:?} ply={}\"];",
-            node_name, visits, winprob, side, ply
+            "  {} [label=\"Game\\nvisits={} win={:.3}\", color={}];",
+            node_name, visits, winprob, border_color
         );
         // Track rank groupings for game nodes by ply
         self.game_ranks
@@ -84,31 +88,18 @@ impl GraphvizBuilder {
             .or_default()
             .push(node_name.clone());
 
-        // Link to General and Board nodes (cross edges)
+        // Traverse General and Boards without emitting cross edges
         let gen_ref = b.state.general_node;
-        let gen_name = Self::general_node_id(gen_ref);
-        let _ = writeln!(
-            self.cross_edges,
-            "  {} -> {} [style=dashed,label=\"general\",constraint=false];",
-            node_name, gen_name
-        );
-        // Start General traversal with depth 0 (first call will drive full traversal)
         self.emit_general(gen_ref, 0);
 
         let b = node.borrow();
         for (i, board_ref) in b.state.board_nodes.iter().enumerate() {
-            let board_name = Self::board_node_id(*board_ref);
-            let _ = writeln!(
-                self.cross_edges,
-                "  {} -> {} [style=dashed,label=\"board {}\",constraint=false];",
-                node_name, board_name, i
-            );
             // Start Board traversal (per board) with depth 0
             self.emit_board(i, *board_ref, 0);
         }
 
-        // Recurse into Game children
-        for edge in b.edges.iter() {
+        // Recurse into Game children (limit to top 4)
+        for edge in b.edges.iter().take(4) {
             let child_ref = edge.child;
             let child_name = Self::game_node_id(child_ref);
             let _ = writeln!(self.game_cluster, "  {} -> {};", node_name, child_name);
@@ -126,17 +117,22 @@ impl GraphvizBuilder {
         let visits = b.stats.visits;
         let side = b.state.side;
         let winprob = b.stats.eval.unwrap().score(side);
+        let border_color = match side {
+            crate::core::side::Side::Yellow => "yellow",
+            crate::core::side::Side::Blue => "blue",
+        };
         let _ = writeln!(
             self.general_cluster,
-            "  {} [label=\"General\\nvisits={} win={:.3}\\nside={:?}\"];",
-            node_name, visits, winprob, side
+            "  {} [label=\"General\\nvisits={} win={:.3}\", color={}];",
+            node_name, visits, winprob, border_color
         );
         // Track rank groupings by depth within General
         while self.general_ranks.len() <= depth {
             self.general_ranks.push(Vec::new());
         }
         self.general_ranks[depth].push(node_name.clone());
-        for edge in b.edges.iter() {
+        // Recurse into General children (limit to top 4)
+        for edge in b.edges.iter().take(4) {
             let child_ref = edge.child;
             let child_name = Self::general_node_id(child_ref);
             let _ = writeln!(self.general_cluster, "  {} -> {};", node_name, child_name);
@@ -154,14 +150,18 @@ impl GraphvizBuilder {
         let visits = b.stats.visits;
         let side = b.state.side_to_move;
         let winprob = b.stats.eval.unwrap().score(side);
+        let border_color = match side {
+            crate::core::side::Side::Yellow => "yellow",
+            crate::core::side::Side::Blue => "blue",
+        };
         let _ = writeln!(
             self.board_cluster(idx),
-            "  {} [label=\"Board {}\\nvisits={} win={:.3}\\nside={:?}\"];",
+            "  {} [label=\"Board {}\\nvisits={} win={:.3}\", color={}];",
             node_name,
             idx,
             visits,
             winprob,
-            side
+            border_color
         );
         // Track rank groupings by depth within this board subtree
         while self.board_ranks.len() <= idx {
@@ -171,7 +171,7 @@ impl GraphvizBuilder {
             self.board_ranks[idx].push(Vec::new());
         }
         self.board_ranks[idx][depth].push(node_name.clone());
-        for edge in b.edges.iter() {
+        for edge in b.edges.iter().take(4) {
             let child_ref = edge.child;
             let child_name = Self::board_node_id(child_ref);
             let _ = writeln!(
@@ -228,7 +228,7 @@ pub fn export_search_tree<'a>(tree: &SearchTree<'a>) -> String {
 
     // Right side container
     dot.push_str("  subgraph cluster_right {\n");
-    dot.push_str("    label=\"Right Side\";\n");
+    dot.push_str("    label=\"Component Trees\";\n");
     dot.push_str("    color=\"#999999\";\n");
     dot.push_str("    right_anchor [shape=point, width=0, height=0, label=\"\"];\n");
 
