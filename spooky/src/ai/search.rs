@@ -10,8 +10,8 @@ use crate::ai::{
 
 use bumpalo::Bump;
 use rand::prelude::*;
-use std::vec::Vec as StdVec;
 use std::cell::RefCell;
+use std::vec::Vec as StdVec;
 
 pub struct SearchResult {
     pub eval: Eval,
@@ -35,8 +35,9 @@ impl<'a> SearchTree<'a> {
     pub fn new(config: &'a GameConfig, state: GameState<'a>, arena: &'a Bump) -> Self {
         // let arena = Bump::new();
         let search_args_for_init = SearchArgs { config, arena };
+        let side = state.side_to_move;
         let game_node_state = GameNodeState::from_game_state(state, arena);
-        let root = arena.alloc(RefCell::new(GameNode::new(game_node_state, arena)));
+        let root = arena.alloc(RefCell::new(GameNode::new(game_node_state, side, arena)));
 
         Self {
             args: search_args_for_init,
@@ -52,44 +53,54 @@ impl<'a> SearchTree<'a> {
         loop {
             explored_nodes.push(current_mcts_node);
 
-            let (is_new, child_idx) = current_mcts_node
-                .borrow_mut()
-                .poll(&self.args, &mut self.rng, (self.args.clone(), self.args.arena));
-
-            if is_new { break; }
+            let (is_new, child_idx) = current_mcts_node.borrow_mut().poll(
+                &self.args,
+                &mut self.rng,
+                (self.args.clone(), self.args.arena),
+            );
 
             current_mcts_node = current_mcts_node.borrow().edges[child_idx].child;
-        }
 
-        let (leaf_eval, leaf_side) = {
-            let leaf_node = current_mcts_node.borrow();
-            let eval = Eval::static_eval(self.args.config, &leaf_node.state.game_state);
-            let side = leaf_node.state.game_state.side_to_move;
-            (eval, side)
-        };
+            if is_new {
+                break;
+            }
+        }
+        explored_nodes.push(current_mcts_node);
+
+        let leaf_eval = Eval::static_eval(
+            self.args.config,
+            &current_mcts_node.borrow().state.game_state,
+        );
 
         for node_ref in explored_nodes {
             let mut node_borrowed = node_ref.borrow_mut();
-            let perspective_eval = if node_borrowed.state.game_state.side_to_move != leaf_side {
-                leaf_eval.flip()
-            } else {
-                leaf_eval
-            };
-            
-            node_borrowed.update(&perspective_eval);
-            node_borrowed.state.board_nodes.iter().for_each(|board_node| {
-                board_node.borrow_mut().update(&perspective_eval);
-            });
-            node_borrowed.state.general_node.borrow_mut().update(&perspective_eval);
+
+            node_borrowed.update(&leaf_eval);
+            node_borrowed
+                .state
+                .board_nodes
+                .iter()
+                .for_each(|board_node| {
+                    board_node.borrow_mut().update(&leaf_eval);
+                });
+            node_borrowed
+                .state
+                .general_node
+                .borrow_mut()
+                .update(&leaf_eval);
         }
     }
 
     pub fn best_turn(&self) -> GameTurn {
-        self.root.borrow().best_turn() 
+        self.root.borrow().best_turn()
     }
 
     pub fn eval(&self) -> Eval {
-        self.root.borrow().stats.eval
+        self.root
+            .borrow()
+            .stats
+            .eval
+            .expect("Root node has no eval")
     }
 
     pub fn result(&self) -> SearchResult {

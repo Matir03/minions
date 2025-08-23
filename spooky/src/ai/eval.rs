@@ -1,34 +1,28 @@
 //! Position evaluation for single boards
 
-use crate::core::{tech::SPELL_COST, utils::Sigmoid, GameConfig, GameState, Side};
+use crate::core::{tech::SPELL_COST, utils::Sigmoid, GameConfig, GameState, Side, SideArray};
 
 #[derive(Debug, Clone, Copy, Default)]
 pub struct Eval {
-    /// winprob in [0, 1] for current player
-    pub winprob: f32,
+    pub winprobs: SideArray<f32>,
 }
 
 impl Eval {
-    pub fn new(winprob: f32) -> Self {
-        Self { winprob }
+    pub fn new(winprob: f32, side: Side) -> Self {
+        let mut winprobs = SideArray::new(0.0, 0.0);
+        winprobs[side] = winprob;
+        winprobs[!side] = 1.0 - winprob;
+        Self { winprobs }
     }
 
-    pub fn score(&self, same_side: bool) -> f32 {
-        if same_side {
-            self.winprob
-        } else {
-            -self.winprob
-        }
+    pub fn score(&self, side: Side) -> f32 {
+        self.winprobs[side]
     }
 
     pub fn flip(&self) -> Self {
         Self {
-            winprob: 1.0 - self.winprob,
+            winprobs: SideArray::new(self.winprobs[Side::Blue], self.winprobs[Side::Yellow]),
         }
-    }
-
-    pub fn winprob(&self) -> f32 {
-        self.winprob
     }
 
     /// evaluate position without calculating moves
@@ -73,6 +67,13 @@ impl Eval {
         // Convert to winprob
         let winprob = (perspective_diff as f32 * SIGMOID_SCALE).sigmoid();
 
-        Eval::new(winprob)
+        Eval::new(winprob, state.side_to_move)
+    }
+
+    pub fn update_weighted(&mut self, n: f32, eval: &Eval) {
+        self.winprobs[Side::Yellow] =
+            (self.winprobs[Side::Yellow] * n + eval.winprobs[Side::Yellow]) / (n + 1.0);
+        self.winprobs[Side::Blue] =
+            (self.winprobs[Side::Blue] * n + eval.winprobs[Side::Blue]) / (n + 1.0);
     }
 }

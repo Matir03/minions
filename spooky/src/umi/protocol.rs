@@ -70,7 +70,7 @@ pub fn handle_command<'a>(cmd: &str, engine: &mut Engine<'a>) -> Result<Option<G
             let search_options = args.parse::<SearchOptions>()?;
 
             let (eval, turn, nodes_explored, time) = engine.go(&search_options);
-            let winprob = eval.winprob();
+            let winprob = eval.score(engine.state.side_to_move);
             let nps = nodes_explored as f64 / time;
 
             println!("info eval winprob {}", winprob);

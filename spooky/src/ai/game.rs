@@ -50,6 +50,7 @@ impl<'a> GameNodeState<'a> {
                 game_state.tech_state.clone(),
                 SideArray::new(0, 0),
             ),
+            game_state.side_to_move,
             arena,
         )));
         let mut board_mcts_nodes = BumpVec::new_in(arena);
@@ -57,6 +58,7 @@ impl<'a> GameNodeState<'a> {
         for board_state in &game_state.boards {
             let board_mcts_node: BoardNodeRef<'a> = arena.alloc(RefCell::new(MCTSNode::new(
                 BoardNodeState::new(board_state.clone(), game_state.side_to_move),
+                game_state.side_to_move,
                 arena,
             )));
             board_mcts_nodes.push(board_mcts_node);
@@ -171,120 +173,3 @@ impl<'a> NodeState<GameTurn> for GameNodeState<'a> {
 
 pub type GameNode<'a> = MCTSNode<'a, GameNodeState<'a>, GameTurn>;
 pub type GameNodeRef<'a> = &'a RefCell<GameNode<'a>>;
-
-// impl<'a> GameNode<'a> {
-//     pub fn construct_best_turn(&self) -> GameTurn {
-//         let tech_assignment = self.state.general_node.borrow().best_turn();
-
-//         let board_turns = self.state.board_nodes
-//             .iter()
-//             .map(|board_node_ref| board_node_ref.borrow().best_turn())
-//             .collect();
-
-//         let num_boards = self.state.game_state.config.num_boards;
-//         GameTurn {
-//             tech_assignment,
-//             board_turns,
-//             spells: HashBag::new(),
-//             spell_assignment: vec![Spell::Blank; num_boards],
-//         }
-//     }
-// }
-/*
-pub struct GameTree<'a> {
-    pub mcts_node_ref: &'a RefCell<MCTSNode<'a, GameNodeState<'a>, GameTurn>>,
-}
-
-impl <'a> GameTree<'a> {
-    pub fn from_state(initial_game_state: GameState, search_args: SearchArgs<'a>, arena: &'a Bump) -> Self {
-        let initial_general_node_state = GeneralNodeState::new(
-            initial_game_state.side_to_move,
-            initial_game_state.tech_state.clone(),
-            SideArray::new(0,0)
-        );
-        let general_mcts_node = arena.alloc(RefCell::new(MCTSNode::new(initial_general_node_state, arena)));
-
-        let mut initial_board_mcts_nodes = BumpVec::new_in(arena);
-        for board_state in &initial_game_state.boards {
-            let initial_board_node_state = BoardNodeState::new(
-                board_state.clone(),
-                initial_game_state.side_to_move
-            );
-            let board_mcts_node = arena.alloc(RefCell::new(MCTSNode::new(initial_board_node_state, arena)));
-            initial_board_mcts_nodes.push(board_mcts_node);
-        }
-
-        let initial_game_node_state = GameNodeState {
-            game_state: initial_game_state.clone(),
-            general_mcts_node,
-            board_mcts_nodes: initial_board_mcts_nodes,
-        };
-
-        let root_mcts_node = MCTSNode::new(initial_game_node_state, arena);
-        let root_mcts_node_ref = arena.alloc(RefCell::new(root_mcts_node));
-        Self {
-            mcts_node_ref: root_mcts_node_ref,
-        }
-    }
-
-    pub fn explore(&mut self, search_args: SearchArgs<'a>, rng: &mut impl Rng, arena: &'a Bump) -> Eval {
-        let gns_args = (search_args, arena);
-
-        let mut path: BumpVec<&'a RefCell<MCTSNode<'a, GameNodeState, GameTurn>>> = BumpVec::new_in(arena);
-        let mut current_mcts_node_ref = self.mcts_node_ref;
-        path.push(current_mcts_node_ref);
-
-        let mut current_mcts_node = current_mcts_node_ref.borrow_mut();
-
-        while !(*current_mcts_node).is_leaf() {
-            let (_, best_child_idx) = current_mcts_node.poll(&search_args, rng, gns_args);
-            let next_node_ref = current_mcts_node.edges[best_child_idx].child;
-            path.push(next_node_ref);
-            let temp_next_node_ref = current_mcts_node.edges[best_child_idx].child;
-            drop(current_mcts_node);
-            current_mcts_node_ref = temp_next_node_ref;
-            current_mcts_node = current_mcts_node_ref.borrow_mut();
-        }
-
-        let eval_from_new_leaf = if (*current_mcts_node).stats.visits > 0 || (*current_mcts_node).is_terminal(&search_args.config.techline) {
-            if (*current_mcts_node).is_terminal(&search_args.config.techline) {
-                 Eval::static_eval(search_args.config, &(*current_mcts_node).state.game_state)
-            } else {
-                (*current_mcts_node).make_child(&search_args, rng, gns_args);
-                let new_child_node = (*current_mcts_node).edges.last().unwrap().child.borrow();
-                Eval::static_eval(search_args.config, &new_child_node.state.game_state)
-            }
-        } else {
-            Eval::static_eval(search_args.config, &(*current_mcts_node).state.game_state)
-        };
-
-        for node_ref_in_path in path.iter().rev() {
-            let mut node_in_path = node_ref_in_path.borrow_mut();
-            let perspective_eval = if node_in_path.state.game_state.side_to_move != eval_from_new_leaf.side.unwrap_or(node_in_path.state.game_state.side_to_move) {
-                eval_from_new_leaf.flip()
-            } else {
-                eval_from_new_leaf
-            };
-            node_in_path.update(&perspective_eval);
-        }
-
-        eval_from_new_leaf
-    }
-
-    pub fn best_turn(&self) -> GameTurn {
-        let mcts_node = self.mcts_node_ref.borrow();
-        if mcts_node.edges.is_empty() {
-            panic!("best_turn() called on GameNode with no explored children.");
-        }
-        let best_edge = mcts_node.edges.iter().max_by_key(|edge| edge.child.borrow().stats.visits)
-            .expect("No children to select best turn from");
-        best_edge.turn.clone()
-    }
-}
-
-impl<'a> MCTSNode<'a, GameNodeState<'a>, GameTurn> {
-    pub fn is_terminal(&self, techline: &Techline) -> bool {
-        self.state.game_state.is_terminal(techline)
-    }
-}
-*/

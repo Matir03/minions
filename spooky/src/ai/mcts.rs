@@ -1,11 +1,8 @@
 //! Strategic decision making across multiple boards
 
-use std::{
-    cell::RefCell,
-    collections::HashMap,
-};
+use std::{cell::RefCell, collections::HashMap};
 
-use crate::core::{GameConfig, GameState, Side, SideArray, GameTurn};
+use crate::core::{GameConfig, GameState, GameTurn, Side, SideArray};
 
 use super::{
     blotto, // Assuming we'll have a blotto function/module here
@@ -15,28 +12,27 @@ use super::{
 
 use rand::prelude::*;
 
-use bumpalo::{Bump, collections::Vec};
+use bumpalo::{collections::Vec, Bump};
 
 #[derive(Copy, Clone, Debug, Default)]
 pub struct NodeStats {
     pub visits: u32,
-    /// stores eval from the perspective of the _previous_ node
-    pub eval: Eval,
+    pub eval: Option<Eval>,
 }
 
 impl NodeStats {
     pub fn new() -> Self {
         Self {
             visits: 0,
-            eval: Eval::new(0.0),
+            eval: None,
         }
     }
 
-    pub fn uct(&self, ln_n: f32, rng: &mut impl Rng) -> f32 {
+    pub fn uct(&self, ln_n: f32, rng: &mut impl Rng, side: Side) -> f32 {
         const C: f32 = 1.5;
         const EPS: f32 = 0.1;
 
-        let w = self.eval.winprob;
+        let w = self.eval.unwrap().score(side);
         let n0 = self.visits as f32;
         let r = rng.gen_range(-EPS..EPS);
 
@@ -47,7 +43,10 @@ impl NodeStats {
         let n = self.visits as f32;
 
         self.visits += 1;
-        self.eval.winprob = (self.eval.winprob * n + eval.winprob) / (n + 1.0);
+        match &mut self.eval {
+            Some(e) => e.update_weighted(n, eval),
+            None => self.eval = Some(eval.clone()),
+        }
     }
 }
 
@@ -68,27 +67,33 @@ pub struct MCTSNode<'a, State: NodeState<Turn>, Turn> {
     pub stats: NodeStats,
     pub edges: Vec<'a, MCTSEdge<'a, Self, Turn>>,
     pub state: State,
+    pub side: Side,
 }
 
 impl<'a, State: NodeState<Turn> + PartialEq, Turn> MCTSNode<'a, State, Turn> {
-    pub fn new(state: State, arena: &'a Bump) -> Self {
+    pub fn new(state: State, side: Side, arena: &'a Bump) -> Self {
         Self {
             stats: NodeStats::new(),
             edges: Vec::new_in(arena),
             state,
+            side,
         }
     }
 
     fn children(&self) -> impl Iterator<Item = &RefCell<Self>> {
-        self.edges.iter()
-            .map(|edge| 
-                edge.child)
+        self.edges.iter().map(|edge| edge.child)
     }
 
     /// (whether a new child was made, index of selected child)
-    pub fn poll(&mut self, search_args: &SearchArgs<'a>, rng: &mut impl Rng, args: State::Args) -> (bool, usize)
-        where Self: 'a {
-
+    pub fn poll(
+        &mut self,
+        search_args: &SearchArgs<'a>,
+        rng: &mut impl Rng,
+        args: State::Args,
+    ) -> (bool, usize)
+    where
+        Self: 'a,
+    {
         // If no children exist, always create a new one
         if self.edges.is_empty() {
             let child_index = self.make_child(search_args, rng, args);
@@ -104,26 +109,26 @@ impl<'a, State: NodeState<Turn> + PartialEq, Turn> MCTSNode<'a, State, Turn> {
             let child = child.borrow();
             let stats = child.stats;
 
-            let uct = stats.uct(ln_n, rng);
+            let uct = stats.uct(ln_n, rng, self.side);
             if uct > best_uct {
                 best_child_index = i;
                 best_uct = uct;
             }
 
-            let score = stats.eval.winprob();
+            let score = stats.eval.unwrap().score(self.side);
 
             total_score += score;
         }
 
         let num_children = self.edges.len();
-        let avg_score = total_score / num_children.min(1) as f32;
+        let avg_score = total_score / num_children as f32;
 
         let phantom_stats = NodeStats {
             visits: 1 + num_children as u32,
-            eval: Eval::new(avg_score),
+            eval: Some(Eval::new(avg_score, self.side)),
         };
 
-        let phantom_uct = phantom_stats.uct(ln_n, rng);
+        let phantom_uct = phantom_stats.uct(ln_n, rng, self.side);
 
         if best_uct <= phantom_uct {
             let child_index = self.make_child(search_args, rng, args);
@@ -135,9 +140,15 @@ impl<'a, State: NodeState<Turn> + PartialEq, Turn> MCTSNode<'a, State, Turn> {
     }
 
     // TODO: Review this method's logic, especially panic cases.
-    fn get_child(&mut self, search_args: &SearchArgs<'a>, rng: &mut impl Rng, args: State::Args) -> (usize, &'a RefCell<Self>)
-        where Self: 'a {
-
+    fn get_child(
+        &mut self,
+        search_args: &SearchArgs<'a>,
+        rng: &mut impl Rng,
+        args: State::Args,
+    ) -> (usize, &'a RefCell<Self>)
+    where
+        Self: 'a,
+    {
         // Ensure we have at least one child
         if self.edges.is_empty() {
             let index = self.make_child(search_args, rng, args);
@@ -148,7 +159,11 @@ impl<'a, State: NodeState<Turn> + PartialEq, Turn> MCTSNode<'a, State, Turn> {
 
         // Ensure the index is valid. This should be guaranteed by the logic in `poll`.
         if index >= self.edges.len() {
-            unreachable!("get_child: poll() returned an invalid index ({}) but edges has length {}", index, self.edges.len());
+            unreachable!(
+                "get_child: poll() returned an invalid index ({}) but edges has length {}",
+                index,
+                self.edges.len()
+            );
         }
 
         (index, self.edges[index].child)
@@ -158,17 +173,28 @@ impl<'a, State: NodeState<Turn> + PartialEq, Turn> MCTSNode<'a, State, Turn> {
         self.stats.update(eval);
     }
 
-    pub fn make_child(&mut self, search_args: &SearchArgs<'a>, rng: &mut impl Rng, args: State::Args) -> usize
-        where Self: 'a, State: PartialEq
+    pub fn make_child(
+        &mut self,
+        search_args: &SearchArgs<'a>,
+        rng: &mut impl Rng,
+        args: State::Args,
+    ) -> usize
+    where
+        Self: 'a,
+        State: PartialEq,
     {
         let (turn, new_node_state) = self.state.propose_move(rng, &args); // Args might need to be Clone
 
         // Check if this turn/state already exists as a child to avoid duplicates.
-        if let Some(pos) = self.edges.iter().position(|edge| edge.child.borrow().state == new_node_state) {
+        if let Some(pos) = self
+            .edges
+            .iter()
+            .position(|edge| edge.child.borrow().state == new_node_state)
+        {
             return pos;
         }
 
-        let new_mcts_node = MCTSNode::new(new_node_state, search_args.arena); 
+        let new_mcts_node = MCTSNode::new(new_node_state, self.side, search_args.arena);
         let new_mcts_node_ref = search_args.arena.alloc(RefCell::new(new_mcts_node));
 
         let edge = MCTSEdge {
@@ -181,11 +207,16 @@ impl<'a, State: NodeState<Turn> + PartialEq, Turn> MCTSNode<'a, State, Turn> {
         self.edges.len() - 1
     }
 
-    pub fn best_turn(&self) -> Turn where Turn: Clone {
-        self.edges.iter()
+    pub fn best_turn(&self) -> Turn
+    where
+        Turn: Clone,
+    {
+        self.edges
+            .iter()
             .max_by_key(|edge| edge.child.borrow().stats.visits)
             .expect("No children to select best turn from")
-            .turn.clone()
+            .turn
+            .clone()
     }
 
     pub fn print_tree(&self, indent: usize) -> String {
