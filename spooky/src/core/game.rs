@@ -2,6 +2,7 @@
 
 use anyhow::{anyhow, bail, ensure, Context, Result};
 use std::path::Path;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::{
     action::GameTurn,
@@ -23,6 +24,14 @@ pub struct GameConfig {
     pub points_to_win: i32,
     pub maps: Vec<Map>,
     pub techline: Techline,
+}
+
+pub(crate) fn generate_game_id() -> String {
+    let ts_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    format!("game_{}", ts_ms)
 }
 
 impl Default for GameConfig {
@@ -60,6 +69,7 @@ impl GameConfig {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct GameState<'a> {
     pub config: &'a GameConfig,
+    pub game_id: String,
     pub boards: Vec<Board<'a>>,
     pub side_to_move: Side,
     pub ply: i32,
@@ -80,6 +90,7 @@ impl<'a> GameState<'a> {
     ) -> Self {
         Self {
             config,
+            game_id: generate_game_id(),
             side_to_move,
             ply: turn_num,
             boards,
@@ -100,6 +111,7 @@ impl<'a> GameState<'a> {
             .collect();
         Self {
             config,
+            game_id: generate_game_id(),
             side_to_move: Side::Yellow,
             ply: 1,
             boards,

@@ -1,15 +1,14 @@
-use crate::core::{GameConfig, GameState, GameTurn, Spell};
-use crate::ai::{SearchTree, SearchResult};
 use crate::ai::graphviz::export_search_tree;
+use crate::ai::{SearchResult, SearchTree};
+use crate::core::{GameConfig, GameState, GameTurn, Spell};
 
 use anyhow::{bail, Context};
 use bumpalo::Bump;
 
-use std::str::FromStr;
-use std::time::Instant;
-use std::time::SystemTime;
 use std::fs;
 use std::path::PathBuf;
+use std::str::FromStr;
+use std::time::Instant;
 
 /// Options for configuring the search behavior
 #[derive(Debug, Clone)]
@@ -46,12 +45,13 @@ impl FromStr for SearchOptions {
                     i += 1;
                 }
                 "spells" if i + 1 < parts.len() => {
-                    search_options.spells = parts[i + 1].split(',')
+                    search_options.spells = parts[i + 1]
+                        .split(',')
                         .map(|s| s.parse().context("invalid spell"))
                         .collect::<Result<Vec<_>, _>>()?;
                     i += 1;
                 }
-                p => bail!("invalid go argument {}", p)
+                p => bail!("invalid go argument {}", p),
             }
             i += 1;
         }
@@ -70,7 +70,11 @@ impl Default for SearchOptions {
     }
 }
 
-pub fn search_no_spells<'a>(config: &GameConfig, state: &GameState, search_options: &SearchOptions) -> (SearchResult, f64) {
+pub fn search_no_spells<'a>(
+    config: &GameConfig,
+    state: &GameState,
+    search_options: &SearchOptions,
+) -> (SearchResult, f64) {
     let start_time = Instant::now();
     let arena = Bump::new();
 
@@ -90,20 +94,25 @@ pub fn search_no_spells<'a>(config: &GameConfig, state: &GameState, search_optio
     // Export Graphviz DOT of the current search tree
     let dot = export_search_tree(&search);
 
-    // Ensure output directory exists
-    let out_dir = PathBuf::from("graphviz");
-    if let Err(e) = fs::create_dir_all(&out_dir) { eprintln!("warning: failed to create graphviz dir: {}", e); }
+    // Ensure output directory exists for this game
+    let out_dir = PathBuf::from("graphviz").join(state.game_id.as_str());
+    if let Err(e) = fs::create_dir_all(&out_dir) {
+        eprintln!("warning: failed to create graphviz dir: {}", e);
+    }
 
-    // Use unix epoch milliseconds for a unique filename
-    let ts_ms = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
-    let out_path = out_dir.join(format!("search_{}.dot", ts_ms));
+    // Name file by current ply
+    let out_path = out_dir.join(format!("ply_{}.dot", state.ply));
 
     match fs::write(&out_path, dot) {
         Ok(_) => {
             println!("info graphviz file {}", out_path.display());
         }
         Err(e) => {
-            eprintln!("warning: failed to write graphviz file {}: {}", out_path.display(), e);
+            eprintln!(
+                "warning: failed to write graphviz file {}: {}",
+                out_path.display(),
+                e
+            );
         }
     }
 

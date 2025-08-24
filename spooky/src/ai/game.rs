@@ -144,6 +144,7 @@ impl<'a> NodeState<GameTurn> for GameNodeState<'a> {
 
         let next_game_state = GameState {
             config: self.game_state.config,
+            game_id: self.game_state.game_id.clone(),
             tech_state: next_tech_state,
             side_to_move: !current_side,
             boards: next_board_states_for_gamestate,
