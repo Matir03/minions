@@ -20,23 +20,19 @@ use rand::prelude::*;
 use bumpalo::{collections::Vec as BumpVec, Bump};
 use std::vec::Vec as StdVec;
 
+#[derive(Debug, Clone)]
 pub struct GameNodeState<'a> {
     pub game_state: GameState<'a>,
     pub general_node: GeneralNodeRef<'a>,
     pub board_nodes: BumpVec<'a, BoardNodeRef<'a>>,
 }
 
-impl<'a> std::fmt::Debug for GameNodeState<'a> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("GameNodeState")
-            .field("game_state", &self.game_state)
-            .finish()
-    }
-}
-
 impl<'a> PartialEq for GameNodeState<'a> {
     fn eq(&self, other: &Self) -> bool {
-        self.game_state == other.game_state
+        self.general_node.as_ptr() == other.general_node.as_ptr()
+            && self.board_nodes.iter().zip(other.board_nodes.iter()).all(
+                |(board_node, other_board_node)| board_node.as_ptr() == other_board_node.as_ptr(),
+            )
     }
 }
 
