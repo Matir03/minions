@@ -72,6 +72,12 @@ impl GraphvizBuilder {
         let visits = b.stats.visits;
         let side = b.state.game_state.side_to_move;
         let winprob = b.stats.eval.unwrap().score(side);
+        let num_children = b.edges.len();
+        let phantom_win = b
+            .phantom_stats
+            .eval
+            .map(|e| e.score(side))
+            .unwrap_or(f32::NAN);
         let ply = b.state.game_state.ply as usize;
         let border_color = match side {
             crate::core::side::Side::Yellow => "yellow",
@@ -79,8 +85,8 @@ impl GraphvizBuilder {
         };
         let _ = writeln!(
             self.game_cluster,
-            "  {} [label=\"Game\\nvisits={} win={:.3}\", color={}];",
-            node_name, visits, winprob, border_color
+            "  {} [label=\"Game\\nvisits={} win={:.3}\\nnum_children={} phantom={:.3}\", color={}];",
+            node_name, visits, winprob, num_children, phantom_win, border_color
         );
         // Track rank groupings for game nodes by ply
         self.game_ranks
@@ -117,14 +123,20 @@ impl GraphvizBuilder {
         let visits = b.stats.visits;
         let side = b.state.side;
         let winprob = b.stats.eval.unwrap().score(side);
+        let num_children = b.edges.len();
+        let phantom_win = b
+            .phantom_stats
+            .eval
+            .map(|e| e.score(side))
+            .unwrap_or(f32::NAN);
         let border_color = match side {
             crate::core::side::Side::Yellow => "yellow",
             crate::core::side::Side::Blue => "blue",
         };
         let _ = writeln!(
             self.general_cluster,
-            "  {} [label=\"General\\nvisits={} win={:.3}\", color={}];",
-            node_name, visits, winprob, border_color
+            "  {} [label=\"General\\nvisits={} win={:.3}\\nnum_children={} phantom={:.3}\", color={}];",
+            node_name, visits, winprob, num_children, phantom_win, border_color
         );
         // Track rank groupings by depth within General
         while self.general_ranks.len() <= depth {
@@ -150,17 +162,25 @@ impl GraphvizBuilder {
         let visits = b.stats.visits;
         let side = b.state.side_to_move;
         let winprob = b.stats.eval.unwrap().score(side);
+        let num_children = b.edges.len();
+        let phantom_win = b
+            .phantom_stats
+            .eval
+            .map(|e| e.score(side))
+            .unwrap_or(f32::NAN);
         let border_color = match side {
             crate::core::side::Side::Yellow => "yellow",
             crate::core::side::Side::Blue => "blue",
         };
         let _ = writeln!(
             self.board_cluster(idx),
-            "  {} [label=\"Board {}\\nvisits={} win={:.3}\", color={}];",
+            "  {} [label=\"Board {}\\nvisits={} win={:.3}\\nnum_children={} phantom={:.3}\", color={}];",
             node_name,
             idx,
             visits,
             winprob,
+            num_children,
+            phantom_win,
             border_color
         );
         // Track rank groupings by depth within this board subtree

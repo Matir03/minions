@@ -98,8 +98,7 @@ impl<'a, State: NodeState<Turn> + PartialEq, Turn> MCTSNode<'a, State, Turn> {
     {
         // If no children exist, always create a new one
         if self.edges.is_empty() {
-            let child_index = self.make_child(search_args, rng, args);
-            return (true, child_index);
+            return self.make_child(search_args, rng, args);
         }
 
         let mut best_child_index = 0;
@@ -120,45 +119,43 @@ impl<'a, State: NodeState<Turn> + PartialEq, Turn> MCTSNode<'a, State, Turn> {
         let phantom_uct = self.phantom_stats.uct(ln_n, rng, self.side);
 
         if best_uct <= phantom_uct {
-            let child_index = self.make_child(search_args, rng, args);
-
             self.update_phantom = true;
-            return (true, child_index);
+            return self.make_child(search_args, rng, args);
         }
 
         self.update_phantom = false;
         (false, best_child_index)
     }
 
-    // TODO: Review this method's logic, especially panic cases.
-    fn get_child(
-        &mut self,
-        search_args: &SearchArgs<'a>,
-        rng: &mut impl Rng,
-        args: State::Args,
-    ) -> (usize, &'a RefCell<Self>)
-    where
-        Self: 'a,
-    {
-        // Ensure we have at least one child
-        if self.edges.is_empty() {
-            let index = self.make_child(search_args, rng, args);
-            return (index, self.edges[index].child);
-        }
+    // // TODO: Review this method's logic, especially panic cases.
+    // fn get_child(
+    //     &mut self,
+    //     search_args: &SearchArgs<'a>,
+    //     rng: &mut impl Rng,
+    //     args: State::Args,
+    // ) -> (usize, &'a RefCell<Self>)
+    // where
+    //     Self: 'a,
+    // {
+    //     // Ensure we have at least one child
+    //     if self.edges.is_empty() {
+    //         let _, index = self.make_child(search_args, rng, args);
+    //         return (index, self.edges[index].child);
+    //     }
 
-        let (_is_new, index) = self.poll(search_args, rng, args);
+    //     let (_is_new, index) = self.poll(search_args, rng, args);
 
-        // Ensure the index is valid. This should be guaranteed by the logic in `poll`.
-        if index >= self.edges.len() {
-            unreachable!(
-                "get_child: poll() returned an invalid index ({}) but edges has length {}",
-                index,
-                self.edges.len()
-            );
-        }
+    //     // Ensure the index is valid. This should be guaranteed by the logic in `poll`.
+    //     if index >= self.edges.len() {
+    //         unreachable!(
+    //             "get_child: poll() returned an invalid index ({}) but edges has length {}",
+    //             index,
+    //             self.edges.len()
+    //         );
+    //     }
 
-        (index, self.edges[index].child)
-    }
+    //     (index, self.edges[index].child)
+    // }
 
     pub fn update(&mut self, eval: &Eval) {
         self.stats.update(eval);
@@ -172,7 +169,7 @@ impl<'a, State: NodeState<Turn> + PartialEq, Turn> MCTSNode<'a, State, Turn> {
         search_args: &SearchArgs<'a>,
         rng: &mut impl Rng,
         args: State::Args,
-    ) -> usize
+    ) -> (bool, usize)
     where
         Self: 'a,
         State: PartialEq,
@@ -185,7 +182,7 @@ impl<'a, State: NodeState<Turn> + PartialEq, Turn> MCTSNode<'a, State, Turn> {
             .iter()
             .position(|edge| edge.child.borrow().state == new_node_state)
         {
-            return pos;
+            return (false, pos);
         }
 
         let new_mcts_node = MCTSNode::new(new_node_state, self.side, search_args.arena);
@@ -198,7 +195,7 @@ impl<'a, State: NodeState<Turn> + PartialEq, Turn> MCTSNode<'a, State, Turn> {
 
         self.edges.push(edge);
 
-        self.edges.len() - 1
+        (true, self.edges.len() - 1)
     }
 
     pub fn best_turn(&self) -> Turn
