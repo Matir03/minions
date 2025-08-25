@@ -48,7 +48,7 @@ impl NodeStats {
     }
 }
 
-pub trait NodeState<Turn> {
+pub trait NodeState<Turn>: PartialEq {
     type Args;
 
     fn propose_move(&self, rng: &mut impl Rng, args: &Self::Args) -> (Turn, Self);
@@ -70,7 +70,7 @@ pub struct MCTSNode<'a, State: NodeState<Turn>, Turn> {
     pub side: Side,
 }
 
-impl<'a, State: NodeState<Turn> + PartialEq, Turn> MCTSNode<'a, State, Turn> {
+impl<'a, State: NodeState<Turn>, Turn> MCTSNode<'a, State, Turn> {
     pub fn new(state: State, side: Side, arena: &'a Bump) -> Self {
         Self {
             stats: NodeStats::new(),
@@ -127,36 +127,6 @@ impl<'a, State: NodeState<Turn> + PartialEq, Turn> MCTSNode<'a, State, Turn> {
         (false, best_child_index)
     }
 
-    // // TODO: Review this method's logic, especially panic cases.
-    // fn get_child(
-    //     &mut self,
-    //     search_args: &SearchArgs<'a>,
-    //     rng: &mut impl Rng,
-    //     args: State::Args,
-    // ) -> (usize, &'a RefCell<Self>)
-    // where
-    //     Self: 'a,
-    // {
-    //     // Ensure we have at least one child
-    //     if self.edges.is_empty() {
-    //         let _, index = self.make_child(search_args, rng, args);
-    //         return (index, self.edges[index].child);
-    //     }
-
-    //     let (_is_new, index) = self.poll(search_args, rng, args);
-
-    //     // Ensure the index is valid. This should be guaranteed by the logic in `poll`.
-    //     if index >= self.edges.len() {
-    //         unreachable!(
-    //             "get_child: poll() returned an invalid index ({}) but edges has length {}",
-    //             index,
-    //             self.edges.len()
-    //         );
-    //     }
-
-    //     (index, self.edges[index].child)
-    // }
-
     pub fn update(&mut self, eval: &Eval) {
         self.stats.update(eval);
         if self.update_phantom {
@@ -172,9 +142,8 @@ impl<'a, State: NodeState<Turn> + PartialEq, Turn> MCTSNode<'a, State, Turn> {
     ) -> (bool, usize)
     where
         Self: 'a,
-        State: PartialEq,
     {
-        let (turn, new_node_state) = self.state.propose_move(rng, &args); // Args might need to be Clone
+        let (turn, new_node_state) = self.state.propose_move(rng, &args);
 
         // Check if this turn/state already exists as a child to avoid duplicates.
         if let Some(pos) = self
