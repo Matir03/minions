@@ -9,13 +9,9 @@ use crate::core::{
     FromIndex, GameConfig, Side, Tech, Unit,
 };
 
-use rand::{distributions::Bernoulli, prelude::*};
+use rand::prelude::*;
 
-use super::{
-    eval::Eval,
-    mcts::{MCTSNode, NodeState, NodeStats},
-    search::SearchArgs,
-};
+use super::mcts::{ChildGen, MCTSNode};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct GeneralNodeState {
@@ -34,108 +30,329 @@ impl GeneralNodeState {
     }
 }
 
-impl NodeState<TechAssignment> for GeneralNodeState {
-    // (money, config)
+// --------------------------
+// Child generator for Generaling
+// --------------------------
+
+#[derive(Clone, Debug)]
+struct DecisionNode {
+    depth: usize,
+    mask: u32, // bitmask over tech indices (0..NUM_TECHS-1)
+    selected: usize,
+    visited: bool,
+    saturated: bool,
+    parent: Option<usize>,
+    take_child: Option<usize>,
+    skip_child: Option<usize>,
+}
+
+#[derive(Debug)]
+pub struct GeneralChildGen {
+    initialized: bool,
+    // indices into techline, sorted by weight desc
+    order: StdVec<usize>,
+    // normalized weights in [0,1]
+    weights: StdVec<f32>,
+    nodes: StdVec<DecisionNode>,
+}
+
+impl GeneralChildGen {
+    fn new_internal() -> Self {
+        Self {
+            initialized: false,
+            order: StdVec::new(),
+            weights: StdVec::new(),
+            nodes: StdVec::new(),
+        }
+    }
+
+    fn ensure_initialized(&mut self, state: &GeneralNodeState, config: &GameConfig) {
+        if self.initialized {
+            return;
+        }
+
+        let techline = &config.techline;
+        // Heuristic weights: prefer not-yet-acquired by either side, closer in index, and a small bias to higher-tier units.
+        let unlock = state.tech_state.unlock_index[state.side];
+        let mut scored: StdVec<(usize, f32)> = techline
+            .techs
+            .iter()
+            .enumerate()
+            .map(|(i, t)| {
+                let already_ours = state.tech_state.acquired_techs[state.side].contains(t);
+                let already_theirs = state.tech_state.acquired_techs[!state.side].contains(t);
+                let base = if already_ours { 0.0 } else { 1.0 };
+                let penalty_theirs = if already_theirs { -0.5 } else { 0.0 };
+                let dist = (i as i32 - unlock as i32).max(0) as f32;
+                let proximity = if dist == 0.0 { 1.0 } else { 1.0 / (1.0 + dist) };
+                let tier_bias = (i as f32 + 1.0) / techline.len() as f32;
+                let raw = base + penalty_theirs + 0.5 * proximity + 0.25 * tier_bias;
+                (i, raw.max(0.0))
+            })
+            .collect();
+
+        // Sort by weight desc
+        scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+        let maxw = scored.first().map(|x| x.1).unwrap_or(1.0).max(1e-6);
+        self.order = scored.iter().map(|(i, _)| *i).collect();
+        self.weights = scored.iter().map(|(_, w)| (w / maxw).clamp(0.0, 1.0)).collect();
+
+        // root node
+        self.nodes.push(DecisionNode {
+            depth: 0,
+            mask: 0,
+            selected: 0,
+            visited: false,
+            saturated: false,
+            parent: None,
+            take_child: None,
+            skip_child: None,
+        });
+
+        self.initialized = true;
+    }
+
+    fn spells_needed(unlock: usize, mask: u32) -> usize {
+        if mask == 0 {
+            return 0;
+        }
+        let max_idx = (0..NUM_TECHS)
+            .rev()
+            .find(|&i| (mask & (1u32 << i)) != 0)
+            .unwrap();
+        let advance = (max_idx as i32 - unlock as i32 + 1).max(0) as usize;
+        let acquires = mask.count_ones() as usize;
+        advance + acquires
+    }
+
+    fn tech_conflict(tech_state: &TechState, side: Side, techline: &crate::core::tech::Techline, idx: usize, mask: u32) -> bool {
+        // Cannot acquire if already acquired by us or enemy (unless Copycat is already acquired or included)
+        let tech = techline[idx];
+        let ours = tech_state.acquired_techs[side].contains(&tech);
+        if ours {
+            return true;
+        }
+        let theirs = tech_state.acquired_techs[!side].contains(&tech);
+        if theirs {
+            // allowed only if we already have or are taking Copycat
+            let copycat_idx = techline.index_of(Tech::Copycat);
+            let have_copycat = tech_state.acquired_techs[side].contains(&Tech::Copycat)
+                || ((mask & (1u32 << copycat_idx)) != 0);
+            return !have_copycat;
+        }
+        false
+    }
+
+    fn expand_node(
+        &mut self,
+        node_idx: usize,
+        state: &GeneralNodeState,
+        config: &GameConfig,
+        max_techs: usize,
+    ) {
+        let techline = &config.techline;
+        let order_len = self.order.len();
+        
+        // Check if already visited or at end
+        if self.nodes[node_idx].visited || self.nodes[node_idx].depth >= order_len {
+            self.nodes[node_idx].visited = true;
+            return;
+        }
+        
+        // Extract values we need before creating children
+        let cur_depth = self.nodes[node_idx].depth;
+        let node_mask = self.nodes[node_idx].mask;
+        let node_selected = self.nodes[node_idx].selected;
+        self.nodes[node_idx].visited = true;
+        let tech_idx = self.order[cur_depth];
+
+        // create skip child (do not take this tech)
+        let skip_child = DecisionNode {
+            depth: cur_depth + 1,
+            mask: node_mask,
+            selected: node_selected,
+            visited: false,
+            saturated: cur_depth + 1 >= order_len, // at end => leaf
+            parent: Some(node_idx),
+            take_child: None,
+            skip_child: None,
+        };
+        let skip_idx = self.nodes.len();
+        self.nodes.push(skip_child);
+        self.nodes[node_idx].skip_child = Some(skip_idx);
+
+        // create take child if possible under constraints
+        let mut take_saturated = false;
+        let new_mask = node_mask | (1u32 << tech_idx);
+        // cannot select if conflicts
+        if Self::tech_conflict(&state.tech_state, state.side, techline, tech_idx, node_mask) {
+            take_saturated = true;
+        }
+        let spells = Self::spells_needed(state.tech_state.unlock_index[state.side], new_mask);
+        if spells > max_techs {
+            take_saturated = true;
+        }
+
+        let take_child = DecisionNode {
+            depth: cur_depth + 1,
+            mask: new_mask,
+            selected: node_selected + 1,
+            visited: false,
+            saturated: take_saturated || cur_depth + 1 >= order_len,
+            parent: Some(node_idx),
+            take_child: None,
+            skip_child: None,
+        };
+        let take_idx = self.nodes.len();
+        self.nodes.push(take_child);
+        self.nodes[node_idx].take_child = Some(take_idx);
+    }
+
+    fn propagate_saturation(&mut self, mut idx: usize) {
+        while let Some(parent_idx) = self.nodes[idx].parent {
+            let left_sat = self.nodes[parent_idx]
+                .take_child
+                .and_then(|i| Some(self.nodes[i].saturated))
+                .unwrap_or(true);
+            let right_sat = self.nodes[parent_idx]
+                .skip_child
+                .and_then(|i| Some(self.nodes[i].saturated))
+                .unwrap_or(true);
+            if left_sat && right_sat {
+                if !self.nodes[parent_idx].saturated {
+                    self.nodes[parent_idx].saturated = true;
+                }
+                idx = parent_idx;
+                continue;
+            }
+            break;
+        }
+    }
+}
+
+impl ChildGen<GeneralNodeState, TechAssignment> for GeneralChildGen {
     type Args = (i32, GameConfig);
 
-    fn propose_move(&self, _rng: &mut impl Rng, args: &Self::Args) -> (TechAssignment, Self) {
+    fn new(_state: &GeneralNodeState) -> Self {
+        GeneralChildGen::new_internal()
+    }
+
+    fn propose_move(
+        &mut self,
+        state: &GeneralNodeState,
+        rng: &mut impl Rng,
+        args: &Self::Args,
+    ) -> (TechAssignment, GeneralNodeState) {
         let (money, config) = args;
+        self.ensure_initialized(state, config);
         let spell_cost = config.spell_cost();
-        let num_buyable_spells = money / spell_cost;
-        let techline = &config.techline;
-        let side = self.side;
+        let max_techs = 1 + (*money as usize / spell_cost as usize);
 
-        let our_techs = &self.tech_state.acquired_techs[side];
-        let enemy_techs_set = &self.tech_state.acquired_techs[!side];
+        if self.nodes[0].saturated {
+            // Nothing new to explore; return no-tech assignment (no march unless not teching at all)
+            let new_state = GeneralNodeState::new(!state.side, state.tech_state.clone(), SideArray::new(0, 0));
+            return (TechAssignment::new(0, vec![]), new_state);
+        }
 
-        let mut enemy_techs: StdVec<_> = enemy_techs_set.iter().copied().collect();
-        enemy_techs.sort();
+        // Traverse decision tree
+        let mut cur_idx = 0usize;
+        loop {
+            let order_len = self.order.len();
+            if self.nodes[cur_idx].depth >= order_len {
+                break;
+            }
 
-        let mut highest_uncountered_enemy_tech = None;
-        for &enemy_tech in enemy_techs.iter().rev() {
-            let counters = enemy_tech.counters();
-            let is_countered = counters.iter().any(|&c| our_techs.contains(&c));
-            if !is_countered {
-                highest_uncountered_enemy_tech = Some(enemy_tech);
+            if !self.nodes[cur_idx].visited {
+                self.expand_node(cur_idx, state, config, max_techs);
+                // if take child impossible -> mark it saturated
+                if let Some(take_idx) = self.nodes[cur_idx].take_child {
+                    // already marked saturated if impossible
+                    let _ = take_idx;
+                }
+            }
+
+            // If any child is saturated, take the other
+            let take_idx = self.nodes[cur_idx].take_child.unwrap();
+            let skip_idx = self.nodes[cur_idx].skip_child.unwrap();
+            let take_sat = self.nodes[take_idx].saturated;
+            let skip_sat = self.nodes[skip_idx].saturated;
+
+            let next_idx = if take_sat && !skip_sat {
+                skip_idx
+            } else if skip_sat && !take_sat {
+                take_idx
+            } else if take_sat && skip_sat {
+                // both saturated -> mark current saturated and stop
+                self.nodes[cur_idx].saturated = true;
+                break;
+            } else {
+                // choose using weight as probability to select
+                let depth = self.nodes[cur_idx].depth;
+                let tech_idx = self.order[depth];
+                let p_select = self.weights
+                    .get(tech_idx)
+                    .copied()
+                    .unwrap_or(0.5)
+                    .clamp(0.0, 1.0);
+                if rng.gen::<f32>() < p_select {
+                    take_idx
+                } else {
+                    skip_idx
+                }
+            };
+
+            cur_idx = next_idx;
+
+            // Termination conditions
+            let at_last = self.nodes[cur_idx].depth >= self.order.len();
+            let unlock = state.tech_state.unlock_index[state.side];
+            let spells = Self::spells_needed(unlock, self.nodes[cur_idx].mask);
+            if at_last || spells >= max_techs {
                 break;
             }
         }
 
-        let mut target_tech = None;
+        // Mark leaf saturated and propagate
+        self.nodes[cur_idx].saturated = true;
+        self.propagate_saturation(cur_idx);
 
-        if let Some(enemy_tech) = highest_uncountered_enemy_tech {
-            // Prioritize countering the highest uncountered enemy unit.
-            let counters = enemy_tech.counters();
-            target_tech = counters
-                .into_iter()
-                .filter(|&t| {
-                    self.tech_state
-                        .acquirable(t, techline, side, num_buyable_spells)
-                })
-                .max();
-        } else {
-            // If all enemy units are countered, press the advantage.
-            if let Some(&our_highest_tech) = our_techs.iter().max() {
-                let our_highest_tech_idx = our_highest_tech.to_index().unwrap();
-                let n_plus_3 = our_highest_tech_idx + 3;
-                let n_plus_6 = our_highest_tech_idx + 6;
-                target_tech = [n_plus_3, n_plus_6]
-                    .into_iter()
-                    .filter_map(|i| Unit::from_index(i as usize).ok())
-                    .map(Tech::UnitTech)
-                    .filter(|t| {
-                        self.tech_state
-                            .acquirable(*t, techline, side, num_buyable_spells)
-                    })
-                    .max();
-            } else {
-                // no techs: tech to the highest gettable tech
-                target_tech = techline
-                    .techs
-                    .iter()
-                    .filter(|t| {
-                        self.tech_state
-                            .acquirable(**t, techline, side, num_buyable_spells)
-                    })
-                    .copied()
-                    .max();
+        // Convert path mask to set of techs
+        let mask = self.nodes[cur_idx].mask;
+        let mut acquire: StdVec<usize> = StdVec::new();
+        for i in 0..NUM_TECHS {
+            if (mask & (1u32 << i)) != 0 {
+                acquire.push(i);
             }
         }
 
-        let assignment = if let Some(t) = target_tech {
-            let idx = techline.index_of(t);
-            let num_advance = (idx as i32 - self.tech_state.unlock_index[side] as i32 + 1).max(0);
-            TechAssignment::new(num_advance as usize, vec![idx])
-        } else {
-            // If no specific target, just march if possible.
-            if self.tech_state.unlock_index[side] < techline.len() {
-                TechAssignment::new(1, vec![])
-            } else {
-                TechAssignment::new(0, vec![]) // Pass
-            }
-        };
-
-        let assignment_spells = assignment.num_spells();
-        let spells_bought = if assignment_spells > 0 {
-            assignment_spells - 1
-        } else {
+        // Never march unless not teching at all: only advance to minimally unlock if acquiring.
+        let unlock = state.tech_state.unlock_index[state.side];
+        let advance_by = if acquire.is_empty() {
             0
+        } else {
+            let max_idx = *acquire.iter().max().unwrap();
+            (max_idx as i32 - unlock as i32 + 1).max(0) as usize
         };
+        let assignment = TechAssignment::new(advance_by, acquire);
+
+        // Money delta: pay for extra spells beyond 1 free
+        let total_spells = assignment.num_spells();
+        let spells_bought = if total_spells > 0 { total_spells - 1 } else { 0 };
         let mut new_delta_money = SideArray::new(0, 0);
         if spells_bought > 0 {
-            new_delta_money[side] = -(spells_bought as i32 * spell_cost);
+            new_delta_money[state.side] = -(spells_bought as i32 * spell_cost);
         }
 
-        let mut new_tech_state = self.tech_state.clone();
+        // Apply to tech_state
+        let mut new_tech_state = state.tech_state.clone();
         new_tech_state
-            .assign_techs(assignment.clone(), side, techline)
+            .assign_techs(assignment.clone(), state.side, &config.techline)
             .unwrap();
 
-        let new_node_state = Self::new(!self.side, new_tech_state, new_delta_money);
-
+        let new_node_state = GeneralNodeState::new(!state.side, new_tech_state, new_delta_money);
         (assignment, new_node_state)
     }
 }
 
-pub type GeneralNode<'a> = MCTSNode<'a, GeneralNodeState, TechAssignment>;
+pub type GeneralNode<'a> = MCTSNode<'a, GeneralNodeState, TechAssignment, GeneralChildGen>;
 pub type GeneralNodeRef<'a> = &'a RefCell<GeneralNode<'a>>;

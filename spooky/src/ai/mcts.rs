@@ -52,7 +52,56 @@ pub trait ChildGen<State, Turn> {
     type Args;
 
     fn new(state: &State) -> Self;
-    fn propose_move(&self, state: &State, rng: &mut impl Rng, args: &Self::Args) -> (Turn, State);
+    fn propose_move(
+        &mut self,
+        state: &State,
+        rng: &mut impl Rng,
+        args: &Self::Args,
+    ) -> (Turn, State);
+}
+
+/// Compatibility trait for older NodeState-based generators.
+/// This allows legacy nodes to keep their propose_move logic until refactored
+/// while the MCTS core uses ChildGen.
+pub trait NodeState<Turn> {
+    type Args;
+
+    fn propose_move(&self, rng: &mut impl Rng, args: &Self::Args) -> (Turn, Self)
+    where
+        Self: Sized;
+}
+
+/// Adapter that forwards ChildGen calls to a NodeState implementation.
+pub struct CompatChildGen<State, Turn> {
+    _phantom: std::marker::PhantomData<(State, Turn)>,
+}
+
+impl<State, Turn> CompatChildGen<State, Turn> {
+    pub fn new() -> Self {
+        Self {
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<State, Turn> ChildGen<State, Turn> for CompatChildGen<State, Turn>
+where
+    State: NodeState<Turn>,
+{
+    type Args = <State as NodeState<Turn>>::Args;
+
+    fn new(_state: &State) -> Self {
+        Self::new()
+    }
+
+    fn propose_move(
+        &mut self,
+        state: &State,
+        rng: &mut impl Rng,
+        args: &Self::Args,
+    ) -> (Turn, State) {
+        state.propose_move(rng, args)
+    }
 }
 
 #[derive(Debug)]
@@ -149,9 +198,9 @@ impl<'a, State: PartialEq, Turn, Gen: ChildGen<State, Turn>> MCTSNode<'a, State,
     {
         let (turn, new_node_state) = self
             .gen
-            .as_ref()
-            .unwrap()
-            .propose_move(self.state, rng, &args);
+            .as_mut()
+            .expect("Child generator must be initialized")
+            .propose_move(&self.state, rng, &args);
 
         // Check if this turn/state already exists as a child to avoid duplicates.
         if let Some(pos) = self
