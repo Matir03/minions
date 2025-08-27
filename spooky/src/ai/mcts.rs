@@ -48,10 +48,11 @@ impl NodeStats {
     }
 }
 
-pub trait NodeState<Turn>: PartialEq {
+pub trait ChildGen<State, Turn> {
     type Args;
 
-    fn propose_move(&self, rng: &mut impl Rng, args: &Self::Args) -> (Turn, Self);
+    fn new(state: &State) -> Self;
+    fn propose_move(&self, state: &State, rng: &mut impl Rng, args: &Self::Args) -> (Turn, State);
 }
 
 #[derive(Debug)]
@@ -61,16 +62,17 @@ pub struct MCTSEdge<'a, Node, Turn> {
 }
 
 #[derive(Debug)]
-pub struct MCTSNode<'a, State: NodeState<Turn>, Turn> {
+pub struct MCTSNode<'a, State: PartialEq, Turn, Gen: ChildGen<State, Turn>> {
     pub stats: NodeStats,
     pub phantom_stats: NodeStats,
     pub update_phantom: bool,
     pub edges: Vec<'a, MCTSEdge<'a, Self, Turn>>,
     pub state: State,
     pub side: Side,
+    pub gen: Option<Gen>,
 }
 
-impl<'a, State: NodeState<Turn>, Turn> MCTSNode<'a, State, Turn> {
+impl<'a, State: PartialEq, Turn, Gen: ChildGen<State, Turn>> MCTSNode<'a, State, Turn, Gen> {
     pub fn new(state: State, side: Side, arena: &'a Bump) -> Self {
         Self {
             stats: NodeStats::new(),
@@ -79,6 +81,7 @@ impl<'a, State: NodeState<Turn>, Turn> MCTSNode<'a, State, Turn> {
             edges: Vec::new_in(arena),
             state,
             side,
+            gen: None,
         }
     }
 
@@ -91,13 +94,14 @@ impl<'a, State: NodeState<Turn>, Turn> MCTSNode<'a, State, Turn> {
         &mut self,
         search_args: &SearchArgs<'a>,
         rng: &mut impl Rng,
-        args: State::Args,
+        args: Gen::Args,
     ) -> (bool, usize)
     where
         Self: 'a,
     {
         // If no children exist, always create a new one
-        if self.edges.is_empty() {
+        if self.gen.is_none() {
+            self.gen = Some(Gen::new(&self.state));
             return self.make_child(search_args, rng, args);
         }
 
@@ -138,12 +142,16 @@ impl<'a, State: NodeState<Turn>, Turn> MCTSNode<'a, State, Turn> {
         &mut self,
         search_args: &SearchArgs<'a>,
         rng: &mut impl Rng,
-        args: State::Args,
+        args: Gen::Args,
     ) -> (bool, usize)
     where
         Self: 'a,
     {
-        let (turn, new_node_state) = self.state.propose_move(rng, &args);
+        let (turn, new_node_state) = self
+            .gen
+            .as_ref()
+            .unwrap()
+            .propose_move(self.state, rng, &args);
 
         // Check if this turn/state already exists as a child to avoid duplicates.
         if let Some(pos) = self
