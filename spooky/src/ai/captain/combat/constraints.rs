@@ -177,6 +177,7 @@ impl<'ctx> SatVariables<'ctx> {
 }
 
 /// SAT-based combat solver with constraints
+#[derive(Debug)]
 pub struct ConstraintManager<'ctx> {
     pub ctx: &'ctx Context,
     pub solver: Solver<'ctx>,

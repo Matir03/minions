@@ -1,6 +1,6 @@
 use std::{cell::RefCell, collections::HashMap, ops::AddAssign};
 
-use crate::ai::captain::node::{BoardNode, BoardNodeRef, BoardNodeState};
+use crate::ai::captain::node::{BoardNode, BoardNodeArgs, BoardNodeRef, BoardNodeState};
 use crate::ai::eval::Eval;
 use crate::ai::general::{GeneralNode, GeneralNodeRef, GeneralNodeState};
 use crate::ai::mcts::{ChildGen, MCTSEdge, MCTSNode, NodeStats};
@@ -124,13 +124,12 @@ impl<'a> ChildGen<GameNodeState<'a>, GameTurn> for GameChildGen {
 
             let board_money = *money_for_boards.get(i).unwrap();
             let cur_tech_state = state.game_state.tech_state.clone();
-            let board_args = (
-                board_money,
-                cur_tech_state,
-                search_args.config,
-                i,
-                state.game_state.ply,
-            );
+            let board_args = BoardNodeArgs {
+                money: board_money,
+                tech_state: cur_tech_state,
+                config: search_args.config,
+                arena: *arena,
+            };
 
             let (_b_is_new, b_child_idx) =
                 board_mcts_node_borrowed.poll(&search_args, rng, board_args);

@@ -66,6 +66,7 @@ impl MoveCandidate {
 }
 
 /// SAT-based piece positioning system with three-stage approach
+#[derive(Debug)]
 pub struct SatPositioningSystem {}
 
 impl SatPositioningSystem {

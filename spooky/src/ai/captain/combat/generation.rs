@@ -12,6 +12,7 @@ use anyhow::{Context, Result};
 use z3::ast::Bool;
 
 /// Combat generation system that orchestrates the new architecture
+#[derive(Debug)]
 pub struct CombatGenerationSystem {
     pub death_prophet: DeathProphet,
 }

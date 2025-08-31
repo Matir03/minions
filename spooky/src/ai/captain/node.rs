@@ -6,7 +6,7 @@ use std::{cell::RefCell, fmt};
 use rand::prelude::*;
 
 use crate::core::board::definitions::Phase;
-use crate::core::Unit;
+use crate::core::{ToIndex, Unit};
 use crate::{
     ai::{
         eval::Eval,
@@ -35,6 +35,7 @@ use super::{
     spawn::generate_heuristic_spawn_actions,
 };
 
+use bumpalo::Bump;
 use z3::{Config, Context, SatResult};
 
 /// Represents the state of a single board and its turn processing (attack + spawn).
@@ -60,11 +61,11 @@ impl<'a> BoardNodeState<'a> {
 pub fn setup_phase(side: Side, board: &Board<'_>) -> SetupAction {
     let saved_unit = board.reinforcements[side]
         .iter()
-        .max_by_key(|unit| unit.stats().cost)
+        .max_by_key(|unit| (unit.stats().cost, unit.to_index().unwrap()))
         .cloned();
 
     SetupAction {
-        necromancer_choice: Unit::ArcaneNecromancer,
+        necromancer_choice: Unit::BasicNecromancer,
         saved_unit,
     }
 }
@@ -108,25 +109,29 @@ where
 // --------------------------
 
 #[derive(Debug)]
-pub struct BoardChildGen;
+pub struct BoardChildGen<'a> {
+    pub setup_action: Option<SetupAction>,
+    pub manager: ConstraintManager<'a>,
+    pub positioning_system: SatPositioningSystem,
+    pub combat_generator: CombatGenerationSystem,
+}
 
-impl<'a> ChildGen<BoardNodeState<'a>, BoardTurn> for BoardChildGen {
-    type Args = (i32, TechState, &'a GameConfig, usize, i32);
+pub struct BoardNodeArgs<'a> {
+    pub money: i32,
+    pub tech_state: TechState,
+    pub config: &'a GameConfig,
+    pub arena: &'a Bump,
+}
 
-    fn new(_state: &BoardNodeState<'a>, _rng: &mut impl Rng, _args: &Self::Args) -> Self {
-        BoardChildGen
-    }
+impl<'a> ChildGen<BoardNodeState<'a>, BoardTurn> for BoardChildGen<'a> {
+    type Args = BoardNodeArgs<'a>;
 
-    fn propose_turn(
-        &mut self,
-        state: &BoardNodeState<'a>,
-        rng: &mut impl Rng,
-        args: &Self::Args,
-    ) -> Option<(BoardTurn, BoardNodeState<'a>)> {
-        let (money, ref tech_state, _config, _current_board_idx, turn_num) = *args;
+    fn new(state: &BoardNodeState<'a>, rng: &mut impl Rng, args: &Self::Args) -> Self {
+        let config = args.config;
+        let arena = args.arena;
 
         let z3_cfg = Config::new();
-        let ctx = Context::new(&z3_cfg);
+        let ctx = arena.alloc(Context::new(&z3_cfg));
         let mut new_board = state.board.clone();
 
         // --- Setup Phase ---
@@ -134,7 +139,7 @@ impl<'a> ChildGen<BoardNodeState<'a>, BoardTurn> for BoardChildGen {
             "Setup phase",
             || {
                 if state.board.state.phases().contains(&Phase::Setup) {
-                    let action = setup_phase(state.side_to_move, &state.board);
+                    let action = setup_phase(state.side_to_move, &new_board);
                     new_board
                         .do_setup_action(state.side_to_move, &action)
                         .unwrap();
@@ -157,7 +162,7 @@ impl<'a> ChildGen<BoardNodeState<'a>, BoardTurn> for BoardChildGen {
             "Initializing attack phase systems",
             || {
                 let graph = new_board.combat_graph(state.side_to_move);
-                let manager = ConstraintManager::new(&ctx, graph, &new_board);
+                let manager = ConstraintManager::new(ctx, graph, &new_board);
                 let positioning_system = SatPositioningSystem {};
                 let combat_generator = CombatGenerationSystem::new();
                 (manager, positioning_system, combat_generator)
@@ -174,6 +179,42 @@ impl<'a> ChildGen<BoardNodeState<'a>, BoardTurn> for BoardChildGen {
                 _ => panic!("SAT check failed"),
             },
         );
+
+        BoardChildGen {
+            setup_action,
+            manager,
+            positioning_system,
+            combat_generator,
+        }
+    }
+
+    fn propose_turn(
+        &mut self,
+        state: &BoardNodeState<'a>,
+        rng: &mut impl Rng,
+        args: &Self::Args,
+    ) -> Option<(BoardTurn, BoardNodeState<'a>)> {
+        let BoardNodeArgs {
+            money,
+            ref tech_state,
+            config,
+            arena,
+        } = *args;
+
+        let BoardChildGen {
+            setup_action,
+            manager,
+            positioning_system,
+            combat_generator,
+        } = self;
+
+        let mut new_board = state.board.clone();
+
+        if let Some(action) = setup_action {
+            new_board
+                .do_setup_action(state.side_to_move, action)
+                .unwrap();
+        }
 
         // --- Generate move candidates ---
         let move_candidates = run_timed(
@@ -197,7 +238,7 @@ impl<'a> ChildGen<BoardNodeState<'a>, BoardTurn> for BoardChildGen {
                 || {
                     manager.solver.push();
                     combat_generator
-                        .generate_combat(&mut manager, &new_board, state.side_to_move)
+                        .generate_combat(manager, &new_board, state.side_to_move)
                         .unwrap();
                 },
                 |_| "done".to_string(),
@@ -209,7 +250,7 @@ impl<'a> ChildGen<BoardNodeState<'a>, BoardTurn> for BoardChildGen {
                 || {
                     positioning_system
                         .combat_reconciliation(
-                            &mut manager,
+                            manager,
                             &new_board,
                             state.side_to_move,
                             &move_candidates,
@@ -243,12 +284,7 @@ impl<'a> ChildGen<BoardNodeState<'a>, BoardTurn> for BoardChildGen {
             "Combat positioning",
             || {
                 positioning_system
-                    .combat_positioning(
-                        &mut manager,
-                        &new_board,
-                        state.side_to_move,
-                        &move_candidates,
-                    )
+                    .combat_positioning(manager, &new_board, state.side_to_move, &move_candidates)
                     .expect("Attack positioning error");
             },
             |_| "done".to_string(),
@@ -310,7 +346,7 @@ impl<'a> ChildGen<BoardNodeState<'a>, BoardTurn> for BoardChildGen {
                         rng,
                     );
                     let money_after_spawn = new_board
-                        .do_spawns(state.side_to_move, money, &spawn_actions, &tech_state)
+                        .do_spawns(state.side_to_move, money, &spawn_actions, tech_state)
                         .unwrap();
                     (spawn_actions, money_after_spawn)
                 } else {
@@ -334,7 +370,7 @@ impl<'a> ChildGen<BoardNodeState<'a>, BoardTurn> for BoardChildGen {
             .collect::<Vec<_>>();
 
         let turn_taken = BoardTurn {
-            setup_action,
+            setup_action: setup_action.clone(),
             attack_actions,
             spawn_actions,
         };
@@ -355,14 +391,16 @@ impl<'a> ChildGen<BoardNodeState<'a>, BoardTurn> for BoardChildGen {
     }
 }
 
-pub type BoardNode<'a> = MCTSNode<'a, BoardNodeState<'a>, BoardTurn, BoardChildGen>;
+pub type BoardNode<'a> = MCTSNode<'a, BoardNodeState<'a>, BoardTurn, BoardChildGen<'a>>;
 pub type BoardNodeRef<'a> = &'a RefCell<BoardNode<'a>>;
 
 #[cfg(test)]
 mod tests {
     use crate::{
-        ai::captain::node::BoardChildGen,
-        ai::mcts::ChildGen,
+        ai::{
+            captain::node::{BoardChildGen, BoardNodeArgs},
+            mcts::ChildGen,
+        },
         core::{
             board::{actions::AttackAction, Board},
             game::GameConfig,
@@ -371,6 +409,7 @@ mod tests {
             tech::{Tech, TechAssignment, TechState, Techline},
         },
     };
+    use bumpalo::Bump;
     use rand::thread_rng;
 
     use super::BoardNodeState;
@@ -410,10 +449,16 @@ mod tests {
         let tech_state = new_all_unlocked_tech_state();
         let config = GameConfig::default();
         let node_state = BoardNodeState::new(board, Side::Yellow);
-        let mut child_gen = BoardChildGen;
+        let args = BoardNodeArgs {
+            money: 12,
+            tech_state,
+            config: &config,
+            arena: &Bump::new(),
+        };
+        let mut child_gen = BoardChildGen::new(&node_state, &mut rng, &args);
 
         let (turn, _new_state) = child_gen
-            .propose_turn(&node_state, &mut rng, &(12, tech_state, &config, 0, 0))
+            .propose_turn(&node_state, &mut rng, &args)
             .expect("Failed to propose turn");
 
         assert!(!turn.spawn_actions.is_empty());

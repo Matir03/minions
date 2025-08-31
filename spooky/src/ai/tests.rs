@@ -1,6 +1,8 @@
+use bumpalo::Bump;
+
 use crate::{
     ai::{
-        captain::node::{BoardChildGen, BoardNodeState},
+        captain::node::{BoardChildGen, BoardNodeArgs, BoardNodeState},
         mcts::ChildGen,
         rng::make_rng,
     },
@@ -53,9 +55,14 @@ fn test_propose_move_integration() {
         .unwrap();
 
     let config = GameConfig::default();
-    let args = (100, tech_state, &config, 0, 0);
+    let args = BoardNodeArgs {
+        money: 100,
+        tech_state,
+        config: &config,
+        arena: &Bump::new(),
+    };
 
-    let mut child_gen = BoardChildGen;
+    let mut child_gen = BoardChildGen::new(&node_state, &mut rng, &args);
 
     let (turn, new_state) = child_gen
         .propose_turn(&node_state, &mut rng, &args)

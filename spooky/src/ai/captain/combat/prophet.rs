@@ -22,6 +22,7 @@ impl RemovalAssumption {
 }
 
 /// Death Prophet that generates removal assumptions in order of priority
+#[derive(Debug)]
 pub struct DeathProphet {
     rng: StdRng,
     last_assumptions: Vec<RemovalAssumption>,
