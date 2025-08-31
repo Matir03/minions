@@ -1,5 +1,9 @@
 use crate::{
-    ai::{captain::node::BoardNodeState, mcts::NodeState, rng::make_rng},
+    ai::{
+        captain::node::{BoardChildGen, BoardNodeState},
+        mcts::ChildGen,
+        rng::make_rng,
+    },
     core::{
         board::Board,
         game::GameConfig,
@@ -51,7 +55,11 @@ fn test_propose_move_integration() {
     let config = GameConfig::default();
     let args = (100, tech_state, &config, 0, 0);
 
-    let (turn, new_state) = node_state.propose_move(&mut rng, &args);
+    let mut child_gen = BoardChildGen;
+
+    let (turn, new_state) = child_gen
+        .propose_turn(&node_state, &mut rng, &args)
+        .expect("Failed to propose turn");
 
     // Debug output
     println!("Attack actions: {:?}", turn.attack_actions);

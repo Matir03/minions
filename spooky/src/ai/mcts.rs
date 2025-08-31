@@ -51,57 +51,14 @@ impl NodeStats {
 pub trait ChildGen<State, Turn> {
     type Args;
 
-    fn new(state: &State) -> Self;
-    fn propose_move(
+    fn new(state: &State, rng: &mut impl Rng, args: &Self::Args) -> Self;
+
+    fn propose_turn(
         &mut self,
         state: &State,
         rng: &mut impl Rng,
         args: &Self::Args,
-    ) -> (Turn, State);
-}
-
-/// Compatibility trait for older NodeState-based generators.
-/// This allows legacy nodes to keep their propose_move logic until refactored
-/// while the MCTS core uses ChildGen.
-pub trait NodeState<Turn> {
-    type Args;
-
-    fn propose_move(&self, rng: &mut impl Rng, args: &Self::Args) -> (Turn, Self)
-    where
-        Self: Sized;
-}
-
-/// Adapter that forwards ChildGen calls to a NodeState implementation.
-pub struct CompatChildGen<State, Turn> {
-    _phantom: std::marker::PhantomData<(State, Turn)>,
-}
-
-impl<State, Turn> CompatChildGen<State, Turn> {
-    pub fn new() -> Self {
-        Self {
-            _phantom: std::marker::PhantomData,
-        }
-    }
-}
-
-impl<State, Turn> ChildGen<State, Turn> for CompatChildGen<State, Turn>
-where
-    State: NodeState<Turn>,
-{
-    type Args = <State as NodeState<Turn>>::Args;
-
-    fn new(_state: &State) -> Self {
-        Self::new()
-    }
-
-    fn propose_move(
-        &mut self,
-        state: &State,
-        rng: &mut impl Rng,
-        args: &Self::Args,
-    ) -> (Turn, State) {
-        state.propose_move(rng, args)
-    }
+    ) -> Option<(Turn, State)>;
 }
 
 #[derive(Debug)]
@@ -111,7 +68,7 @@ pub struct MCTSEdge<'a, Node, Turn> {
 }
 
 #[derive(Debug)]
-pub struct MCTSNode<'a, State: PartialEq, Turn, Gen: ChildGen<State, Turn>> {
+pub struct MCTSNode<'a, State, Turn, Gen: ChildGen<State, Turn>> {
     pub stats: NodeStats,
     pub phantom_stats: NodeStats,
     pub update_phantom: bool,
@@ -119,9 +76,10 @@ pub struct MCTSNode<'a, State: PartialEq, Turn, Gen: ChildGen<State, Turn>> {
     pub state: State,
     pub side: Side,
     pub gen: Option<Gen>,
+    pub exhausted: bool,
 }
 
-impl<'a, State: PartialEq, Turn, Gen: ChildGen<State, Turn>> MCTSNode<'a, State, Turn, Gen> {
+impl<'a, State: Eq, Turn, Gen: ChildGen<State, Turn>> MCTSNode<'a, State, Turn, Gen> {
     pub fn new(state: State, side: Side, arena: &'a Bump) -> Self {
         Self {
             stats: NodeStats::new(),
@@ -131,6 +89,7 @@ impl<'a, State: PartialEq, Turn, Gen: ChildGen<State, Turn>> MCTSNode<'a, State,
             state,
             side,
             gen: None,
+            exhausted: false,
         }
     }
 
@@ -138,7 +97,7 @@ impl<'a, State: PartialEq, Turn, Gen: ChildGen<State, Turn>> MCTSNode<'a, State,
         self.edges.iter().map(|edge| edge.child)
     }
 
-    /// (whether a new child was made, index of selected child)
+    /// returns (whether a new child was made, index of selected child)
     pub fn poll(
         &mut self,
         search_args: &SearchArgs<'a>,
@@ -148,10 +107,11 @@ impl<'a, State: PartialEq, Turn, Gen: ChildGen<State, Turn>> MCTSNode<'a, State,
     where
         Self: 'a,
     {
-        // If no children exist, always create a new one
+        // initialize generator on first poll and return first child
         if self.gen.is_none() {
-            self.gen = Some(Gen::new(&self.state));
-            return self.make_child(search_args, rng, args);
+            self.gen = Some(Gen::new(&self.state, rng, &args));
+            // child must be made
+            return (true, self.make_child(search_args, rng, args).unwrap());
         }
 
         let mut best_child_index = 0;
@@ -169,11 +129,16 @@ impl<'a, State: PartialEq, Turn, Gen: ChildGen<State, Turn>> MCTSNode<'a, State,
             }
         }
 
-        let phantom_uct = self.phantom_stats.uct(ln_n, rng, self.side);
+        if !self.exhausted {
+            let phantom_uct = self.phantom_stats.uct(ln_n, rng, self.side);
 
-        if best_uct <= phantom_uct {
-            self.update_phantom = true;
-            return self.make_child(search_args, rng, args);
+            if best_uct <= phantom_uct {
+                self.update_phantom = true;
+                if let Some(idx) = self.make_child(search_args, rng, args) {
+                    return (true, idx);
+                }
+            }
+            self.exhausted = true;
         }
 
         self.update_phantom = false;
@@ -187,12 +152,14 @@ impl<'a, State: PartialEq, Turn, Gen: ChildGen<State, Turn>> MCTSNode<'a, State,
         }
     }
 
+    // returns None if no child was made
+    // returns Some(index) if a child was made at that index
     pub fn make_child(
         &mut self,
         search_args: &SearchArgs<'a>,
         rng: &mut impl Rng,
         args: Gen::Args,
-    ) -> (bool, usize)
+    ) -> Option<usize>
     where
         Self: 'a,
     {
@@ -200,28 +167,34 @@ impl<'a, State: PartialEq, Turn, Gen: ChildGen<State, Turn>> MCTSNode<'a, State,
             .gen
             .as_mut()
             .expect("Child generator must be initialized")
-            .propose_move(&self.state, rng, &args);
+            .propose_turn(&self.state, rng, &args)?;
 
-        // Check if this turn/state already exists as a child to avoid duplicates.
-        if let Some(pos) = self
+        // Check if this state already exists as a child to avoid duplicates.
+        let child_mcts_node = self
             .edges
             .iter()
-            .position(|edge| edge.child.borrow().state == new_node_state)
-        {
-            return (false, pos);
-        }
-
-        let new_mcts_node = MCTSNode::new(new_node_state, self.side, search_args.arena);
-        let new_mcts_node_ref = search_args.arena.alloc(RefCell::new(new_mcts_node));
+            .find_map(|edge| {
+                let child = edge.child.borrow();
+                if child.state == new_node_state {
+                    Some(edge.child)
+                } else {
+                    None
+                }
+            })
+            .unwrap_or_else(|| {
+                let new_mcts_node = MCTSNode::new(new_node_state, self.side, search_args.arena);
+                let new_mcts_node_ref = search_args.arena.alloc(RefCell::new(new_mcts_node));
+                new_mcts_node_ref
+            });
 
         let edge = MCTSEdge {
             turn,
-            child: new_mcts_node_ref,
+            child: child_mcts_node,
         };
 
         self.edges.push(edge);
 
-        (true, self.edges.len() - 1)
+        Some(self.edges.len() - 1)
     }
 
     pub fn best_turn(&self) -> Turn

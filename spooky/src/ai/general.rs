@@ -48,7 +48,6 @@ struct DecisionNode {
 
 #[derive(Debug)]
 pub struct GeneralChildGen {
-    initialized: bool,
     // indices into techline, sorted by weight desc
     order: StdVec<usize>,
     // normalized weights in [0,1]
@@ -57,61 +56,6 @@ pub struct GeneralChildGen {
 }
 
 impl GeneralChildGen {
-    fn new_internal() -> Self {
-        Self {
-            initialized: false,
-            order: StdVec::new(),
-            weights: StdVec::new(),
-            nodes: StdVec::new(),
-        }
-    }
-
-    fn ensure_initialized(&mut self, state: &GeneralNodeState, config: &GameConfig) {
-        if self.initialized {
-            return;
-        }
-
-        let techline = &config.techline;
-        // Heuristic weights: prefer not-yet-acquired by either side, closer in index, and a small bias to higher-tier units.
-        let unlock = state.tech_state.unlock_index[state.side];
-        let mut scored: StdVec<(usize, f32)> = techline
-            .techs
-            .iter()
-            .enumerate()
-            .map(|(i, t)| {
-                let already_ours = state.tech_state.acquired_techs[state.side].contains(t);
-                let already_theirs = state.tech_state.acquired_techs[!state.side].contains(t);
-                let base = if already_ours { 0.0 } else { 1.0 };
-                let penalty_theirs = if already_theirs { -0.5 } else { 0.0 };
-                let dist = (i as i32 - unlock as i32).max(0) as f32;
-                let proximity = if dist == 0.0 { 1.0 } else { 1.0 / (1.0 + dist) };
-                let tier_bias = (i as f32 + 1.0) / techline.len() as f32;
-                let raw = base + penalty_theirs + 0.5 * proximity + 0.25 * tier_bias;
-                (i, raw.max(0.0))
-            })
-            .collect();
-
-        // Sort by weight desc
-        scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
-        let maxw = scored.first().map(|x| x.1).unwrap_or(1.0).max(1e-6);
-        self.order = scored.iter().map(|(i, _)| *i).collect();
-        self.weights = scored.iter().map(|(_, w)| (w / maxw).clamp(0.0, 1.0)).collect();
-
-        // root node
-        self.nodes.push(DecisionNode {
-            depth: 0,
-            mask: 0,
-            selected: 0,
-            visited: false,
-            saturated: false,
-            parent: None,
-            take_child: None,
-            skip_child: None,
-        });
-
-        self.initialized = true;
-    }
-
     fn spells_needed(unlock: usize, mask: u32) -> usize {
         if mask == 0 {
             return 0;
@@ -125,7 +69,13 @@ impl GeneralChildGen {
         advance + acquires
     }
 
-    fn tech_conflict(tech_state: &TechState, side: Side, techline: &crate::core::tech::Techline, idx: usize, mask: u32) -> bool {
+    fn tech_conflict(
+        tech_state: &TechState,
+        side: Side,
+        techline: &crate::core::tech::Techline,
+        idx: usize,
+        mask: u32,
+    ) -> bool {
         // Cannot acquire if already acquired by us or enemy (unless Copycat is already acquired or included)
         let tech = techline[idx];
         let ours = tech_state.acquired_techs[side].contains(&tech);
@@ -152,13 +102,13 @@ impl GeneralChildGen {
     ) {
         let techline = &config.techline;
         let order_len = self.order.len();
-        
+
         // Check if already visited or at end
         if self.nodes[node_idx].visited || self.nodes[node_idx].depth >= order_len {
             self.nodes[node_idx].visited = true;
             return;
         }
-        
+
         // Extract values we need before creating children
         let cur_depth = self.nodes[node_idx].depth;
         let node_mask = self.nodes[node_idx].mask;
@@ -228,30 +178,20 @@ impl GeneralChildGen {
             break;
         }
     }
-}
 
-impl ChildGen<GeneralNodeState, TechAssignment> for GeneralChildGen {
-    type Args = (i32, GameConfig);
-
-    fn new(_state: &GeneralNodeState) -> Self {
-        GeneralChildGen::new_internal()
-    }
-
-    fn propose_move(
+    fn propose_assignment(
         &mut self,
         state: &GeneralNodeState,
         rng: &mut impl Rng,
-        args: &Self::Args,
-    ) -> (TechAssignment, GeneralNodeState) {
+        args: &<Self as ChildGen<GeneralNodeState, TechAssignment>>::Args,
+    ) -> Option<TechAssignment> {
         let (money, config) = args;
-        self.ensure_initialized(state, config);
         let spell_cost = config.spell_cost();
         let max_techs = 1 + (*money as usize / spell_cost as usize);
 
         if self.nodes[0].saturated {
-            // Nothing new to explore; return no-tech assignment (no march unless not teching at all)
-            let new_state = GeneralNodeState::new(!state.side, state.tech_state.clone(), SideArray::new(0, 0));
-            return (TechAssignment::new(0, vec![]), new_state);
+            // No more to explore
+            return None;
         }
 
         // Traverse decision tree
@@ -289,7 +229,8 @@ impl ChildGen<GeneralNodeState, TechAssignment> for GeneralChildGen {
                 // choose using weight as probability to select
                 let depth = self.nodes[cur_idx].depth;
                 let tech_idx = self.order[depth];
-                let p_select = self.weights
+                let p_select = self
+                    .weights
                     .get(tech_idx)
                     .copied()
                     .unwrap_or(0.5)
@@ -337,20 +278,91 @@ impl ChildGen<GeneralNodeState, TechAssignment> for GeneralChildGen {
 
         // Money delta: pay for extra spells beyond 1 free
         let total_spells = assignment.num_spells();
-        let spells_bought = if total_spells > 0 { total_spells - 1 } else { 0 };
+        let spells_bought = if total_spells > 0 {
+            total_spells - 1
+        } else {
+            0
+        };
         let mut new_delta_money = SideArray::new(0, 0);
         if spells_bought > 0 {
             new_delta_money[state.side] = -(spells_bought as i32 * spell_cost);
         }
 
-        // Apply to tech_state
+        Some(assignment)
+    }
+}
+
+impl ChildGen<GeneralNodeState, TechAssignment> for GeneralChildGen {
+    type Args = (i32, GameConfig);
+
+    fn new(state: &GeneralNodeState, rng: &mut impl Rng, args: &Self::Args) -> Self {
+        let (money, config) = args;
+        let techline = &config.techline;
+        let unlock = state.tech_state.unlock_index[state.side];
+        let mut scored: StdVec<(usize, f32)> = techline
+            .techs
+            .iter()
+            .enumerate()
+            .map(|(i, t)| {
+                let already_ours = state.tech_state.acquired_techs[state.side].contains(t);
+                if already_ours {
+                    return (i, 0.0);
+                }
+                let already_theirs = state.tech_state.acquired_techs[!state.side].contains(t);
+                if already_theirs {
+                    return (i, 0.0);
+                }
+                (i, rng.gen_range(0.0..1.0))
+            })
+            .collect();
+
+        // Sort by weight desc
+        scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+        let maxw = scored.first().map(|x| x.1).unwrap_or(1.0).max(1e-6);
+
+        let order = scored.iter().map(|(i, _)| *i).collect();
+        let weights = scored
+            .iter()
+            .map(|(_, w)| (w / maxw).clamp(0.0, 1.0))
+            .collect();
+
+        // root node
+        let nodes = vec![DecisionNode {
+            depth: 0,
+            mask: 0,
+            selected: 0,
+            visited: false,
+            saturated: false,
+            parent: None,
+            take_child: None,
+            skip_child: None,
+        }];
+
+        GeneralChildGen {
+            order,
+            weights,
+            nodes,
+        }
+    }
+
+    fn propose_turn(
+        &mut self,
+        state: &GeneralNodeState,
+        rng: &mut impl Rng,
+        args: &Self::Args,
+    ) -> Option<(TechAssignment, GeneralNodeState)> {
+        let assignment = self.propose_assignment(state, rng, args)?;
+
         let mut new_tech_state = state.tech_state.clone();
         new_tech_state
-            .assign_techs(assignment.clone(), state.side, &config.techline)
+            .assign_techs(assignment.clone(), state.side, &args.1.techline)
             .unwrap();
 
+        let mut new_delta_money = SideArray::new(0, 0);
+        new_delta_money[state.side] = -(assignment.num_spells() - 1).max(0) * args.1.spell_cost();
+
         let new_node_state = GeneralNodeState::new(!state.side, new_tech_state, new_delta_money);
-        (assignment, new_node_state)
+        Some((assignment, new_node_state))
     }
 }
 
