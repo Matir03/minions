@@ -49,9 +49,21 @@ pub enum SpawnAction {
     Discard { spell: Spell },
 }
 
+#[derive(Debug, Clone)]
+pub enum BoardTurn {
+    Resign,
+    Actions(BoardActions),
+}
+
+impl Default for BoardTurn {
+    fn default() -> Self {
+        BoardTurn::Actions(BoardActions::default())
+    }
+}
+
 /// Represents the actions taken during a single board's turn phase.
 #[derive(Debug, Default, Clone)]
-pub struct BoardTurn {
+pub struct BoardActions {
     pub setup_action: Option<SetupAction>,
     pub attack_actions: Vec<AttackAction>,
     pub spawn_actions: Vec<SpawnAction>,
@@ -354,18 +366,29 @@ impl<'a> Board<'a> {
         money: i32,
         tech_state: &TechState,
     ) -> Result<(i32, i32)> {
+        let board_actions = match board_turn {
+            BoardTurn::Resign => {
+                self.resign(side);
+                return Ok((money, 0));
+            }
+            BoardTurn::Actions(board_turn) => board_turn,
+        };
+
         if self.state.phases().contains(&Phase::Setup) {
-            ensure!(board_turn.setup_action.is_some(), "Setup action required");
-            self.do_setup_action(side, &board_turn.setup_action.unwrap())?;
+            ensure!(
+                board_actions.setup_action.is_some(),
+                "Setup action required"
+            );
+            self.do_setup_action(side, &board_actions.setup_action.unwrap())?;
         } else {
             ensure!(
-                board_turn.setup_action.is_none(),
+                board_actions.setup_action.is_none(),
                 "Setup action not allowed"
             );
         }
 
-        let rebate = self.do_attacks(side, &board_turn.attack_actions)?;
-        let money = self.do_spawns(side, money, &board_turn.spawn_actions, &tech_state)?;
+        let rebate = self.do_attacks(side, &board_actions.attack_actions)?;
+        let money = self.do_spawns(side, money, &board_actions.spawn_actions, &tech_state)?;
 
         Ok((money, rebate))
     }

@@ -5,6 +5,7 @@ use std::{cell::RefCell, fmt};
 
 use rand::prelude::*;
 
+use crate::core::board::actions::BoardActions;
 use crate::core::board::definitions::Phase;
 use crate::core::{ToIndex, Unit};
 use crate::{
@@ -114,6 +115,38 @@ pub struct BoardChildGen<'a> {
     pub manager: ConstraintManager<'a>,
     pub positioning_system: SatPositioningSystem,
     pub combat_generator: CombatGenerationSystem,
+    pub resign_generated: bool,
+    pub resign_weight: f64,
+}
+
+pub fn process_turn_end<'a>(
+    mut board: Board<'a>,
+    side_to_move: Side,
+    money: i32,
+    money_after_spawn: i32,
+    rebate: i32,
+) -> BoardNodeState<'a> {
+    let (income, winner) = board
+        .end_turn(side_to_move)
+        .expect("[BoardNodeState] Failed to end turn");
+
+    let mut delta_points = SideArray::new(0, 0);
+    if let Some(winner) = winner {
+        delta_points[winner] = 1;
+    }
+
+    let mut delta_money = SideArray::new(0, 0);
+    delta_money[side_to_move] = money_after_spawn - money + income;
+    delta_money[!side_to_move] = rebate;
+
+    let new_state = BoardNodeState {
+        board,
+        side_to_move: !side_to_move,
+        delta_money,
+        delta_points,
+    };
+
+    new_state
 }
 
 pub struct BoardNodeArgs<'a> {
@@ -185,6 +218,8 @@ impl<'a> ChildGen<BoardNodeState<'a>, BoardTurn> for BoardChildGen<'a> {
             manager,
             positioning_system,
             combat_generator,
+            resign_generated: false,
+            resign_weight: 1.0,
         }
     }
 
@@ -202,13 +237,26 @@ impl<'a> ChildGen<BoardNodeState<'a>, BoardTurn> for BoardChildGen<'a> {
         } = *args;
 
         let BoardChildGen {
-            setup_action,
-            manager,
-            positioning_system,
-            combat_generator,
-        } = self;
+            ref setup_action,
+            ref mut manager,
+            ref mut positioning_system,
+            ref mut combat_generator,
+            resign_generated,
+            resign_weight,
+        } = *self;
 
         let mut new_board = state.board.clone();
+
+        if !resign_generated {
+            if rng.gen::<f64>() < resign_weight {
+                self.resign_generated = true;
+
+                new_board.take_turn(state.side_to_move, BoardTurn::Resign, money, tech_state);
+                let new_node = process_turn_end(new_board, state.side_to_move, money, money, 0);
+
+                return Some((BoardTurn::Resign, new_node));
+            }
+        }
 
         if let Some(action) = setup_action {
             new_board
@@ -356,38 +404,26 @@ impl<'a> ChildGen<BoardNodeState<'a>, BoardTurn> for BoardChildGen<'a> {
             |_| "done".to_string(),
         );
 
-        let (income, winner) = new_board
-            .end_turn(state.side_to_move)
-            .expect("[BoardNodeState] Failed to end turn");
-
-        let mut delta_money = SideArray::new(0, 0);
-        delta_money[state.side_to_move] = money_after_spawn - money + income;
-        delta_money[!state.side_to_move] = rebate;
-
         let attack_actions = combat_actions
             .into_iter()
             .chain(positioning_actions.into_iter())
             .collect::<Vec<_>>();
 
-        let turn_taken = BoardTurn {
+        let turn_taken = BoardTurn::Actions(BoardActions {
             setup_action: setup_action.clone(),
             attack_actions,
             spawn_actions,
-        };
+        });
 
-        let mut delta_points = SideArray::new(0, 0);
-        if let Some(winner) = winner {
-            delta_points[winner] = 1;
-        }
+        let new_node = process_turn_end(
+            new_board,
+            state.side_to_move,
+            money,
+            money_after_spawn,
+            rebate,
+        );
 
-        let new_state = BoardNodeState {
-            board: new_board,
-            side_to_move: !state.side_to_move,
-            delta_money,
-            delta_points,
-        };
-
-        Some((turn_taken, new_state))
+        return Some((turn_taken, new_node));
     }
 }
 
@@ -402,7 +438,10 @@ mod tests {
             mcts::ChildGen,
         },
         core::{
-            board::{actions::AttackAction, Board},
+            board::{
+                actions::{AttackAction, BoardTurn},
+                Board,
+            },
             game::GameConfig,
             map::{Map, MapSpec},
             side::Side,
@@ -461,6 +500,11 @@ mod tests {
             .propose_turn(&node_state, &mut rng, &args)
             .expect("Failed to propose turn");
 
-        assert!(!turn.spawn_actions.is_empty());
+        let board_actions = match turn {
+            BoardTurn::Resign => panic!("Resignation not expected"),
+            BoardTurn::Actions(board_actions) => board_actions,
+        };
+
+        assert!(!board_actions.spawn_actions.is_empty());
     }
 }

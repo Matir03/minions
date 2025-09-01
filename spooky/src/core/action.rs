@@ -1,5 +1,7 @@
 //! Game actions and moves
 
+use crate::core::Attack;
+
 use super::{
     board::actions::{AttackAction, BoardTurn, SetupAction, SpawnAction},
     spells::{Spell, SpellCast},
@@ -12,6 +14,7 @@ use std::fmt::Display;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BoardAction {
+    Resign,
     Setup(SetupAction),
     Attack(AttackAction),
     Spawn(SpawnAction),
@@ -19,6 +22,9 @@ pub enum BoardAction {
 
 impl BoardAction {
     pub fn from_args(action_name: &str, args: &[&str]) -> Result<Self> {
+        if action_name == "resign" {
+            return Ok(BoardAction::Resign);
+        }
         let setup_action = SetupAction::from_args(action_name, args);
         if setup_action.is_ok() {
             return Ok(BoardAction::Setup(setup_action?));
@@ -81,17 +87,23 @@ impl GameTurn {
                 }
                 self.spell_assignment[board_index] = spell;
             }
-            GameAction::BoardAction(board_index, action) => match action {
-                BoardAction::Setup(action) => {
-                    self.board_turns[board_index].setup_action = Some(action);
+            GameAction::BoardAction(board_index, action) => {
+                match (&mut self.board_turns[board_index], action) {
+                    (BoardTurn::Actions(board_actions), BoardAction::Setup(action)) => {
+                        board_actions.setup_action = Some(action);
+                    }
+                    (BoardTurn::Actions(board_actions), BoardAction::Attack(action)) => {
+                        board_actions.attack_actions.push(action);
+                    }
+                    (BoardTurn::Actions(board_actions), BoardAction::Spawn(action)) => {
+                        board_actions.spawn_actions.push(action);
+                    }
+                    (board_turn, BoardAction::Resign) => {
+                        *board_turn = BoardTurn::Resign;
+                    }
+                    (BoardTurn::Resign, _) => bail!("Cannot take action after resigning"),
                 }
-                BoardAction::Attack(action) => {
-                    self.board_turns[board_index].attack_actions.push(action);
-                }
-                BoardAction::Spawn(action) => {
-                    self.board_turns[board_index].spawn_actions.push(action);
-                }
-            },
+            }
         }
 
         Ok(())
@@ -128,14 +140,19 @@ impl Display for GameTurn {
 
         // Board turns
         for (i, board_turn) in self.board_turns.iter().enumerate() {
-            if let Some(action) = &board_turn.setup_action {
-                out.push_str(&format!("action board {} {}\n", i, action));
-            }
-            for action in &board_turn.attack_actions {
-                out.push_str(&format!("action board {} {}\n", i, action));
-            }
-            for action in &board_turn.spawn_actions {
-                out.push_str(&format!("action board {} {}\n", i, action));
+            match board_turn {
+                BoardTurn::Resign => out.push_str(&format!("action board {} resign\n", i)),
+                BoardTurn::Actions(board_actions) => {
+                    if let Some(action) = &board_actions.setup_action {
+                        out.push_str(&format!("action board {} {}\n", i, action));
+                    }
+                    for action in &board_actions.attack_actions {
+                        out.push_str(&format!("action board {} {}\n", i, action));
+                    }
+                    for action in &board_actions.spawn_actions {
+                        out.push_str(&format!("action board {} {}\n", i, action));
+                    }
+                }
             }
         }
 

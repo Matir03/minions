@@ -7,7 +7,7 @@ use crate::{
         rng::make_rng,
     },
     core::{
-        board::Board,
+        board::{actions::BoardTurn, Board},
         game::GameConfig,
         map::Map,
         side::Side,
@@ -68,11 +68,16 @@ fn test_propose_move_integration() {
         .propose_turn(&node_state, &mut rng, &args)
         .expect("Failed to propose turn");
 
+    let board_actions = match turn {
+        BoardTurn::Resign => panic!("Resignation not expected"),
+        BoardTurn::Actions(board_actions) => board_actions,
+    };
+
     // Debug output
-    println!("Attack actions: {:?}", turn.attack_actions);
-    println!("Spawn actions: {:?}", turn.spawn_actions);
+    println!("Attack actions: {:?}", board_actions.attack_actions);
+    println!("Spawn actions: {:?}", board_actions.spawn_actions);
 
     // Basic sanity checks
-    assert!(!turn.attack_actions.is_empty() || !turn.spawn_actions.is_empty());
+    assert!(!board_actions.attack_actions.is_empty() || !board_actions.spawn_actions.is_empty());
     assert_eq!(new_state.side_to_move, !side);
 }
