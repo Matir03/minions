@@ -2,8 +2,10 @@
 
 #![allow(unused)]
 
-pub mod core;
 pub mod ai;
+pub mod core;
 pub mod engine;
+pub mod nn;
+pub mod utils;
 
 pub use engine::Engine;

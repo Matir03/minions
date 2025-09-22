@@ -4,10 +4,9 @@ pub mod captain;
 pub mod eval;
 pub mod game;
 pub mod general;
-pub mod mcts;
-pub mod rng;
-pub mod search;
 pub mod graphviz;
+pub mod mcts;
+pub mod search;
 
 // Re-export key types
 pub use eval::Eval;

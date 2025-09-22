@@ -104,8 +104,8 @@ impl DeathProphet {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ai::rng::make_rng;
     use crate::core::{board::Board, map::Map, side::Side, units::Unit};
+    use crate::utils::make_rng;
 
     #[test]
     fn test_death_prophet_generates_assumptions() {

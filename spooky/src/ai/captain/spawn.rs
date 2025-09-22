@@ -126,13 +126,13 @@ fn purchase_heuristic(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ai::rng::make_rng;
     use crate::core::board::{Board, Piece};
     use crate::core::loc::Loc;
     use crate::core::map::Map;
     use crate::core::side::Side;
     use crate::core::tech::{Tech, TechAssignment, TechState, Techline};
     use crate::core::units::Unit;
+    use crate::utils::make_rng;
 
     fn new_all_unlocked_tech_state() -> TechState {
         let mut tech_state = TechState::new();

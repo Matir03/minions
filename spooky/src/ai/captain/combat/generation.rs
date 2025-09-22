@@ -7,6 +7,8 @@ use crate::ai::captain::combat::{
     prophet::{DeathProphet, RemovalAssumption},
 };
 
+use crate::utils::make_rng;
+
 use crate::core::{board::Board, side::Side};
 use anyhow::{Context, Result};
 use z3::ast::Bool;
@@ -20,7 +22,7 @@ pub struct CombatGenerationSystem {
 impl CombatGenerationSystem {
     pub fn new() -> Self {
         Self {
-            death_prophet: DeathProphet::new(crate::ai::rng::make_rng()),
+            death_prophet: DeathProphet::new(make_rng()),
         }
     }
 
@@ -135,7 +137,6 @@ impl CombatGenerationSystem {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ai::rng::make_rng;
     use crate::core::{board::Board, map::Map, side::Side, units::Unit};
     use z3::Context;
 

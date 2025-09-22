@@ -4,7 +4,6 @@ use crate::{
     ai::{
         captain::node::{BoardChildGen, BoardNodeArgs, BoardNodeState},
         mcts::ChildGen,
-        rng::make_rng,
     },
     core::{
         board::{actions::BoardTurn, Board},
@@ -14,6 +13,7 @@ use crate::{
         tech::{Tech, TechAssignment, TechState, Techline},
         units::Unit,
     },
+    utils::make_rng,
 };
 
 #[test]

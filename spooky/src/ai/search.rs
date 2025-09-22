@@ -5,8 +5,9 @@ use crate::core::{GameConfig, GameState, GameTurn};
 use crate::ai::{
     eval::Eval,
     game::{GameNode, GameNodeRef, GameNodeState},
-    rng::make_rng,
 };
+
+use crate::utils::make_rng;
 
 use bumpalo::Bump;
 use rand::prelude::*;

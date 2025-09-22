@@ -887,8 +887,8 @@ mod tests {
     use crate::ai::captain::combat::{
         constraints::generate_move_from_sat_model, graph::CombatGraph,
     };
-    use crate::ai::rng::make_rng;
     use crate::core::{board::Board, map::Map, side::Side, units::Unit};
+    use crate::utils::make_rng;
     use z3::Context;
 
     #[test]
