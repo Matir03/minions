@@ -5,7 +5,7 @@
 pub mod ai;
 pub mod core;
 pub mod engine;
-pub mod nn;
+pub mod heuristics;
 pub mod utils;
 
 pub use engine::Engine;

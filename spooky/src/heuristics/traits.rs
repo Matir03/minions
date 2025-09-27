@@ -7,21 +7,23 @@ use crate::{
     },
 };
 
-pub trait NN<'a>: TechlineNN<'a, Self::Shared> + BoardNN<'a, Self::Shared> {
+pub trait Heuristic<'a>:
+    TechlineHeuristic<'a, Self::Shared> + BoardHeuristic<'a, Self::Shared>
+{
     type Shared;
 
     fn compute_shared(
         &self,
         game_state: &GameState<'a>,
-        general: &<Self as LocalNN<&'a Techline, TechState, TechAssignment, Self::Shared>>::Enc,
-        boards: &[&<Self as LocalNN<&'a Map, Board<'a>, BoardTurn, Self::Shared>>::Enc],
+        general: &<Self as LocalHeuristic<&'a Techline, TechState, TechAssignment, Self::Shared>>::Enc,
+        boards: &[&<Self as LocalHeuristic<&'a Map, Board<'a>, BoardTurn, Self::Shared>>::Enc],
     ) -> Self::Shared;
 
     fn compute_blottos(&self, shared: &Self::Shared) -> Vec<Vec<i32>>;
     fn compute_eval(&self, shared: &Self::Shared) -> Eval;
 }
 
-pub trait LocalNN<Config, State, Turn, Shared> {
+pub trait LocalHeuristic<Config, State, Turn, Shared> {
     type Acc;
     type Enc;
     type Pre;
@@ -37,5 +39,11 @@ pub trait LocalNN<Config, State, Turn, Shared> {
     fn compute_turn(&self, blotto: i32, shared: &Shared, pre: &Self::Pre) -> Turn;
 }
 
-pub trait TechlineNN<'a, Shared>: LocalNN<&'a Techline, TechState, TechAssignment, Shared> {}
-pub trait BoardNN<'a, Shared>: LocalNN<&'a Map, Board<'a>, BoardTurn, Shared> {}
+pub trait TechlineHeuristic<'a, Shared>:
+    LocalHeuristic<&'a Techline, TechState, TechAssignment, Shared>
+{
+}
+pub trait BoardHeuristic<'a, Shared>:
+    LocalHeuristic<&'a Map, Board<'a>, BoardTurn, Shared>
+{
+}
