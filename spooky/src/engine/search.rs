@@ -78,7 +78,8 @@ pub fn search_no_spells<'a>(
     let start_time = Instant::now();
     let arena = Bump::new();
 
-    let mut search = SearchTree::new(config, state.clone(), &arena);
+    let heuristic = crate::heuristics::NaiveHeuristic::new(config);
+    let mut search = SearchTree::new(config, state.clone(), &arena, heuristic);
 
     for i in 0..search_options.nodes {
         search.explore();

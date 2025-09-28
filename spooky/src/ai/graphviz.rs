@@ -212,7 +212,7 @@ impl GraphvizBuilder {
     }
 }
 
-pub fn export_search_tree<'a>(tree: &SearchTree<'a>) -> String {
+pub fn export_search_tree<'a, H: crate::heuristics::traits::Heuristic<'a>>(tree: &SearchTree<'a, H>) -> String {
     let mut gv = GraphvizBuilder::new();
 
     // Traverse starting from root game node

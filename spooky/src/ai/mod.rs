@@ -10,7 +10,7 @@ pub mod search;
 
 // Re-export key types
 pub use eval::Eval;
-pub use search::{SearchResult, SearchTree};
+pub use search::{NaiveSearchTree, SearchResult, SearchTree};
 
 #[cfg(test)]
 pub mod tests;

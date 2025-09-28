@@ -6,6 +6,7 @@ use crate::ai::{
     eval::Eval,
     game::{GameNode, GameNodeRef, GameNodeState},
 };
+use crate::heuristics::traits::Heuristic;
 
 use crate::utils::make_rng;
 
@@ -26,15 +27,24 @@ pub struct SearchArgs<'a> {
     pub arena: &'a Bump,
 }
 
-pub struct SearchTree<'a> {
+// Generic SearchTree that works with any Heuristic implementation
+pub struct SearchTree<'a, H: Heuristic<'a>> {
     pub args: SearchArgs<'a>,
     pub rng: StdRng,
     pub root: GameNodeRef<'a>,
+    pub heuristic: H,
 }
 
-impl<'a> SearchTree<'a> {
-    pub fn new(config: &'a GameConfig, state: GameState<'a>, arena: &'a Bump) -> Self {
-        // let arena = Bump::new();
+// Keep the original SearchTree as an alias for backward compatibility
+pub type NaiveSearchTree<'a> = SearchTree<'a, crate::heuristics::NaiveHeuristic>;
+
+impl<'a, H: Heuristic<'a>> SearchTree<'a, H> {
+    pub fn new(
+        config: &'a GameConfig,
+        state: GameState<'a>,
+        arena: &'a Bump,
+        heuristic: H,
+    ) -> Self {
         let search_args_for_init = SearchArgs { config, arena };
         let side = state.side_to_move;
         let game_node_state = GameNodeState::from_game_state(state, arena);
@@ -44,6 +54,7 @@ impl<'a> SearchTree<'a> {
             args: search_args_for_init,
             rng: make_rng(),
             root,
+            heuristic,
         }
     }
 
@@ -71,10 +82,8 @@ impl<'a> SearchTree<'a> {
             }
         }
 
-        let leaf_eval = Eval::static_eval(
-            self.args.config,
-            &current_mcts_node.borrow().state.game_state,
-        );
+        // Use the heuristic for evaluation instead of hardcoded static_eval
+        let leaf_eval = self.evaluate_with_heuristic(&current_mcts_node.borrow().state.game_state);
 
         for node_ref in explored_nodes {
             let mut node_borrowed = node_ref.borrow_mut();
@@ -95,6 +104,39 @@ impl<'a> SearchTree<'a> {
         }
     }
 
+    /// Use the generic heuristic to evaluate a game state
+    fn evaluate_with_heuristic(&self, state: &GameState<'a>) -> Eval {
+        // Use the heuristic trait to evaluate the position
+        // Compute encodings for techline and boards
+        use crate::heuristics::traits::LocalHeuristic;
+
+        let tech_acc = <H as LocalHeuristic<
+            &'a crate::core::tech::Techline,
+            crate::core::tech::TechState,
+            crate::core::tech::TechAssignment,
+            H::Shared,
+        >>::compute_acc(&self.heuristic, &state.tech_state);
+
+        let mut board_accs = Vec::new();
+        for board in &state.boards {
+            let board_acc = <H as LocalHeuristic<
+                &'a crate::core::map::Map,
+                crate::core::board::Board<'a>,
+                crate::core::board::actions::BoardTurn,
+                H::Shared,
+            >>::compute_acc(&self.heuristic, board);
+            board_accs.push(board_acc);
+        }
+
+        let board_acc_refs: Vec<_> = board_accs.iter().collect();
+
+        // Compute shared data and evaluation - Acc is stored with state, reused for eval
+        let shared = self
+            .heuristic
+            .compute_shared(state, &tech_acc, &board_acc_refs);
+        self.heuristic.compute_eval(&shared)
+    }
+
     pub fn best_turn(&self) -> GameTurn {
         self.root.borrow().best_turn()
     }
@@ -113,5 +155,17 @@ impl<'a> SearchTree<'a> {
             eval: self.eval(),
             nodes_explored: self.root.borrow().stats.visits,
         }
+    }
+}
+
+// Backward compatibility implementation for the original non-generic API
+impl<'a> NaiveSearchTree<'a> {
+    pub fn new_with_naive_heuristic(
+        config: &'a GameConfig,
+        state: GameState<'a>,
+        arena: &'a Bump,
+    ) -> Self {
+        let heuristic = crate::heuristics::NaiveHeuristic::new(config);
+        SearchTree::new(config, state, arena, heuristic)
     }
 }

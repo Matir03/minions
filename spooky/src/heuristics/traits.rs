@@ -15,8 +15,8 @@ pub trait Heuristic<'a>:
     fn compute_shared(
         &self,
         game_state: &GameState<'a>,
-        general: &<Self as LocalHeuristic<&'a Techline, TechState, TechAssignment, Self::Shared>>::Enc,
-        boards: &[&<Self as LocalHeuristic<&'a Map, Board<'a>, BoardTurn, Self::Shared>>::Enc],
+        general: &<Self as LocalHeuristic<&'a Techline, TechState, TechAssignment, Self::Shared>>::Acc,
+        boards: &[&<Self as LocalHeuristic<&'a Map, Board<'a>, BoardTurn, Self::Shared>>::Acc],
     ) -> Self::Shared;
 
     fn compute_blottos(&self, shared: &Self::Shared) -> Vec<Vec<i32>>;
@@ -25,7 +25,6 @@ pub trait Heuristic<'a>:
 
 pub trait LocalHeuristic<Config, State, Turn, Shared> {
     type Acc;
-    type Enc;
     type Pre;
 
     fn new(config: Config) -> Self;
@@ -33,8 +32,7 @@ pub trait LocalHeuristic<Config, State, Turn, Shared> {
     fn compute_acc(&self, state: &State) -> Self::Acc;
     fn update_acc(&self, acc: &Self::Acc, turn: &Turn) -> Self::Acc;
 
-    fn compute_enc(&self, acc: &Self::Acc) -> Self::Enc;
-    fn compute_pre(&self, state: &State, enc: &Self::Enc) -> Self::Pre;
+    fn compute_pre(&self, state: &State, acc: &Self::Acc) -> Self::Pre;
 
     fn compute_turn(&self, blotto: i32, shared: &Shared, pre: &Self::Pre) -> Turn;
 }
