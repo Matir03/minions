@@ -219,9 +219,8 @@ impl<'a, H: Heuristic<'a>> ChildGen<GameNodeState<'a, H>, GameTurn> for GameChil
     }
 }
 
-pub type GameNode<'a, H: Heuristic<'a>> =
-    MCTSNode<'a, GameNodeState<'a, H>, GameTurn, GameChildGen>;
-pub type GameNodeRef<'a, H: Heuristic<'a>> = &'a RefCell<GameNode<'a, H>>;
+pub type GameNode<'a, H> = MCTSNode<'a, GameNodeState<'a, H>, GameTurn, GameChildGen>;
+pub type GameNodeRef<'a, H> = &'a RefCell<GameNode<'a, H>>;
 
 impl<'a, H: Heuristic<'a>> GameNode<'a, H> {
     pub fn is_terminal(&self) -> bool {

@@ -3,12 +3,18 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use pprof::criterion::{Output, PProfProfiler};
 use spooky::ai::explore::SearchTree;
 use spooky::core::{GameConfig, GameState};
+use spooky::heuristics::{naive::NaiveHeuristic, Heuristic};
 
-fn search_position(config: &GameConfig, state: &GameState, explorations: u32) {
-    let arena = Bump::new();
-    let mut search_tree = SearchTree::new(config, state.clone(), &arena);
+fn search_position<'a, H: Heuristic<'a>>(
+    config: &'a GameConfig,
+    state: &'a GameState,
+    arena: &'a Bump,
+    heuristic: &'a H,
+    explorations: u32,
+) {
+    let mut search_tree = SearchTree::new(config, state.clone(), arena, heuristic);
     for _ in 0..explorations {
-        search_tree.explore();
+        search_tree.explore(config, arena, heuristic);
     }
     // prevent the result from being optimized away
     black_box(search_tree.result());
@@ -17,6 +23,8 @@ fn search_position(config: &GameConfig, state: &GameState, explorations: u32) {
 fn search_benchmark(c: &mut Criterion) {
     let config = GameConfig::default();
     let state = GameState::new_default(&config);
+    let arena = Bump::new();
+    let heuristic = NaiveHeuristic::new(&config);
     let explorations = 100;
 
     c.bench_function(&format!("search_{}_explorations", explorations), |b| {
@@ -24,6 +32,8 @@ fn search_benchmark(c: &mut Criterion) {
             search_position(
                 black_box(&config),
                 black_box(&state),
+                black_box(&arena),
+                black_box(&heuristic),
                 black_box(explorations),
             )
         })

@@ -317,7 +317,7 @@ impl<'a, H: GeneralHeuristic<'a>> ChildGen<GeneralNodeState<'a, H>, TechAssignme
     }
 }
 
-pub type GeneralNode<'a, H: GeneralHeuristic<'a>> =
+pub type GeneralNode<'a, H> =
     MCTSNode<'a, GeneralNodeState<'a, H>, TechAssignment, GeneralChildGen<'a>>;
 
-pub type GeneralNodeRef<'a, H: GeneralHeuristic<'a>> = &'a RefCell<GeneralNode<'a, H>>;
+pub type GeneralNodeRef<'a, H> = &'a RefCell<GeneralNode<'a, H>>;
