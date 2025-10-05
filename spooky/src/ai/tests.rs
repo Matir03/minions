@@ -2,7 +2,7 @@ use bumpalo::Bump;
 
 use crate::{
     ai::{
-        captain::node::{BoardChildGen, BoardNodeArgs, BoardNodeState},
+        captain::board_node::{BoardChildGen, BoardNodeArgs, BoardNodeState},
         mcts::ChildGen,
     },
     core::{
@@ -13,6 +13,7 @@ use crate::{
         tech::{Tech, TechAssignment, TechState, Techline},
         units::Unit,
     },
+    heuristics::{naive::NaiveHeuristic, Heuristic},
     utils::make_rng,
 };
 
@@ -43,7 +44,8 @@ fn test_propose_move_integration() {
     println!("Board phases: {:?}", board.state.phases());
     println!("Board pieces: {:?}", board.pieces);
 
-    let node_state = BoardNodeState::new(board, side);
+    let config = GameConfig::default();
+    let node_state = BoardNodeState::new(board, side, &NaiveHeuristic::new(&config));
     let mut rng = make_rng();
     let mut tech_state = TechState::new();
     let techline = Techline::default();
@@ -54,18 +56,18 @@ fn test_propose_move_integration() {
         .assign_techs(assignment, side, &techline)
         .unwrap();
 
-    let config = GameConfig::default();
     let args = BoardNodeArgs {
         money: 100,
         tech_state,
         config: &config,
         arena: &Bump::new(),
+        heuristic: &NaiveHeuristic::new(&config),
     };
 
-    let mut child_gen = BoardChildGen::new(&node_state, &mut rng, &args);
+    let mut child_gen = BoardChildGen::new(&node_state, &mut rng, args.clone());
 
     let (turn, new_state) = child_gen
-        .propose_turn(&node_state, &mut rng, &args)
+        .propose_turn(&node_state, &mut rng, args)
         .expect("Failed to propose turn");
 
     let board_actions = match turn {

@@ -1,4 +1,6 @@
+use crate::heuristics::GeneralHeuristic;
 use bumpalo::{collections::Vec, Bump};
+use derive_where::derive_where;
 use std::vec::Vec as StdVec;
 use std::{cell::RefCell, collections::HashSet};
 
@@ -13,16 +15,33 @@ use rand::prelude::*;
 
 use super::mcts::{ChildGen, MCTSNode};
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct GeneralNodeState {
+#[derive_where(Clone)]
+pub struct GeneralNodeState<'a, H: GeneralHeuristic<'a>> {
+    pub heuristic_state: H::GeneralEnc,
     pub side: Side,
     pub tech_state: TechState,
     pub delta_money: SideArray<i32>,
 }
 
-impl GeneralNodeState {
-    pub fn new(side: Side, tech_state: TechState, delta_money: SideArray<i32>) -> Self {
+impl<'a, H: GeneralHeuristic<'a>> PartialEq for GeneralNodeState<'a, H> {
+    fn eq(&self, other: &Self) -> bool {
+        self.side == other.side
+            && self.tech_state == other.tech_state
+            && self.delta_money == other.delta_money
+    }
+}
+
+impl<'a, H: GeneralHeuristic<'a>> Eq for GeneralNodeState<'a, H> {}
+
+impl<'a, H: GeneralHeuristic<'a>> GeneralNodeState<'a, H> {
+    pub fn new(
+        side: Side,
+        tech_state: TechState,
+        delta_money: SideArray<i32>,
+        heuristic: &H,
+    ) -> Self {
         Self {
+            heuristic_state: heuristic.compute_enc(&tech_state),
             side,
             tech_state,
             delta_money,
@@ -47,19 +66,20 @@ struct DecisionNode {
 }
 
 #[derive(Debug)]
-pub struct GeneralChildGen {
+pub struct GeneralChildGen<'a> {
     // indices into techline, sorted by weight desc
     order: StdVec<usize>,
     // normalized weights in [0,1]
     weights: StdVec<f32>,
     nodes: StdVec<DecisionNode>,
+    _phantom: &'a (),
 }
 
-impl GeneralChildGen {
-    fn expand_node(
+impl<'a> GeneralChildGen<'a> {
+    fn expand_node<H: GeneralHeuristic<'a>>(
         &mut self,
         node_idx: usize,
-        state: &GeneralNodeState,
+        state: &GeneralNodeState<'a, H>,
         config: &GameConfig,
         max_techs: usize,
     ) {
@@ -141,15 +161,15 @@ impl GeneralChildGen {
         }
     }
 
-    fn propose_assignment(
+    fn propose_assignment<H: GeneralHeuristic<'a>>(
         &mut self,
-        state: &GeneralNodeState,
+        state: &GeneralNodeState<'a, H>,
         rng: &mut impl Rng,
-        args: &<Self as ChildGen<GeneralNodeState, TechAssignment>>::Args,
+        args: <Self as ChildGen<GeneralNodeState<'a, H>, TechAssignment>>::Args,
     ) -> Option<TechAssignment> {
-        let (money, config) = args;
+        let (money, config, _heuristic) = args;
         let spell_cost = config.spell_cost();
-        let max_techs = 1 + (*money / spell_cost) as usize;
+        let max_techs = 1 + (money / spell_cost) as usize;
 
         if self.nodes[0].saturated {
             // No more to explore
@@ -216,11 +236,13 @@ impl GeneralChildGen {
     }
 }
 
-impl ChildGen<GeneralNodeState, TechAssignment> for GeneralChildGen {
-    type Args = (i32, GameConfig);
+impl<'a, H: GeneralHeuristic<'a>> ChildGen<GeneralNodeState<'a, H>, TechAssignment>
+    for GeneralChildGen<'a>
+{
+    type Args = (i32, &'a GameConfig, &'a H);
 
-    fn new(state: &GeneralNodeState, rng: &mut impl Rng, args: &Self::Args) -> Self {
-        let (money, config) = args;
+    fn new(state: &GeneralNodeState<'a, H>, rng: &mut impl Rng, args: Self::Args) -> Self {
+        let (money, config, heuristic) = args;
         let techline = &config.techline;
         let unlock = state.tech_state.unlock_index[state.side];
         let mut scored: StdVec<(usize, f32)> = techline
@@ -261,15 +283,17 @@ impl ChildGen<GeneralNodeState, TechAssignment> for GeneralChildGen {
             order,
             weights,
             nodes,
+            _phantom: &(),
         }
     }
 
     fn propose_turn(
         &mut self,
-        state: &GeneralNodeState,
+        state: &GeneralNodeState<'a, H>,
         rng: &mut impl Rng,
-        args: &Self::Args,
-    ) -> Option<(TechAssignment, GeneralNodeState)> {
+        args: Self::Args,
+    ) -> Option<(TechAssignment, GeneralNodeState<'a, H>)> {
+        let (_money, _config, heuristic) = args;
         let assignment = self.propose_assignment(state, rng, args)?;
 
         let mut new_tech_state = state.tech_state.clone();
@@ -280,10 +304,20 @@ impl ChildGen<GeneralNodeState, TechAssignment> for GeneralChildGen {
         let mut new_delta_money = SideArray::new(0, 0);
         new_delta_money[state.side] = -(assignment.num_spells() - 1).max(0) * args.1.spell_cost();
 
-        let new_node_state = GeneralNodeState::new(!state.side, new_tech_state, new_delta_money);
+        let new_heuristic_state = heuristic.update_enc(&state.heuristic_state, &assignment);
+
+        let new_node_state = GeneralNodeState {
+            side: !state.side,
+            tech_state: new_tech_state,
+            delta_money: new_delta_money,
+            heuristic_state: new_heuristic_state,
+        };
+
         Some((assignment, new_node_state))
     }
 }
 
-pub type GeneralNode<'a> = MCTSNode<'a, GeneralNodeState, TechAssignment, GeneralChildGen>;
-pub type GeneralNodeRef<'a> = &'a RefCell<GeneralNode<'a>>;
+pub type GeneralNode<'a, H: GeneralHeuristic<'a>> =
+    MCTSNode<'a, GeneralNodeState<'a, H>, TechAssignment, GeneralChildGen<'a>>;
+
+pub type GeneralNodeRef<'a, H: GeneralHeuristic<'a>> = &'a RefCell<GeneralNode<'a, H>>;

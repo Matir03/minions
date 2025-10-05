@@ -4,8 +4,9 @@ use crate::core::{GameConfig, GameState, GameTurn};
 
 use crate::ai::{
     eval::Eval,
-    game::{GameNode, GameNodeRef, GameNodeState},
+    game_node::{GameNode, GameNodeRef, GameNodeState},
 };
+use crate::heuristics::Heuristic;
 
 use crate::utils::make_rng;
 
@@ -20,36 +21,31 @@ pub struct SearchResult {
     pub nodes_explored: u32,
 }
 
-#[derive(Debug, Clone)]
-pub struct SearchArgs<'a> {
-    pub config: &'a GameConfig,
-    pub arena: &'a Bump,
-}
-
-pub struct SearchTree<'a> {
-    pub args: SearchArgs<'a>,
+pub struct SearchTree<'a, H: Heuristic<'a>> {
     pub rng: StdRng,
-    pub root: GameNodeRef<'a>,
+    pub root: GameNodeRef<'a, H>,
 }
 
-impl<'a> SearchTree<'a> {
-    pub fn new(config: &'a GameConfig, state: GameState<'a>, arena: &'a Bump) -> Self {
-        // let arena = Bump::new();
-        let search_args_for_init = SearchArgs { config, arena };
+impl<'a, H: Heuristic<'a>> SearchTree<'a, H> {
+    pub fn new(
+        config: &'a GameConfig,
+        state: GameState<'a>,
+        arena: &'a Bump,
+        heuristic: &'a H,
+    ) -> Self {
         let side = state.side_to_move;
-        let game_node_state = GameNodeState::from_game_state(state, arena);
+        let game_node_state = GameNodeState::from_game_state(state, arena, heuristic);
         let root = arena.alloc(RefCell::new(GameNode::new(game_node_state, side, arena)));
 
         Self {
-            args: search_args_for_init,
             rng: make_rng(),
             root,
         }
     }
 
-    pub fn explore(&mut self) {
+    pub fn explore(&mut self, config: &'a GameConfig, arena: &'a Bump, heuristic: &'a H) {
         let mut current_mcts_node = self.root;
-        let mut explored_nodes = StdVec::<GameNodeRef<'a>>::new();
+        let mut explored_nodes = StdVec::<GameNodeRef<'a, H>>::new();
         explored_nodes.push(current_mcts_node);
 
         loop {
@@ -58,9 +54,10 @@ impl<'a> SearchTree<'a> {
             }
 
             let (is_new, child_idx) = current_mcts_node.borrow_mut().poll(
-                &self.args,
+                arena,
+                heuristic,
                 &mut self.rng,
-                (self.args.clone(), self.args.arena),
+                (arena, heuristic),
             );
 
             current_mcts_node = current_mcts_node.borrow().edges[child_idx].child;
@@ -71,10 +68,7 @@ impl<'a> SearchTree<'a> {
             }
         }
 
-        let leaf_eval = Eval::static_eval(
-            self.args.config,
-            &current_mcts_node.borrow().state.game_state,
-        );
+        let leaf_eval = Eval::static_eval(config, &current_mcts_node.borrow().state.game_state);
 
         for node_ref in explored_nodes {
             let mut node_borrowed = node_ref.borrow_mut();

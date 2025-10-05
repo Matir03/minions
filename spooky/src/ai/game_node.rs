@@ -1,8 +1,8 @@
 use std::{cell::RefCell, collections::HashMap, ops::AddAssign};
 
-use crate::ai::captain::node::{BoardNode, BoardNodeArgs, BoardNodeRef, BoardNodeState};
+use crate::ai::captain::board_node::{BoardNode, BoardNodeArgs, BoardNodeRef, BoardNodeState};
 use crate::ai::eval::Eval;
-use crate::ai::general::{GeneralNode, GeneralNodeRef, GeneralNodeState};
+use crate::ai::general_node::{GeneralNode, GeneralNodeRef, GeneralNodeState};
 use crate::ai::mcts::{ChildGen, MCTSEdge, MCTSNode, NodeStats};
 use crate::core::board::actions::BoardTurn;
 use crate::core::spells::Spell;
@@ -10,24 +10,26 @@ use crate::core::tech::{TechAssignment, Techline, SPELL_COST};
 use crate::core::{
     board::Board, tech::TechState, GameConfig, GameState, GameTurn, Side, SideArray,
 };
+use crate::heuristics::{self, Heuristic};
+use derive_where::derive_where;
 use hashbag::HashBag;
 
 use crate::ai::blotto::distribute_money;
-use crate::ai::search::SearchArgs;
 
 use rand::prelude::*;
 
 use bumpalo::{collections::Vec as BumpVec, Bump};
 use std::vec::Vec as StdVec;
 
-#[derive(Debug, Clone)]
-pub struct GameNodeState<'a> {
+#[derive_where(Clone)]
+pub struct GameNodeState<'a, H: Heuristic<'a>> {
+    pub heuristic_state: H::Shared,
     pub game_state: GameState<'a>,
-    pub general_node: GeneralNodeRef<'a>,
-    pub board_nodes: BumpVec<'a, BoardNodeRef<'a>>,
+    pub general_node: GeneralNodeRef<'a, H>,
+    pub board_nodes: BumpVec<'a, BoardNodeRef<'a, H>>,
 }
 
-impl<'a> PartialEq for GameNodeState<'a> {
+impl<'a, H: Heuristic<'a>> PartialEq for GameNodeState<'a, H> {
     fn eq(&self, other: &Self) -> bool {
         self.general_node.as_ptr() == other.general_node.as_ptr()
             && self.board_nodes.iter().zip(other.board_nodes.iter()).all(
@@ -36,34 +38,51 @@ impl<'a> PartialEq for GameNodeState<'a> {
     }
 }
 
-impl<'a> Eq for GameNodeState<'a> {}
+impl<'a, H: Heuristic<'a>> Eq for GameNodeState<'a, H> {}
 
-impl<'a> GameNodeState<'a> {
-    pub fn from_game_state(game_state: GameState<'a>, arena: &'a Bump) -> Self {
-        let general_mcts_node = arena.alloc(RefCell::new(MCTSNode::new(
+impl<'a, H: Heuristic<'a>> GameNodeState<'a, H> {
+    pub fn from_game_state(game_state: GameState<'a>, arena: &'a Bump, heuristic: &H) -> Self {
+        let general_mcts_node = MCTSNode::new(
             GeneralNodeState::new(
                 game_state.side_to_move,
                 game_state.tech_state.clone(),
                 SideArray::new(0, 0),
+                heuristic,
             ),
             game_state.side_to_move,
             arena,
-        )));
-        let mut board_mcts_nodes = BumpVec::new_in(arena);
+        );
+        let general_enc = &general_mcts_node.state.heuristic_state;
+
+        let mut board_nodes_in_arena = BumpVec::new_in(arena);
 
         for board_state in &game_state.boards {
-            let board_mcts_node: BoardNodeRef<'a> = arena.alloc(RefCell::new(MCTSNode::new(
-                BoardNodeState::new(board_state.clone(), game_state.side_to_move),
+            let board_mcts_node = MCTSNode::new(
+                BoardNodeState::new(board_state.clone(), game_state.side_to_move, heuristic),
                 game_state.side_to_move,
                 arena,
-            )));
-            board_mcts_nodes.push(board_mcts_node);
+            );
+            let board_node_in_arena: BoardNodeRef<'a, H> =
+                arena.alloc(RefCell::new(board_mcts_node));
+            board_nodes_in_arena.push(board_node_in_arena);
         }
 
+        // TODO: don't use clone here
+        let board_encs = board_nodes_in_arena
+            .iter()
+            .map(|b| b.borrow().state.heuristic_state.clone())
+            .collect::<StdVec<_>>();
+
+        let board_encs_ref = board_encs.iter().collect::<StdVec<_>>();
+
+        let heuristic_state = heuristic.compute_shared(&game_state, general_enc, &board_encs_ref);
+        let general_node_in_arena = arena.alloc(RefCell::new(general_mcts_node));
+
         Self {
+            heuristic_state,
             game_state,
-            general_node: general_mcts_node,
-            board_nodes: board_mcts_nodes,
+            general_node: general_node_in_arena,
+            board_nodes: board_nodes_in_arena,
         }
     }
 }
@@ -75,20 +94,21 @@ impl<'a> GameNodeState<'a> {
 #[derive(Debug)]
 pub struct GameChildGen;
 
-impl<'a> ChildGen<GameNodeState<'a>, GameTurn> for GameChildGen {
-    type Args = (SearchArgs<'a>, &'a Bump);
+impl<'a, H: Heuristic<'a>> ChildGen<GameNodeState<'a, H>, GameTurn> for GameChildGen {
+    type Args = (&'a Bump, &'a H);
 
-    fn new(_state: &GameNodeState<'a>, _rng: &mut impl Rng, _args: &Self::Args) -> Self {
+    fn new(_state: &GameNodeState<'a, H>, _rng: &mut impl Rng, _args: Self::Args) -> Self {
         GameChildGen
     }
 
     fn propose_turn(
         &mut self,
-        state: &GameNodeState<'a>,
+        state: &GameNodeState<'a, H>,
         rng: &mut impl Rng,
-        args_tuple: &Self::Args,
-    ) -> Option<(GameTurn, GameNodeState<'a>)> {
-        let (search_args, arena) = args_tuple;
+        args: Self::Args,
+    ) -> Option<(GameTurn, GameNodeState<'a, H>)> {
+        let (arena, heuristic) = args;
+        let config = state.game_state.config;
 
         let current_side = state.game_state.side_to_move;
 
@@ -96,14 +116,14 @@ impl<'a> ChildGen<GameNodeState<'a>, GameTurn> for GameChildGen {
 
         // First, poll the general node to decide on tech.
         let mut general_mcts_node_borrowed = state.general_node.borrow_mut();
-        let general_args = (total_money_current_side, search_args.config.clone());
+        let general_args = (total_money_current_side, config, heuristic);
         let (_g_is_new, g_child_idx) =
-            general_mcts_node_borrowed.poll(&search_args, rng, general_args);
+            general_mcts_node_borrowed.poll(arena, heuristic, rng, general_args);
         let general_turn = general_mcts_node_borrowed.edges[g_child_idx].turn.clone();
         let next_general_state_ref = general_mcts_node_borrowed.edges[g_child_idx].child;
         let next_general_node_state_snapshot = next_general_state_ref.borrow().state.clone();
 
-        let money_for_spells = general_turn.num_spells() * search_args.config.spell_cost();
+        let money_for_spells = general_turn.num_spells() * config.spell_cost();
         let next_tech_state = next_general_node_state_snapshot.tech_state;
 
         // Now, distribute the remaining money.
@@ -119,20 +139,22 @@ impl<'a> ChildGen<GameNodeState<'a>, GameTurn> for GameChildGen {
         let mut total_board_delta_money = SideArray::new(0, 0);
         let mut total_board_delta_points = SideArray::new(0, 0);
 
+        let cur_tech_state = &state.game_state.tech_state.clone();
+
         for (i, board_mcts_node_ref) in state.board_nodes.iter().enumerate() {
             let mut board_mcts_node_borrowed = board_mcts_node_ref.borrow_mut();
 
             let board_money = *money_for_boards.get(i).unwrap();
-            let cur_tech_state = state.game_state.tech_state.clone();
             let board_args = BoardNodeArgs {
                 money: board_money,
-                tech_state: cur_tech_state,
-                config: search_args.config,
-                arena: *arena,
+                tech_state: cur_tech_state.clone(),
+                config,
+                arena,
+                heuristic,
             };
 
             let (_b_is_new, b_child_idx) =
-                board_mcts_node_borrowed.poll(&search_args, rng, board_args);
+                board_mcts_node_borrowed.poll(arena, heuristic, rng, board_args);
 
             let board_turn = board_mcts_node_borrowed.edges[b_child_idx].turn.clone();
             let next_board_state_ref = board_mcts_node_borrowed.edges[b_child_idx].child;
@@ -155,10 +177,10 @@ impl<'a> ChildGen<GameNodeState<'a>, GameTurn> for GameChildGen {
 
         let next_winner = [current_side, !current_side]
             .into_iter()
-            .find(|&side| next_board_points[side] >= state.game_state.config.points_to_win);
+            .find(|&side| next_board_points[side] >= config.points_to_win);
 
         let next_game_state = GameState {
-            config: state.game_state.config,
+            config,
             game_id: state.game_state.game_id.clone(),
             tech_state: next_tech_state,
             side_to_move: !current_side,
@@ -169,7 +191,7 @@ impl<'a> ChildGen<GameNodeState<'a>, GameTurn> for GameChildGen {
             winner: next_winner,
         };
 
-        let num_boards = state.game_state.config.num_boards;
+        let num_boards = config.num_boards;
         let game_turn = GameTurn {
             tech_assignment: general_turn,
             board_turns,
@@ -177,20 +199,31 @@ impl<'a> ChildGen<GameNodeState<'a>, GameTurn> for GameChildGen {
             spell_assignment: vec![Spell::Blank; num_boards],
         };
 
+        let general_enc = next_general_node_state_snapshot.heuristic_state;
+        let board_encs = next_board_mcts_node_refs
+            .iter()
+            .map(|b| b.borrow().state.heuristic_state.clone())
+            .collect::<StdVec<_>>();
+        let board_encs_ref = board_encs.iter().collect::<StdVec<_>>();
+        let heuristic_state =
+            heuristic.compute_shared(&next_game_state, &general_enc, &board_encs_ref);
+
         let next_game_node_state = GameNodeState {
             game_state: next_game_state,
             general_node: next_general_state_ref,
             board_nodes: next_board_mcts_node_refs,
+            heuristic_state,
         };
 
         Some((game_turn, next_game_node_state))
     }
 }
 
-pub type GameNode<'a> = MCTSNode<'a, GameNodeState<'a>, GameTurn, GameChildGen>;
-pub type GameNodeRef<'a> = &'a RefCell<GameNode<'a>>;
+pub type GameNode<'a, H: Heuristic<'a>> =
+    MCTSNode<'a, GameNodeState<'a, H>, GameTurn, GameChildGen>;
+pub type GameNodeRef<'a, H: Heuristic<'a>> = &'a RefCell<GameNode<'a, H>>;
 
-impl<'a> GameNode<'a> {
+impl<'a, H: Heuristic<'a>> GameNode<'a, H> {
     pub fn is_terminal(&self) -> bool {
         self.state.game_state.winner.is_some()
     }

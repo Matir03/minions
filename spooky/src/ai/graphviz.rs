@@ -2,10 +2,11 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, HashSet};
 use std::fmt::Write as _;
 
-use crate::ai::captain::node::BoardNodeRef;
-use crate::ai::game::GameNodeRef;
-use crate::ai::general::GeneralNodeRef;
-use crate::ai::search::SearchTree;
+use crate::ai::captain::board_node::BoardNodeRef;
+use crate::ai::explore::SearchTree;
+use crate::ai::game_node::GameNodeRef;
+use crate::ai::general_node::GeneralNodeRef;
+use crate::heuristics::Heuristic;
 
 struct GraphvizBuilder {
     // clusters
@@ -49,19 +50,19 @@ impl GraphvizBuilder {
         (r as *const RefCell<T>) as usize
     }
 
-    fn game_node_id(node: GameNodeRef) -> String {
+    fn game_node_id<'a, H: Heuristic<'a>>(node: GameNodeRef<'a, H>) -> String {
         format!("g_{}", Self::ptr_id(node))
     }
 
-    fn general_node_id(node: GeneralNodeRef) -> String {
+    fn general_node_id<'a, H: Heuristic<'a>>(node: GeneralNodeRef<'a, H>) -> String {
         format!("gen_{}", Self::ptr_id(node))
     }
 
-    fn board_node_id(node: BoardNodeRef) -> String {
+    fn board_node_id<'a, H: Heuristic<'a>>(node: BoardNodeRef<'a, H>) -> String {
         format!("b_{}", Self::ptr_id(node))
     }
 
-    fn emit_game(&mut self, node: GameNodeRef) {
+    fn emit_game<'a, H: Heuristic<'a>>(&mut self, node: GameNodeRef<'a, H>) {
         let id = Self::ptr_id(node);
         if !self.seen_game.insert(id) {
             return;
@@ -113,7 +114,7 @@ impl GraphvizBuilder {
         }
     }
 
-    fn emit_general(&mut self, node: GeneralNodeRef, depth: usize) {
+    fn emit_general<'a, H: Heuristic<'a>>(&mut self, node: GeneralNodeRef<'a, H>, depth: usize) {
         let id = Self::ptr_id(node);
         if !self.seen_general.insert(id) {
             return;
@@ -152,7 +153,12 @@ impl GraphvizBuilder {
         }
     }
 
-    fn emit_board(&mut self, idx: usize, node: BoardNodeRef, depth: usize) {
+    fn emit_board<'a, H: Heuristic<'a>>(
+        &mut self,
+        idx: usize,
+        node: BoardNodeRef<'a, H>,
+        depth: usize,
+    ) {
         let id = Self::ptr_id(node);
         if !self.seen_board.insert(id) {
             return;
@@ -212,7 +218,7 @@ impl GraphvizBuilder {
     }
 }
 
-pub fn export_search_tree<'a>(tree: &SearchTree<'a>) -> String {
+pub fn export_search_tree<'a, H: Heuristic<'a>>(tree: &SearchTree<'a, H>) -> String {
     let mut gv = GraphvizBuilder::new();
 
     // Traverse starting from root game node

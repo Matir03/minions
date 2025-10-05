@@ -1,8 +1,8 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use pprof::criterion::{PProfProfiler, Output};
-use spooky::ai::search::SearchTree;
-use spooky::core::{GameConfig, GameState};
 use bumpalo::Bump;
+use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use pprof::criterion::{Output, PProfProfiler};
+use spooky::ai::explore::SearchTree;
+use spooky::core::{GameConfig, GameState};
 
 fn search_position(config: &GameConfig, state: &GameState, explorations: u32) {
     let arena = Bump::new();
@@ -19,8 +19,14 @@ fn search_benchmark(c: &mut Criterion) {
     let state = GameState::new_default(&config);
     let explorations = 100;
 
-        c.bench_function(&format!("search_{}_explorations", explorations), |b| {
-        b.iter(|| search_position(black_box(&config), black_box(&state), black_box(explorations)))
+    c.bench_function(&format!("search_{}_explorations", explorations), |b| {
+        b.iter(|| {
+            search_position(
+                black_box(&config),
+                black_box(&state),
+                black_box(explorations),
+            )
+        })
     });
 }
 

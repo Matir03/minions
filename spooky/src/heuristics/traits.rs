@@ -3,47 +3,49 @@ use crate::{
     core::{
         board::actions::BoardTurn,
         tech::{TechAssignment, TechState, Techline},
-        Board, GameState, Map,
+        Board, GameConfig, GameState, Map,
     },
 };
 
-pub trait Heuristic<'a>:
-    TechlineHeuristic<'a, Self::Shared> + BoardHeuristic<'a, Self::Shared>
-{
-    type Shared;
+pub trait Heuristic<'a>: GeneralHeuristic<'a> + BoardHeuristic<'a> {
+    type Shared: Clone;
+
+    fn new(config: &'a GameConfig) -> Self;
 
     fn compute_shared(
         &self,
         game_state: &GameState<'a>,
-        general: &<Self as LocalHeuristic<&'a Techline, TechState, TechAssignment, Self::Shared>>::Enc,
-        boards: &[&<Self as LocalHeuristic<&'a Map, Board<'a>, BoardTurn, Self::Shared>>::Enc],
+        general: &Self::GeneralEnc,
+        boards: &[&Self::BoardEnc],
     ) -> Self::Shared;
 
     fn compute_blottos(&self, shared: &Self::Shared) -> Vec<Vec<i32>>;
     fn compute_eval(&self, shared: &Self::Shared) -> Eval;
+
+    fn compute_board_turn(
+        &self,
+        blotto: i32,
+        shared: &Self::Shared,
+        enc: &Self::BoardEnc,
+    ) -> BoardTurn;
+
+    fn compute_general_turn(
+        &self,
+        blotto: i32,
+        shared: &Self::Shared,
+        enc: &Self::GeneralEnc,
+    ) -> TechAssignment;
 }
 
-pub trait LocalHeuristic<Config, State, Turn, Shared> {
-    type Acc;
-    type Enc;
-    type Pre;
+pub trait GeneralHeuristic<'a>: 'a {
+    type GeneralEnc: Clone;
 
-    fn new(config: Config) -> Self;
-
-    fn compute_acc(&self, state: &State) -> Self::Acc;
-    fn update_acc(&self, acc: &Self::Acc, turn: &Turn) -> Self::Acc;
-
-    fn compute_enc(&self, acc: &Self::Acc) -> Self::Enc;
-    fn compute_pre(&self, state: &State, enc: &Self::Enc) -> Self::Pre;
-
-    fn compute_turn(&self, blotto: i32, shared: &Shared, pre: &Self::Pre) -> Turn;
+    fn compute_enc(&self, state: &TechState) -> Self::GeneralEnc;
+    fn update_enc(&self, enc: &Self::GeneralEnc, turn: &TechAssignment) -> Self::GeneralEnc;
 }
+pub trait BoardHeuristic<'a>: 'a {
+    type BoardEnc: Clone;
 
-pub trait TechlineHeuristic<'a, Shared>:
-    LocalHeuristic<&'a Techline, TechState, TechAssignment, Shared>
-{
-}
-pub trait BoardHeuristic<'a, Shared>:
-    LocalHeuristic<&'a Map, Board<'a>, BoardTurn, Shared>
-{
+    fn compute_enc(&self, state: &Board<'a>) -> Self::BoardEnc;
+    fn update_enc(&self, enc: &Self::BoardEnc, turn: &BoardTurn) -> Self::BoardEnc;
 }

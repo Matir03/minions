@@ -1,5 +1,6 @@
 //! Strategic decision making across multiple boards
 
+use crate::heuristics::Heuristic;
 use std::{cell::RefCell, collections::HashMap};
 
 use crate::core::{GameConfig, GameState, GameTurn, Side, SideArray};
@@ -7,7 +8,6 @@ use crate::core::{GameConfig, GameState, GameTurn, Side, SideArray};
 use super::{
     blotto, // Assuming we'll have a blotto function/module here
     eval::Eval,
-    search::SearchArgs,
 };
 
 use rand::prelude::*;
@@ -49,15 +49,15 @@ impl NodeStats {
 }
 
 pub trait ChildGen<State, Turn> {
-    type Args;
+    type Args: Clone;
 
-    fn new(state: &State, rng: &mut impl Rng, args: &Self::Args) -> Self;
+    fn new(state: &State, rng: &mut impl Rng, args: Self::Args) -> Self;
 
     fn propose_turn(
         &mut self,
         state: &State,
         rng: &mut impl Rng,
-        args: &Self::Args,
+        args: Self::Args,
     ) -> Option<(Turn, State)>;
 }
 
@@ -98,9 +98,10 @@ impl<'a, State: Eq, Turn, Gen: ChildGen<State, Turn>> MCTSNode<'a, State, Turn, 
     }
 
     /// returns (whether a new child was made, index of selected child)
-    pub fn poll(
+    pub fn poll<H: Heuristic<'a>>(
         &mut self,
-        search_args: &SearchArgs<'a>,
+        arena: &'a Bump,
+        heuristic: &'a H,
         rng: &mut impl Rng,
         args: Gen::Args,
     ) -> (bool, usize)
@@ -109,9 +110,9 @@ impl<'a, State: Eq, Turn, Gen: ChildGen<State, Turn>> MCTSNode<'a, State, Turn, 
     {
         // initialize generator on first poll and return first child
         if self.gen.is_none() {
-            self.gen = Some(Gen::new(&self.state, rng, &args));
+            self.gen = Some(Gen::new(&self.state, rng, args.clone()));
             // child must be made
-            return (true, self.make_child(search_args, rng, args).unwrap());
+            return (true, self.make_child(arena, heuristic, rng, args).unwrap());
         }
 
         let mut best_child_index = 0;
@@ -134,7 +135,7 @@ impl<'a, State: Eq, Turn, Gen: ChildGen<State, Turn>> MCTSNode<'a, State, Turn, 
 
             if best_uct <= phantom_uct {
                 self.update_phantom = true;
-                if let Some(idx) = self.make_child(search_args, rng, args) {
+                if let Some(idx) = self.make_child(arena, heuristic, rng, args) {
                     return (true, idx);
                 }
             }
@@ -154,9 +155,10 @@ impl<'a, State: Eq, Turn, Gen: ChildGen<State, Turn>> MCTSNode<'a, State, Turn, 
 
     // returns None if no child was made
     // returns Some(index) if a child was made at that index
-    pub fn make_child(
+    pub fn make_child<H: Heuristic<'a>>(
         &mut self,
-        search_args: &SearchArgs<'a>,
+        arena: &'a Bump,
+        heuristic: &'a H,
         rng: &mut impl Rng,
         args: Gen::Args,
     ) -> Option<usize>
@@ -167,7 +169,7 @@ impl<'a, State: Eq, Turn, Gen: ChildGen<State, Turn>> MCTSNode<'a, State, Turn, 
             .gen
             .as_mut()
             .expect("Child generator must be initialized")
-            .propose_turn(&self.state, rng, &args)?;
+            .propose_turn(&self.state, rng, args)?;
 
         // Check if this state already exists as a child to avoid duplicates.
         let child_mcts_node = self
@@ -182,8 +184,8 @@ impl<'a, State: Eq, Turn, Gen: ChildGen<State, Turn>> MCTSNode<'a, State, Turn, 
                 }
             })
             .unwrap_or_else(|| {
-                let new_mcts_node = MCTSNode::new(new_node_state, self.side, search_args.arena);
-                let new_mcts_node_ref = search_args.arena.alloc(RefCell::new(new_mcts_node));
+                let new_mcts_node = MCTSNode::new(new_node_state, self.side, arena);
+                let new_mcts_node_ref = arena.alloc(RefCell::new(new_mcts_node));
                 new_mcts_node_ref
             });
 

@@ -2,15 +2,15 @@
 pub mod blotto;
 pub mod captain;
 pub mod eval;
-pub mod game;
-pub mod general;
+pub mod explore;
+pub mod game_node;
+pub mod general_node;
 pub mod graphviz;
 pub mod mcts;
-pub mod search;
 
 // Re-export key types
 pub use eval::Eval;
-pub use search::{SearchResult, SearchTree};
+pub use explore::*;
 
 #[cfg(test)]
 pub mod tests;

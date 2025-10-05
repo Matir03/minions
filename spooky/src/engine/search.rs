@@ -1,6 +1,8 @@
 use crate::ai::graphviz::export_search_tree;
 use crate::ai::{SearchResult, SearchTree};
 use crate::core::{GameConfig, GameState, GameTurn, Spell};
+use crate::heuristics::naive::NaiveHeuristic;
+use crate::heuristics::Heuristic;
 
 use anyhow::{bail, Context};
 use bumpalo::Bump;
@@ -77,11 +79,12 @@ pub fn search_no_spells<'a>(
 ) -> (SearchResult, f64) {
     let start_time = Instant::now();
     let arena = Bump::new();
+    let heuristic = NaiveHeuristic::new(config);
 
-    let mut search = SearchTree::new(config, state.clone(), &arena);
+    let mut search_tree = SearchTree::new(config, state.clone(), &arena, &heuristic);
 
     for i in 0..search_options.nodes {
-        search.explore();
+        search_tree.explore(&config, &arena, &heuristic);
 
         if start_time.elapsed().as_millis() > search_options.move_time.into() {
             break;
@@ -89,10 +92,10 @@ pub fn search_no_spells<'a>(
     }
 
     // Prepare result before exporting
-    let result = search.result();
+    let result = search_tree.result();
 
     // Export Graphviz DOT of the current search tree
-    let dot = export_search_tree(&search);
+    let dot = export_search_tree(&search_tree);
 
     // Ensure output directory exists for this game
     let out_dir = PathBuf::from("graphviz").join(state.game_id.as_str());
