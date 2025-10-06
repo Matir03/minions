@@ -15,23 +15,14 @@ use rand::prelude::*;
 
 use super::mcts::{ChildGen, MCTSNode};
 
-#[derive_where(Clone)]
+#[derive_where(Clone, PartialEq, Eq)]
 pub struct GeneralNodeState<'a, H: GeneralHeuristic<'a>> {
+    #[derive_where(skip)]
     pub heuristic_state: H::GeneralEnc,
     pub side: Side,
     pub tech_state: TechState,
     pub delta_money: SideArray<i32>,
 }
-
-impl<'a, H: GeneralHeuristic<'a>> PartialEq for GeneralNodeState<'a, H> {
-    fn eq(&self, other: &Self) -> bool {
-        self.side == other.side
-            && self.tech_state == other.tech_state
-            && self.delta_money == other.delta_money
-    }
-}
-
-impl<'a, H: GeneralHeuristic<'a>> Eq for GeneralNodeState<'a, H> {}
 
 impl<'a, H: GeneralHeuristic<'a>> GeneralNodeState<'a, H> {
     pub fn new(

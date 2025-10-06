@@ -29,6 +29,8 @@ pub struct GameNodeState<'a, H: Heuristic<'a>> {
     pub board_nodes: BumpVec<'a, BoardNodeRef<'a, H>>,
 }
 
+// Manual PartialEq/Eq implementation required because we compare RefCell pointers,
+// not their contents. The heuristic_state is intentionally skipped.
 impl<'a, H: Heuristic<'a>> PartialEq for GameNodeState<'a, H> {
     fn eq(&self, other: &Self) -> bool {
         self.general_node.as_ptr() == other.general_node.as_ptr()

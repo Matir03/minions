@@ -43,25 +43,15 @@ use bumpalo::Bump;
 use z3::{Config, Context, SatResult};
 
 /// Represents the state of a single board and its turn processing (attack + spawn).
-#[derive_where(Clone)]
+#[derive_where(Clone, PartialEq, Eq)]
 pub struct BoardNodeState<'a, H: BoardHeuristic<'a>> {
+    #[derive_where(skip)]
     pub heuristic_state: H::BoardEnc,
     pub board: Board<'a>,
     pub side_to_move: Side,
     pub delta_money: SideArray<i32>,
     pub delta_points: SideArray<i32>,
 }
-
-impl<'a, H: BoardHeuristic<'a>> PartialEq for BoardNodeState<'a, H> {
-    fn eq(&self, other: &Self) -> bool {
-        self.board == other.board
-            && self.side_to_move == other.side_to_move
-            && self.delta_money == other.delta_money
-            && self.delta_points == other.delta_points
-    }
-}
-
-impl<'a, H: BoardHeuristic<'a>> Eq for BoardNodeState<'a, H> {}
 
 impl<'a, H: BoardHeuristic<'a>> BoardNodeState<'a, H> {
     pub fn new(board: Board<'a>, side_to_move: Side, heuristic: &H) -> Self {
