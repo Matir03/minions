@@ -233,7 +233,7 @@ impl<'a, H: 'a + BoardHeuristic<'a>> ChildGen<BoardNodeState<'a, H>, BoardTurn>
             positioning_system,
             combat_generator,
             resign_generated: false,
-            resign_weight: 1.0,
+            resign_weight: 0.0,
         }
     }
 

@@ -24,7 +24,7 @@ impl<'a> Heuristic<'a> for NaiveHeuristic {
         _: &<Self as GeneralHeuristic<'a>>::GeneralEnc,
         _: &[&<Self as BoardHeuristic<'a>>::BoardEnc],
     ) -> <Self as Heuristic<'a>>::Shared {
-        todo!()
+        ()
     }
 
     fn compute_blottos(&self, _: &<Self as Heuristic<'a>>::Shared) -> Vec<Vec<i32>> {
