@@ -1,6 +1,7 @@
 //! Core game representations and rules
 
 pub mod action;
+pub mod blotto;
 pub mod board;
 pub mod convert;
 pub mod display;
@@ -26,3 +27,5 @@ pub use spells::{Spell, SpellCast};
 pub use tech::{Tech, TechStatus, Techline};
 pub use units::{Attack, Unit, UnitStats};
 pub use utils::Sigmoid;
+
+pub use blotto::Blotto;

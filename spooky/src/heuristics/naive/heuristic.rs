@@ -4,7 +4,7 @@ use crate::{
         board::{actions::BoardTurn, Board},
         game::GameConfig,
         tech::{TechAssignment, TechState},
-        GameState,
+        Blotto, GameState,
     },
     heuristics::{BoardHeuristic, GeneralHeuristic, Heuristic},
 };
@@ -13,6 +13,7 @@ pub struct NaiveHeuristic {}
 
 impl<'a> Heuristic<'a> for NaiveHeuristic {
     type Shared = ();
+    type Blottos = Vec<Blotto>;
 
     fn new(config: &'a GameConfig) -> Self {
         Self {}
@@ -27,7 +28,7 @@ impl<'a> Heuristic<'a> for NaiveHeuristic {
         ()
     }
 
-    fn compute_blottos(&self, _: &<Self as Heuristic<'a>>::Shared) -> Vec<Vec<i32>> {
+    fn compute_blottos(&self, _: &<Self as Heuristic<'a>>::Shared) -> Vec<Blotto> {
         todo!()
     }
 

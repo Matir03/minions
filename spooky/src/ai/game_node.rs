@@ -7,6 +7,7 @@ use crate::ai::mcts::{ChildGen, MCTSEdge, MCTSNode, NodeStats};
 use crate::core::board::actions::BoardTurn;
 use crate::core::spells::Spell;
 use crate::core::tech::{TechAssignment, Techline, SPELL_COST};
+use crate::core::Blotto;
 use crate::core::{
     board::Board, tech::TechState, GameConfig, GameState, GameTurn, Side, SideArray,
 };
@@ -93,14 +94,26 @@ impl<'a, H: Heuristic<'a>> GameNodeState<'a, H> {
 // Child generator for Game
 // --------------------------
 
-#[derive(Debug)]
-pub struct GameChildGen;
+pub struct GameChildGen<'a, H: Heuristic<'a>> {
+    blotto_gen: <H::Blottos as IntoIterator>::IntoIter,
+}
 
-impl<'a, H: Heuristic<'a>> ChildGen<GameNodeState<'a, H>, GameTurn> for GameChildGen {
-    type Args = (&'a Bump, &'a H);
+#[derive_where(Clone)]
+pub struct GameChildGenArgs<'a, H: Heuristic<'a>> {
+    pub arena: &'a Bump,
+    pub heuristic: &'a H,
+}
 
-    fn new(_state: &GameNodeState<'a, H>, _rng: &mut impl Rng, _args: Self::Args) -> Self {
-        GameChildGen
+impl<'a, H: Heuristic<'a>> ChildGen<GameNodeState<'a, H>, GameTurn> for GameChildGen<'a, H> {
+    type Args = GameChildGenArgs<'a, H>;
+
+    fn new(state: &GameNodeState<'a, H>, _rng: &mut impl Rng, args: Self::Args) -> Self {
+        let GameChildGenArgs { arena, heuristic } = args;
+        GameChildGen {
+            blotto_gen: heuristic
+                .compute_blottos(&state.heuristic_state)
+                .into_iter(),
+        }
     }
 
     fn propose_turn(
@@ -109,7 +122,7 @@ impl<'a, H: Heuristic<'a>> ChildGen<GameNodeState<'a, H>, GameTurn> for GameChil
         rng: &mut impl Rng,
         args: Self::Args,
     ) -> Option<(GameTurn, GameNodeState<'a, H>)> {
-        let (arena, heuristic) = args;
+        let GameChildGenArgs { arena, heuristic } = args;
         let config = state.game_state.config;
 
         let current_side = state.game_state.side_to_move;
@@ -129,11 +142,10 @@ impl<'a, H: Heuristic<'a>> ChildGen<GameNodeState<'a, H>, GameTurn> for GameChil
         let next_tech_state = next_general_node_state_snapshot.tech_state;
 
         // Now, distribute the remaining money.
-        let (money_for_general, money_for_boards) = distribute_money(
-            total_money_current_side,
-            money_for_spells,
-            state.game_state.boards.len(),
-        );
+        let Blotto {
+            money_for_general,
+            money_for_boards,
+        } = self.blotto_gen.next().unwrap();
 
         let mut board_turns = StdVec::with_capacity(state.board_nodes.len());
         let mut next_board_states_for_gamestate = StdVec::with_capacity(state.board_nodes.len());
@@ -221,7 +233,7 @@ impl<'a, H: Heuristic<'a>> ChildGen<GameNodeState<'a, H>, GameTurn> for GameChil
     }
 }
 
-pub type GameNode<'a, H> = MCTSNode<'a, GameNodeState<'a, H>, GameTurn, GameChildGen>;
+pub type GameNode<'a, H> = MCTSNode<'a, GameNodeState<'a, H>, GameTurn, GameChildGen<'a, H>>;
 pub type GameNodeRef<'a, H> = &'a RefCell<GameNode<'a, H>>;
 
 impl<'a, H: Heuristic<'a>> GameNode<'a, H> {

@@ -3,12 +3,13 @@ use crate::{
     core::{
         board::actions::BoardTurn,
         tech::{TechAssignment, TechState, Techline},
-        Board, GameConfig, GameState, Map,
+        Blotto, Board, GameConfig, GameState, Map,
     },
 };
 
 pub trait Heuristic<'a>: GeneralHeuristic<'a> + BoardHeuristic<'a> {
     type Shared: Clone;
+    type Blottos: IntoIterator<Item = Blotto>;
 
     fn new(config: &'a GameConfig) -> Self;
 
@@ -19,7 +20,7 @@ pub trait Heuristic<'a>: GeneralHeuristic<'a> + BoardHeuristic<'a> {
         boards: &[&Self::BoardEnc],
     ) -> Self::Shared;
 
-    fn compute_blottos(&self, shared: &Self::Shared) -> Vec<Vec<i32>>;
+    fn compute_blottos(&self, shared: &Self::Shared) -> Self::Blottos;
     fn compute_eval(&self, shared: &Self::Shared) -> Eval;
 
     fn compute_board_turn(

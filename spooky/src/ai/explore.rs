@@ -1,5 +1,6 @@
 //! Search for the best move
 
+use crate::ai::game_node::GameChildGenArgs;
 use crate::core::{GameConfig, GameState, GameTurn};
 
 use crate::ai::{
@@ -57,7 +58,7 @@ impl<'a, H: Heuristic<'a>> SearchTree<'a, H> {
                 arena,
                 heuristic,
                 &mut self.rng,
-                (arena, heuristic),
+                GameChildGenArgs { arena, heuristic },
             );
 
             current_mcts_node = current_mcts_node.borrow().edges[child_idx].child;
