@@ -5,10 +5,7 @@ use std::{cell::RefCell, collections::HashMap};
 
 use crate::core::{GameConfig, GameState, GameTurn, Side, SideArray};
 
-use super::{
-    blotto, // Assuming we'll have a blotto function/module here
-    eval::Eval,
-};
+use super::eval::Eval;
 
 use rand::prelude::*;
 

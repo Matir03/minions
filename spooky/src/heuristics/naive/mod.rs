@@ -1,3 +1,4 @@
+mod blotto;
 mod board;
 mod general;
 

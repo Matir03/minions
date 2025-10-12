@@ -1,5 +1,4 @@
 //! Strategic and tactical logic for the full game
-pub mod blotto;
 pub mod captain;
 pub mod eval;
 pub mod explore;

@@ -1,6 +1,18 @@
-//! Resource allocation (blotto) logic.
+//! Resource allocation (blotto) logic for naive heuristics.
 
-use std::vec::Vec;
+use crate::core::{Blotto, GameState};
+use crate::heuristics::BlottoGen;
+
+pub struct NaiveBlotto {
+    pub total_money: i32,
+    pub num_boards: usize,
+}
+
+impl<'a> BlottoGen<'a> for NaiveBlotto {
+    fn blotto(&self, money_for_spells: i32) -> Blotto {
+        blotto(self.total_money, money_for_spells, self.num_boards)
+    }
+}
 
 /// Distributes a total amount of money between a general fund and multiple boards.
 ///
@@ -13,20 +25,15 @@ use std::vec::Vec;
 /// * `num_boards` - The number of boards to distribute the remaining money to.
 ///
 /// # Returns
-/// A tuple containing:
+/// A `Blotto` struct containing:
 ///   - `money_for_general`: The amount of money allocated to the general fund.
 ///   - `money_for_boards`: A vector containing the amount of money allocated to each board.
-pub fn distribute_money(
-    total_money: i32,
-    money_for_spells: i32,
-    num_boards: usize,
-) -> (i32, Vec<i32>) {
-    let money_for_general = money_for_spells;
+fn blotto(total_money: i32, money_for_spells: i32, num_boards: usize) -> Blotto {
     let mut money_for_boards = vec![0; num_boards];
 
-    let remaining_money = total_money - money_for_general;
+    let remaining_money = total_money - money_for_spells;
     if remaining_money <= 0 {
-        return (money_for_general, money_for_boards);
+        return Blotto { money_for_boards };
     }
 
     let base_amount = remaining_money / num_boards as i32;
@@ -40,7 +47,7 @@ pub fn distribute_money(
         }
     }
 
-    (money_for_general, money_for_boards)
+    Blotto { money_for_boards }
 }
 
 #[cfg(test)]
@@ -49,45 +56,39 @@ mod tests {
 
     #[test]
     fn test_distribute_money_no_money() {
-        let (general, boards) = distribute_money(0, 0, 3);
-        assert_eq!(general, 0);
-        assert_eq!(boards, vec![0, 0, 0]);
+        let blotto = blotto(0, 0, 3);
+        assert_eq!(blotto.money_for_boards, vec![0, 0, 0]);
     }
 
     #[test]
     fn test_distribute_money_only_spells() {
-        let (general, boards) = distribute_money(20, 20, 3);
-        assert_eq!(general, 20);
-        assert_eq!(boards, vec![0, 0, 0]);
+        let blotto = blotto(20, 20, 3);
+        assert_eq!(blotto.money_for_boards, vec![0, 0, 0]);
     }
 
     #[test]
     fn test_distribute_money_even_split() {
-        let (general, boards) = distribute_money(100, 10, 3);
-        assert_eq!(general, 10);
-        assert_eq!(boards, vec![30, 30, 30]);
+        let blotto = blotto(100, 10, 3);
+        assert_eq!(blotto.money_for_boards, vec![30, 30, 30]);
     }
 
     #[test]
     fn test_distribute_money_with_remainder() {
-        let (general, boards) = distribute_money(100, 10, 4);
+        let blotto = blotto(100, 10, 4);
         // 90 remaining for 4 boards. 90 / 4 = 22 with remainder 2.
-        assert_eq!(general, 10);
-        assert_eq!(boards, vec![23, 23, 22, 22]);
+        assert_eq!(blotto.money_for_boards, vec![23, 23, 22, 22]);
     }
 
     #[test]
     fn test_distribute_money_no_boards() {
-        let (general, boards) = distribute_money(50, 10, 0);
-        assert_eq!(general, 50);
-        assert!(boards.is_empty());
+        let blotto = blotto(50, 10, 0);
+        assert!(blotto.money_for_boards.is_empty());
     }
 
     #[test]
     fn test_distribute_money_insufficient_funds() {
         // Not enough money for the requested spells.
-        let (general, boards) = distribute_money(10, 20, 3);
-        assert_eq!(general, 20);
-        assert_eq!(boards, vec![0, 0, 0]);
+        let blotto = blotto(10, 20, 3);
+        assert_eq!(blotto.money_for_boards, vec![0, 0, 0]);
     }
 }
