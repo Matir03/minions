@@ -31,7 +31,7 @@ pub trait Heuristic<'a>:
 }
 
 pub trait GeneralHeuristic<'a, CombinedEnc>: 'a {
-    type GeneralEnc: Clone;
+    type GeneralEnc;
 
     fn compute_enc(&self, state: &TechState) -> Self::GeneralEnc;
     fn update_enc(&self, enc: &Self::GeneralEnc, turn: &TechAssignment) -> Self::GeneralEnc;

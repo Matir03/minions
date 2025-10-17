@@ -15,7 +15,7 @@ use rand::prelude::*;
 
 use super::mcts::{ChildGen, MCTSNode};
 
-#[derive_where(Clone, PartialEq, Eq)]
+#[derive_where(PartialEq, Eq)]
 pub struct GeneralNodeState<'a, C, H: GeneralHeuristic<'a, C>> {
     #[derive_where(skip)]
     pub heuristic_state: H::GeneralEnc,

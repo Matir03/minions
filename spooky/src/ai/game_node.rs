@@ -133,10 +133,10 @@ impl<'a, H: Heuristic<'a>> ChildGen<GameNodeState<'a, H>, GameTurn> for GameChil
             general_mcts_node_borrowed.poll(arena, heuristic, rng, general_args);
         let general_turn = general_mcts_node_borrowed.edges[g_child_idx].turn.clone();
         let next_general_state_ref = general_mcts_node_borrowed.edges[g_child_idx].child;
-        let next_general_node_state_snapshot = next_general_state_ref.borrow().state.clone();
+        let next_general_node_state_snapshot = &next_general_state_ref.borrow().state;
 
         let money_for_spells = general_turn.num_spells() * config.spell_cost();
-        let next_tech_state = next_general_node_state_snapshot.tech_state;
+        let next_tech_state = &next_general_node_state_snapshot.tech_state;
 
         // Now, distribute the remaining money.
         let Blotto { money_for_boards } = self.blotto_gen.blotto(money_for_spells);
@@ -191,7 +191,7 @@ impl<'a, H: Heuristic<'a>> ChildGen<GameNodeState<'a, H>, GameTurn> for GameChil
         let next_game_state = GameState {
             config,
             game_id: state.game_state.game_id.clone(),
-            tech_state: next_tech_state,
+            tech_state: next_tech_state.clone(),
             side_to_move: !current_side,
             boards: next_board_states_for_gamestate,
             board_points: next_board_points,
@@ -208,7 +208,7 @@ impl<'a, H: Heuristic<'a>> ChildGen<GameNodeState<'a, H>, GameTurn> for GameChil
             spell_assignment: vec![Spell::Blank; num_boards],
         };
 
-        let general_enc = next_general_node_state_snapshot.heuristic_state;
+        let general_enc = &next_general_node_state_snapshot.heuristic_state;
         let board_encs = next_board_mcts_node_refs
             .iter()
             .map(|b| b.borrow().state.heuristic_state.clone())
