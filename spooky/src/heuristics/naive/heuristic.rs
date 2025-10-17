@@ -11,21 +11,23 @@ use crate::{
 
 use super::blotto::NaiveBlotto;
 
-pub struct NaiveHeuristic {}
+pub type CombinedEnc<'a> = GameState<'a>;
+
+pub struct NaiveHeuristic;
 
 impl<'a> Heuristic<'a> for NaiveHeuristic {
-    type CombinedEnc = GameState<'a>;
+    type CombinedEnc = CombinedEnc<'a>;
     type BlottoGen = NaiveBlotto;
 
     fn new(config: &'a GameConfig) -> Self {
-        Self {}
+        Self
     }
 
     fn compute_combined(
         &self,
         game_state: &GameState<'a>,
-        _: &<Self as GeneralHeuristic<'a>>::GeneralEnc,
-        _: &[&<Self as BoardHeuristic<'a>>::BoardEnc],
+        _: &<Self as GeneralHeuristic<'a, Self::CombinedEnc>>::GeneralEnc,
+        _: &[&<Self as BoardHeuristic<'a, Self::CombinedEnc>>::BoardEnc],
     ) -> <Self as Heuristic<'a>>::CombinedEnc {
         game_state.clone()
     }
@@ -38,24 +40,6 @@ impl<'a> Heuristic<'a> for NaiveHeuristic {
     }
 
     fn compute_eval(&self, _: &<Self as Heuristic<'a>>::CombinedEnc) -> Eval {
-        todo!()
-    }
-
-    fn compute_board_turn(
-        &self,
-        _: i32,
-        _: &<Self as Heuristic<'a>>::CombinedEnc,
-        _: &<Self as BoardHeuristic<'a>>::BoardEnc,
-    ) -> BoardTurn {
-        todo!()
-    }
-
-    fn compute_general_turn(
-        &self,
-        _: i32,
-        _: &<Self as Heuristic<'a>>::CombinedEnc,
-        _: &<Self as GeneralHeuristic<'a>>::GeneralEnc,
-    ) -> TechAssignment {
         todo!()
     }
 }

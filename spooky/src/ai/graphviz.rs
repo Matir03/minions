@@ -54,11 +54,13 @@ impl GraphvizBuilder {
         format!("g_{}", Self::ptr_id(node))
     }
 
-    fn general_node_id<'a, H: Heuristic<'a>>(node: GeneralNodeRef<'a, H>) -> String {
+    fn general_node_id<'a, H: Heuristic<'a>>(
+        node: GeneralNodeRef<'a, H::CombinedEnc, H>,
+    ) -> String {
         format!("gen_{}", Self::ptr_id(node))
     }
 
-    fn board_node_id<'a, H: Heuristic<'a>>(node: BoardNodeRef<'a, H>) -> String {
+    fn board_node_id<'a, H: Heuristic<'a>>(node: BoardNodeRef<'a, H::CombinedEnc, H>) -> String {
         format!("b_{}", Self::ptr_id(node))
     }
 
@@ -114,7 +116,11 @@ impl GraphvizBuilder {
         }
     }
 
-    fn emit_general<'a, H: Heuristic<'a>>(&mut self, node: GeneralNodeRef<'a, H>, depth: usize) {
+    fn emit_general<'a, H: Heuristic<'a>>(
+        &mut self,
+        node: GeneralNodeRef<'a, H::CombinedEnc, H>,
+        depth: usize,
+    ) {
         let id = Self::ptr_id(node);
         if !self.seen_general.insert(id) {
             return;
@@ -156,7 +162,7 @@ impl GraphvizBuilder {
     fn emit_board<'a, H: Heuristic<'a>>(
         &mut self,
         idx: usize,
-        node: BoardNodeRef<'a, H>,
+        node: BoardNodeRef<'a, H::CombinedEnc, H>,
         depth: usize,
     ) {
         let id = Self::ptr_id(node);

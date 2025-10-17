@@ -1,3 +1,4 @@
+use std::marker::PhantomData;
 use std::{cell::RefCell, collections::HashMap, ops::AddAssign};
 
 use crate::ai::captain::board_node::{BoardNode, BoardNodeArgs, BoardNodeRef, BoardNodeState};
@@ -24,8 +25,8 @@ use std::vec::Vec as StdVec;
 pub struct GameNodeState<'a, H: Heuristic<'a>> {
     pub heuristic_state: H::CombinedEnc,
     pub game_state: GameState<'a>,
-    pub general_node: GeneralNodeRef<'a, H>,
-    pub board_nodes: BumpVec<'a, BoardNodeRef<'a, H>>,
+    pub general_node: GeneralNodeRef<'a, H::CombinedEnc, H>,
+    pub board_nodes: BumpVec<'a, BoardNodeRef<'a, H::CombinedEnc, H>>,
 }
 
 // Manual PartialEq/Eq implementation required because we compare RefCell pointers,
@@ -63,7 +64,7 @@ impl<'a, H: Heuristic<'a>> GameNodeState<'a, H> {
                 game_state.side_to_move,
                 arena,
             );
-            let board_node_in_arena: BoardNodeRef<'a, H> =
+            let board_node_in_arena: BoardNodeRef<'a, H::CombinedEnc, H> =
                 arena.alloc(RefCell::new(board_mcts_node));
             board_nodes_in_arena.push(board_node_in_arena);
         }
@@ -158,6 +159,7 @@ impl<'a, H: Heuristic<'a>> ChildGen<GameNodeState<'a, H>, GameTurn> for GameChil
                 config,
                 arena,
                 heuristic,
+                _c: PhantomData,
             };
 
             let (_b_is_new, b_child_idx) =

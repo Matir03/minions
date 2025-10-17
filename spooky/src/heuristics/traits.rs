@@ -11,7 +11,9 @@ pub trait BlottoGen<'a> {
     fn blotto(&self, money_for_spells: i32) -> Blotto;
 }
 
-pub trait Heuristic<'a>: GeneralHeuristic<'a> + BoardHeuristic<'a> {
+pub trait Heuristic<'a>:
+    GeneralHeuristic<'a, Self::CombinedEnc> + BoardHeuristic<'a, Self::CombinedEnc>
+{
     type CombinedEnc: Clone;
     type BlottoGen: BlottoGen<'a>;
 
@@ -26,31 +28,31 @@ pub trait Heuristic<'a>: GeneralHeuristic<'a> + BoardHeuristic<'a> {
 
     fn compute_blottos(&self, shared: &Self::CombinedEnc) -> Self::BlottoGen;
     fn compute_eval(&self, shared: &Self::CombinedEnc) -> Eval;
-
-    fn compute_board_turn(
-        &self,
-        blotto: i32,
-        shared: &Self::CombinedEnc,
-        enc: &Self::BoardEnc,
-    ) -> BoardTurn;
-
-    fn compute_general_turn(
-        &self,
-        blotto: i32,
-        shared: &Self::CombinedEnc,
-        enc: &Self::GeneralEnc,
-    ) -> TechAssignment;
 }
 
-pub trait GeneralHeuristic<'a>: 'a {
+pub trait GeneralHeuristic<'a, CombinedEnc>: 'a {
     type GeneralEnc: Clone;
 
     fn compute_enc(&self, state: &TechState) -> Self::GeneralEnc;
     fn update_enc(&self, enc: &Self::GeneralEnc, turn: &TechAssignment) -> Self::GeneralEnc;
+
+    fn compute_general_turn(
+        &self,
+        blotto: i32,
+        shared: &CombinedEnc,
+        enc: &Self::GeneralEnc,
+    ) -> TechAssignment;
 }
-pub trait BoardHeuristic<'a>: 'a {
+pub trait BoardHeuristic<'a, CombinedEnc>: 'a {
     type BoardEnc: Clone;
 
     fn compute_enc(&self, state: &Board<'a>) -> Self::BoardEnc;
     fn update_enc(&self, enc: &Self::BoardEnc, turn: &BoardTurn) -> Self::BoardEnc;
+
+    fn compute_board_turn(
+        &self,
+        blotto: i32,
+        shared: &CombinedEnc,
+        enc: &Self::BoardEnc,
+    ) -> BoardTurn;
 }

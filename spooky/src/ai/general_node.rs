@@ -16,7 +16,7 @@ use rand::prelude::*;
 use super::mcts::{ChildGen, MCTSNode};
 
 #[derive_where(Clone, PartialEq, Eq)]
-pub struct GeneralNodeState<'a, H: GeneralHeuristic<'a>> {
+pub struct GeneralNodeState<'a, C, H: GeneralHeuristic<'a, C>> {
     #[derive_where(skip)]
     pub heuristic_state: H::GeneralEnc,
     pub side: Side,
@@ -24,7 +24,7 @@ pub struct GeneralNodeState<'a, H: GeneralHeuristic<'a>> {
     pub delta_money: SideArray<i32>,
 }
 
-impl<'a, H: GeneralHeuristic<'a>> GeneralNodeState<'a, H> {
+impl<'a, C, H: GeneralHeuristic<'a, C>> GeneralNodeState<'a, C, H> {
     pub fn new(
         side: Side,
         tech_state: TechState,
@@ -67,10 +67,10 @@ pub struct GeneralChildGen<'a> {
 }
 
 impl<'a> GeneralChildGen<'a> {
-    fn expand_node<H: GeneralHeuristic<'a>>(
+    fn expand_node<C, H: GeneralHeuristic<'a, C>>(
         &mut self,
         node_idx: usize,
-        state: &GeneralNodeState<'a, H>,
+        state: &GeneralNodeState<'a, C, H>,
         config: &GameConfig,
         max_techs: usize,
     ) {
@@ -152,11 +152,11 @@ impl<'a> GeneralChildGen<'a> {
         }
     }
 
-    fn propose_assignment<H: GeneralHeuristic<'a>>(
+    fn propose_assignment<C, H: GeneralHeuristic<'a, C>>(
         &mut self,
-        state: &GeneralNodeState<'a, H>,
+        state: &GeneralNodeState<'a, C, H>,
         rng: &mut impl Rng,
-        args: <Self as ChildGen<GeneralNodeState<'a, H>, TechAssignment>>::Args,
+        args: <Self as ChildGen<GeneralNodeState<'a, C, H>, TechAssignment>>::Args,
     ) -> Option<TechAssignment> {
         let (money, config, _heuristic) = args;
         let spell_cost = config.spell_cost();
@@ -227,12 +227,12 @@ impl<'a> GeneralChildGen<'a> {
     }
 }
 
-impl<'a, H: GeneralHeuristic<'a>> ChildGen<GeneralNodeState<'a, H>, TechAssignment>
+impl<'a, C, H: GeneralHeuristic<'a, C>> ChildGen<GeneralNodeState<'a, C, H>, TechAssignment>
     for GeneralChildGen<'a>
 {
     type Args = (i32, &'a GameConfig, &'a H);
 
-    fn new(state: &GeneralNodeState<'a, H>, rng: &mut impl Rng, args: Self::Args) -> Self {
+    fn new(state: &GeneralNodeState<'a, C, H>, rng: &mut impl Rng, args: Self::Args) -> Self {
         let (money, config, heuristic) = args;
         let techline = &config.techline;
         let unlock = state.tech_state.unlock_index[state.side];
@@ -280,10 +280,10 @@ impl<'a, H: GeneralHeuristic<'a>> ChildGen<GeneralNodeState<'a, H>, TechAssignme
 
     fn propose_turn(
         &mut self,
-        state: &GeneralNodeState<'a, H>,
+        state: &GeneralNodeState<'a, C, H>,
         rng: &mut impl Rng,
         args: Self::Args,
-    ) -> Option<(TechAssignment, GeneralNodeState<'a, H>)> {
+    ) -> Option<(TechAssignment, GeneralNodeState<'a, C, H>)> {
         let (_money, _config, heuristic) = args;
         let assignment = self.propose_assignment(state, rng, args)?;
 
@@ -308,7 +308,7 @@ impl<'a, H: GeneralHeuristic<'a>> ChildGen<GeneralNodeState<'a, H>, TechAssignme
     }
 }
 
-pub type GeneralNode<'a, H> =
-    MCTSNode<'a, GeneralNodeState<'a, H>, TechAssignment, GeneralChildGen<'a>>;
+pub type GeneralNode<'a, C, H> =
+    MCTSNode<'a, GeneralNodeState<'a, C, H>, TechAssignment, GeneralChildGen<'a>>;
 
-pub type GeneralNodeRef<'a, H> = &'a RefCell<GeneralNode<'a, H>>;
+pub type GeneralNodeRef<'a, C, H> = &'a RefCell<GeneralNode<'a, C, H>>;

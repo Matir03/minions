@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use bumpalo::Bump;
 
 use crate::{
@@ -62,6 +64,7 @@ fn test_propose_move_integration() {
         config: &config,
         arena: &Bump::new(),
         heuristic: &NaiveHeuristic::new(&config),
+        _c: PhantomData,
     };
 
     let mut child_gen = BoardChildGen::new(&node_state, &mut rng, args.clone());

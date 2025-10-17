@@ -44,7 +44,7 @@ use z3::{Config, Context, SatResult};
 
 /// Represents the state of a single board and its turn processing (attack + spawn).
 #[derive_where(Clone, PartialEq, Eq)]
-pub struct BoardNodeState<'a, H: BoardHeuristic<'a>> {
+pub struct BoardNodeState<'a, C, H: BoardHeuristic<'a, C>> {
     #[derive_where(skip)]
     pub heuristic_state: H::BoardEnc,
     pub board: Board<'a>,
@@ -53,7 +53,7 @@ pub struct BoardNodeState<'a, H: BoardHeuristic<'a>> {
     pub delta_points: SideArray<i32>,
 }
 
-impl<'a, H: BoardHeuristic<'a>> BoardNodeState<'a, H> {
+impl<'a, C, H: BoardHeuristic<'a, C>> BoardNodeState<'a, C, H> {
     pub fn new(board: Board<'a>, side_to_move: Side, heuristic: &H) -> Self {
         Self {
             heuristic_state: heuristic.compute_enc(&board),
@@ -125,7 +125,7 @@ pub struct BoardChildGen<'a> {
     pub resign_weight: f64,
 }
 
-pub fn process_turn_end<'a, H: BoardHeuristic<'a>>(
+pub fn process_turn_end<'a, C, H: BoardHeuristic<'a, C>>(
     mut board: Board<'a>,
     side_to_move: Side,
     money: i32,
@@ -134,7 +134,7 @@ pub fn process_turn_end<'a, H: BoardHeuristic<'a>>(
     heuristic: &H,
     enc: &H::BoardEnc,
     turn: &BoardTurn,
-) -> BoardNodeState<'a, H> {
+) -> BoardNodeState<'a, C, H> {
     let (income, winner) = board
         .end_turn(side_to_move)
         .expect("[BoardNodeState] Failed to end turn");
@@ -160,20 +160,21 @@ pub fn process_turn_end<'a, H: BoardHeuristic<'a>>(
 }
 
 #[derive_where(Clone)]
-pub struct BoardNodeArgs<'a, H: BoardHeuristic<'a>> {
+pub struct BoardNodeArgs<'a, C, H: BoardHeuristic<'a, C>> {
     pub money: i32,
     pub tech_state: TechState,
     pub config: &'a GameConfig,
     pub arena: &'a Bump,
     pub heuristic: &'a H,
+    pub _c: PhantomData<C>,
 }
 
-impl<'a, H: 'a + BoardHeuristic<'a>> ChildGen<BoardNodeState<'a, H>, BoardTurn>
+impl<'a, C, H: 'a + BoardHeuristic<'a, C>> ChildGen<BoardNodeState<'a, C, H>, BoardTurn>
     for BoardChildGen<'a>
 {
-    type Args = BoardNodeArgs<'a, H>;
+    type Args = BoardNodeArgs<'a, C, H>;
 
-    fn new(state: &BoardNodeState<'a, H>, rng: &mut impl Rng, args: Self::Args) -> Self {
+    fn new(state: &BoardNodeState<'a, C, H>, rng: &mut impl Rng, args: Self::Args) -> Self {
         let config = args.config;
         let arena = args.arena;
 
@@ -239,16 +240,17 @@ impl<'a, H: 'a + BoardHeuristic<'a>> ChildGen<BoardNodeState<'a, H>, BoardTurn>
 
     fn propose_turn(
         &mut self,
-        state: &BoardNodeState<'a, H>,
+        state: &BoardNodeState<'a, C, H>,
         rng: &mut impl Rng,
         args: Self::Args,
-    ) -> Option<(BoardTurn, BoardNodeState<'a, H>)> {
+    ) -> Option<(BoardTurn, BoardNodeState<'a, C, H>)> {
         let BoardNodeArgs {
             money,
             tech_state,
             config,
             arena,
             heuristic,
+            _c,
         } = args;
 
         let BoardChildGen {
@@ -454,11 +456,13 @@ impl<'a, H: 'a + BoardHeuristic<'a>> ChildGen<BoardNodeState<'a, H>, BoardTurn>
     }
 }
 
-pub type BoardNode<'a, H> = MCTSNode<'a, BoardNodeState<'a, H>, BoardTurn, BoardChildGen<'a>>;
-pub type BoardNodeRef<'a, H> = &'a RefCell<BoardNode<'a, H>>;
+pub type BoardNode<'a, C, H> = MCTSNode<'a, BoardNodeState<'a, C, H>, BoardTurn, BoardChildGen<'a>>;
+pub type BoardNodeRef<'a, C, H> = &'a RefCell<BoardNode<'a, C, H>>;
 
 #[cfg(test)]
 mod tests {
+    use std::marker::PhantomData;
+
     use crate::{
         ai::{
             captain::board_node::{BoardChildGen, BoardNodeArgs},
@@ -523,6 +527,7 @@ mod tests {
             config: &config,
             arena: &Bump::new(),
             heuristic: &heuristic,
+            _c: PhantomData,
         };
         let mut child_gen = BoardChildGen::new(&node_state, &mut rng, args.clone());
 
