@@ -2,7 +2,7 @@ use crate::core::{board::actions::BoardTurn, Board, GameConfig};
 use crate::heuristics::naive::{CombinedEnc, NaiveHeuristic};
 use crate::heuristics::{BoardHeuristic, Heuristic};
 
-impl<'a> BoardHeuristic<'a, CombinedEnc<'a>> for NaiveHeuristic {
+impl<'a> BoardHeuristic<'a, CombinedEnc<'a>> for NaiveHeuristic<'a> {
     type BoardEnc = ();
 
     fn compute_enc(&self, board: &Board<'a>) -> Self::BoardEnc {

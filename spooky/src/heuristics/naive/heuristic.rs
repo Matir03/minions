@@ -13,14 +13,16 @@ use super::blotto::NaiveBlotto;
 
 pub type CombinedEnc<'a> = GameState<'a>;
 
-pub struct NaiveHeuristic;
+pub struct NaiveHeuristic<'a> {
+    pub config: &'a GameConfig,
+}
 
-impl<'a> Heuristic<'a> for NaiveHeuristic {
+impl<'a> Heuristic<'a> for NaiveHeuristic<'a> {
     type CombinedEnc = CombinedEnc<'a>;
     type BlottoGen = NaiveBlotto;
 
     fn new(config: &'a GameConfig) -> Self {
-        Self
+        Self { config }
     }
 
     fn compute_combined(

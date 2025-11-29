@@ -1,9 +1,11 @@
+use rand::Rng;
+
 use crate::{
-    ai::Eval,
+    ai::{general_node::GeneralPreTurn, Eval},
     core::{
         board::actions::BoardTurn,
         tech::{TechAssignment, TechState, Techline},
-        Blotto, Board, GameConfig, GameState, Map,
+        Blotto, Board, GameConfig, GameState, Map, Side,
     },
 };
 
@@ -33,16 +35,17 @@ pub trait Heuristic<'a>:
 pub trait GeneralHeuristic<'a, CombinedEnc>: 'a {
     type GeneralEnc;
 
-    fn compute_enc(&self, state: &TechState) -> Self::GeneralEnc;
+    fn compute_enc(&self, side: Side, state: &TechState) -> Self::GeneralEnc;
     fn update_enc(&self, enc: &Self::GeneralEnc, turn: &TechAssignment) -> Self::GeneralEnc;
 
-    fn compute_general_turn(
+    fn compute_general_pre_turn(
         &self,
-        blotto: i32,
+        rng: &mut impl Rng,
         shared: &CombinedEnc,
         enc: &Self::GeneralEnc,
-    ) -> TechAssignment;
+    ) -> GeneralPreTurn;
 }
+
 pub trait BoardHeuristic<'a, CombinedEnc>: 'a {
     type BoardEnc: Clone;
 

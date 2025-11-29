@@ -1,5 +1,5 @@
 use crate::heuristics::GeneralHeuristic;
-use bumpalo::{collections::Vec, Bump};
+use bumpalo::{collections::Vec as BumpVec, Bump};
 use derive_where::derive_where;
 use std::vec::Vec as StdVec;
 use std::{cell::RefCell, collections::HashSet};
@@ -12,8 +12,14 @@ use crate::core::{
 };
 
 use rand::prelude::*;
+use std::marker::PhantomData;
 
 use super::mcts::{ChildGen, MCTSNode};
+
+#[derive(Clone)]
+pub struct GeneralPreTurn {
+    pub weights: StdVec<f32>,
+}
 
 #[derive_where(PartialEq, Eq)]
 pub struct GeneralNodeState<'a, C, H: GeneralHeuristic<'a, C>> {
@@ -32,7 +38,7 @@ impl<'a, C, H: GeneralHeuristic<'a, C>> GeneralNodeState<'a, C, H> {
         heuristic: &H,
     ) -> Self {
         Self {
-            heuristic_state: heuristic.compute_enc(&tech_state),
+            heuristic_state: heuristic.compute_enc(side, &tech_state),
             side,
             tech_state,
             delta_money,
@@ -58,10 +64,6 @@ struct DecisionNode {
 
 #[derive(Debug)]
 pub struct GeneralChildGen<'a> {
-    // indices into techline, sorted by weight desc
-    order: StdVec<usize>,
-    // normalized weights in [0,1]
-    weights: StdVec<f32>,
     nodes: StdVec<DecisionNode>,
     _phantom: &'a (),
 }
@@ -75,9 +77,10 @@ impl<'a> GeneralChildGen<'a> {
         max_techs: usize,
     ) {
         let techline = &config.techline;
-        let num_techs = self.order.len();
+        let num_techs = techline.len();
 
-        let tech_idx = self.order[self.nodes[node_idx].depth];
+        // Reverse numerical ordering
+        let tech_idx = num_techs - 1 - self.nodes[node_idx].depth;
 
         let new_depth = self.nodes[node_idx].depth + 1;
         let mut new_tech_indices = self.nodes[node_idx].tech_indices.clone();
@@ -101,7 +104,13 @@ impl<'a> GeneralChildGen<'a> {
             tech_idx + 1 - state.tech_state.unlock_index[state.side].min(tech_idx + 1);
         let new_advance_by = advance_by.max(advance_by_for_tech);
         let new_num_techs = new_tech_indices.len() + new_advance_by;
-        let mut take_saturated = new_num_techs > max_techs;
+
+        let tech = techline.techs[tech_idx];
+        let already_ours = state.tech_state.acquired_techs[state.side].contains(&tech);
+        let already_theirs = state.tech_state.acquired_techs[!state.side].contains(&tech);
+        let invalid = already_ours || already_theirs;
+
+        let mut take_saturated = new_num_techs > max_techs || invalid;
 
         let take_child = DecisionNode {
             depth: new_depth,
@@ -152,13 +161,19 @@ impl<'a> GeneralChildGen<'a> {
         }
     }
 
-    fn propose_assignment<C, H: GeneralHeuristic<'a, C>>(
+    fn propose_assignment<C: 'a, H: GeneralHeuristic<'a, C>>(
         &mut self,
         state: &GeneralNodeState<'a, C, H>,
         rng: &mut impl Rng,
         args: <Self as ChildGen<GeneralNodeState<'a, C, H>, TechAssignment>>::Args,
     ) -> Option<TechAssignment> {
-        let (money, config, _heuristic) = args;
+        let GeneralNodeArgs {
+            money,
+            config,
+            heuristic,
+            pre_turn,
+            _phantom,
+        } = args;
         let spell_cost = config.spell_cost();
         let max_techs = 1 + (money / spell_cost) as usize;
 
@@ -169,7 +184,7 @@ impl<'a> GeneralChildGen<'a> {
 
         // Traverse decision tree
         let mut cur_idx = 0;
-        let num_techs = self.order.len();
+        let num_techs = config.techline.len();
 
         loop {
             if self.nodes[cur_idx].depth >= num_techs {
@@ -192,14 +207,15 @@ impl<'a> GeneralChildGen<'a> {
             let take_sat = self.nodes[take_idx].saturated;
             let skip_sat = self.nodes[skip_idx].saturated;
 
-            let next_idx = if take_sat {
+            cur_idx = if take_sat {
                 skip_idx
             } else if skip_sat {
                 take_idx
             } else {
                 // choose using weight as probability to select
                 let depth = self.nodes[cur_idx].depth;
-                let p_select = self.weights[depth];
+                let tech_idx = num_techs - 1 - depth;
+                let p_select = pre_turn.weights[tech_idx];
 
                 if rng.gen::<f32>() < p_select {
                     take_idx
@@ -207,8 +223,6 @@ impl<'a> GeneralChildGen<'a> {
                     skip_idx
                 }
             };
-
-            cur_idx = next_idx;
         }
 
         // Mark leaf saturated and propagate
@@ -227,37 +241,21 @@ impl<'a> GeneralChildGen<'a> {
     }
 }
 
-impl<'a, C, H: GeneralHeuristic<'a, C>> ChildGen<GeneralNodeState<'a, C, H>, TechAssignment>
+#[derive_where(Clone)]
+pub struct GeneralNodeArgs<'a, C, H: GeneralHeuristic<'a, C>> {
+    pub money: i32,
+    pub config: &'a GameConfig,
+    pub heuristic: &'a H,
+    pub pre_turn: GeneralPreTurn,
+    pub _phantom: PhantomData<C>,
+}
+
+impl<'a, C: 'a, H: GeneralHeuristic<'a, C>> ChildGen<GeneralNodeState<'a, C, H>, TechAssignment>
     for GeneralChildGen<'a>
 {
-    type Args = (i32, &'a GameConfig, &'a H);
+    type Args = GeneralNodeArgs<'a, C, H>;
 
-    fn new(state: &GeneralNodeState<'a, C, H>, rng: &mut impl Rng, args: Self::Args) -> Self {
-        let (money, config, heuristic) = args;
-        let techline = &config.techline;
-        let unlock = state.tech_state.unlock_index[state.side];
-        let mut scored: StdVec<(usize, f32)> = techline
-            .techs
-            .iter()
-            .enumerate()
-            .filter_map(|(i, t)| {
-                let already_ours = state.tech_state.acquired_techs[state.side].contains(t);
-                if already_ours {
-                    return None;
-                }
-                let already_theirs = state.tech_state.acquired_techs[!state.side].contains(t);
-                if already_theirs {
-                    return None;
-                }
-                Some((i, rng.gen_range(0.0..1.0)))
-            })
-            .collect();
-
-        // Sort by weight desc
-        scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
-
-        let (order, weights) = scored.into_iter().unzip();
-
+    fn new(_state: &GeneralNodeState<'a, C, H>, _rng: &mut impl Rng, _args: Self::Args) -> Self {
         // root node
         let nodes = vec![DecisionNode {
             depth: 0,
@@ -271,8 +269,6 @@ impl<'a, C, H: GeneralHeuristic<'a, C>> ChildGen<GeneralNodeState<'a, C, H>, Tec
         }];
 
         GeneralChildGen {
-            order,
-            weights,
             nodes,
             _phantom: &(),
         }
@@ -284,18 +280,20 @@ impl<'a, C, H: GeneralHeuristic<'a, C>> ChildGen<GeneralNodeState<'a, C, H>, Tec
         rng: &mut impl Rng,
         args: Self::Args,
     ) -> Option<(TechAssignment, GeneralNodeState<'a, C, H>)> {
-        let (_money, _config, heuristic) = args;
-        let assignment = self.propose_assignment(state, rng, args)?;
+        let assignment = self.propose_assignment(state, rng, args.clone())?;
 
         let mut new_tech_state = state.tech_state.clone();
         new_tech_state
-            .assign_techs(assignment.clone(), state.side, &args.1.techline)
+            .assign_techs(assignment.clone(), state.side, &args.config.techline)
             .unwrap();
 
         let mut new_delta_money = SideArray::new(0, 0);
-        new_delta_money[state.side] = -(assignment.num_spells() - 1).max(0) * args.1.spell_cost();
+        new_delta_money[state.side] =
+            -(assignment.num_spells() - 1).max(0) * args.config.spell_cost();
 
-        let new_heuristic_state = heuristic.update_enc(&state.heuristic_state, &assignment);
+        let new_heuristic_state = args
+            .heuristic
+            .update_enc(&state.heuristic_state, &assignment);
 
         let new_node_state = GeneralNodeState {
             side: !state.side,

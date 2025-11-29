@@ -3,7 +3,7 @@ use std::{cell::RefCell, collections::HashMap, ops::AddAssign};
 
 use crate::ai::captain::board_node::{BoardNode, BoardNodeArgs, BoardNodeRef, BoardNodeState};
 use crate::ai::eval::Eval;
-use crate::ai::general_node::{GeneralNode, GeneralNodeRef, GeneralNodeState};
+use crate::ai::general_node::{GeneralNode, GeneralNodeArgs, GeneralNodeRef, GeneralNodeState};
 use crate::ai::mcts::{ChildGen, MCTSEdge, MCTSNode, NodeStats};
 use crate::core::board::actions::BoardTurn;
 use crate::core::spells::Spell;
@@ -128,7 +128,20 @@ impl<'a, H: Heuristic<'a>> ChildGen<GameNodeState<'a, H>, GameTurn> for GameChil
 
         // First, poll the general node to decide on tech.
         let mut general_mcts_node_borrowed = state.general_node.borrow_mut();
-        let general_args = (total_money_current_side, config, heuristic);
+
+        let pre_turn = heuristic.compute_general_pre_turn(
+            rng,
+            &state.heuristic_state,
+            &general_mcts_node_borrowed.state.heuristic_state,
+        );
+
+        let general_args = GeneralNodeArgs {
+            money: total_money_current_side,
+            config,
+            heuristic,
+            pre_turn,
+            _phantom: PhantomData,
+        };
         let (_g_is_new, g_child_idx) =
             general_mcts_node_borrowed.poll(arena, heuristic, rng, general_args);
         let general_turn = general_mcts_node_borrowed.edges[g_child_idx].turn.clone();
@@ -152,7 +165,7 @@ impl<'a, H: Heuristic<'a>> ChildGen<GameNodeState<'a, H>, GameTurn> for GameChil
         for (i, board_mcts_node_ref) in state.board_nodes.iter().enumerate() {
             let mut board_mcts_node_borrowed = board_mcts_node_ref.borrow_mut();
 
-            let board_money = *money_for_boards.get(i).unwrap();
+            let board_money = money_for_boards[i];
             let board_args = BoardNodeArgs {
                 money: board_money,
                 tech_state: cur_tech_state.clone(),
