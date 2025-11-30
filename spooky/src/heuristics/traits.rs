@@ -58,4 +58,22 @@ pub trait BoardHeuristic<'a, CombinedEnc>: 'a {
         shared: &CombinedEnc,
         enc: &Self::BoardEnc,
     ) -> BoardTurn;
+
+    fn compute_board_pre_turn(
+        &self,
+        rng: &mut impl Rng,
+        shared: &CombinedEnc,
+        enc: &Self::BoardEnc,
+        board: &Board<'a>,
+        side: Side,
+    ) -> BoardPreTurn;
+}
+
+use crate::ai::captain::combat::prophet::RemovalAssumption;
+use crate::ai::captain::positioning::MoveCandidate;
+
+#[derive(Debug)]
+pub struct BoardPreTurn {
+    pub moves: Vec<MoveCandidate>,
+    pub removals: Vec<RemovalAssumption>,
 }

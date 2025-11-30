@@ -10,7 +10,7 @@ use rand::prelude::*;
 use crate::core::board::actions::BoardActions;
 use crate::core::board::definitions::Phase;
 use crate::core::{ToIndex, Unit};
-use crate::heuristics::BoardHeuristic;
+use crate::heuristics::{BoardHeuristic, BoardPreTurn};
 use crate::{
     ai::{
         eval::Eval,
@@ -123,6 +123,7 @@ pub struct BoardChildGen<'a> {
     pub combat_generator: CombatGenerationSystem,
     pub resign_generated: bool,
     pub resign_weight: f64,
+    pub pre_turn: BoardPreTurn,
 }
 
 pub fn process_turn_end<'a, C, H: BoardHeuristic<'a, C>>(
@@ -160,16 +161,16 @@ pub fn process_turn_end<'a, C, H: BoardHeuristic<'a, C>>(
 }
 
 #[derive_where(Clone)]
-pub struct BoardNodeArgs<'a, C, H: BoardHeuristic<'a, C>> {
+pub struct BoardNodeArgs<'a, C: Clone, H: BoardHeuristic<'a, C>> {
     pub money: i32,
     pub tech_state: TechState,
     pub config: &'a GameConfig,
     pub arena: &'a Bump,
     pub heuristic: &'a H,
-    pub _c: PhantomData<C>,
+    pub shared: C,
 }
 
-impl<'a, C, H: 'a + BoardHeuristic<'a, C>> ChildGen<BoardNodeState<'a, C, H>, BoardTurn>
+impl<'a, C: Clone, H: 'a + BoardHeuristic<'a, C>> ChildGen<BoardNodeState<'a, C, H>, BoardTurn>
     for BoardChildGen<'a>
 {
     type Args = BoardNodeArgs<'a, C, H>;
@@ -177,6 +178,8 @@ impl<'a, C, H: 'a + BoardHeuristic<'a, C>> ChildGen<BoardNodeState<'a, C, H>, Bo
     fn new(state: &BoardNodeState<'a, C, H>, rng: &mut impl Rng, args: Self::Args) -> Self {
         let config = args.config;
         let arena = args.arena;
+        let heuristic = args.heuristic;
+        let shared = args.shared;
 
         let z3_cfg = Config::new();
         let ctx = arena.alloc(Context::new(&z3_cfg));
@@ -228,6 +231,14 @@ impl<'a, C, H: 'a + BoardHeuristic<'a, C>> ChildGen<BoardNodeState<'a, C, H>, Bo
             },
         );
 
+        let pre_turn = heuristic.compute_board_pre_turn(
+            rng,
+            &shared,
+            &state.heuristic_state,
+            &state.board,
+            state.side_to_move,
+        );
+
         BoardChildGen {
             setup_action,
             manager,
@@ -235,6 +246,7 @@ impl<'a, C, H: 'a + BoardHeuristic<'a, C>> ChildGen<BoardNodeState<'a, C, H>, Bo
             combat_generator,
             resign_generated: false,
             resign_weight: 0.0,
+            pre_turn,
         }
     }
 
@@ -250,7 +262,7 @@ impl<'a, C, H: 'a + BoardHeuristic<'a, C>> ChildGen<BoardNodeState<'a, C, H>, Bo
             config,
             arena,
             heuristic,
-            _c,
+            shared,
         } = args;
 
         let BoardChildGen {
@@ -260,6 +272,7 @@ impl<'a, C, H: 'a + BoardHeuristic<'a, C>> ChildGen<BoardNodeState<'a, C, H>, Bo
             ref mut combat_generator,
             resign_generated,
             resign_weight,
+            ref pre_turn,
         } = *self;
 
         let mut new_board = state.board.clone();
@@ -291,18 +304,7 @@ impl<'a, C, H: 'a + BoardHeuristic<'a, C>> ChildGen<BoardNodeState<'a, C, H>, Bo
         }
 
         // --- Generate move candidates ---
-        let move_candidates = run_timed(
-            "Generating move candidates",
-            || {
-                positioning_system.generate_move_candidates(
-                    rng,
-                    &manager.graph,
-                    &new_board,
-                    state.side_to_move,
-                )
-            },
-            |_| "done".to_string(),
-        );
+        let move_candidates = pre_turn.moves.clone();
 
         // try combat generation + attack reconciliation until we succeed
         loop {
@@ -312,7 +314,12 @@ impl<'a, C, H: 'a + BoardHeuristic<'a, C>> ChildGen<BoardNodeState<'a, C, H>, Bo
                 || {
                     manager.solver.push();
                     combat_generator
-                        .generate_combat(manager, &new_board, state.side_to_move)
+                        .generate_combat(
+                            manager,
+                            &new_board,
+                            state.side_to_move,
+                            &pre_turn.removals,
+                        )
                         .unwrap();
                 },
                 |_| "done".to_string(),
@@ -462,6 +469,7 @@ pub type BoardNodeRef<'a, C, H> = &'a RefCell<BoardNode<'a, C, H>>;
 #[cfg(test)]
 mod tests {
     use std::marker::PhantomData;
+    use std::rc::Rc;
 
     use crate::{
         ai::{
@@ -520,14 +528,26 @@ mod tests {
         let tech_state = new_all_unlocked_tech_state();
         let config = GameConfig::default();
         let heuristic = NaiveHeuristic::new(&config);
-        let node_state = BoardNodeState::new(board, Side::Yellow, &heuristic);
+        let node_state = BoardNodeState::new(board.clone(), Side::Yellow, &heuristic);
+        let game_state = crate::core::game::GameState {
+            config: &config,
+            game_id: "test".to_string(),
+            tech_state: tech_state.clone(),
+            side_to_move: Side::Yellow,
+            boards: vec![board.clone()],
+            board_points: crate::core::side::SideArray::new(0, 0),
+            money: crate::core::side::SideArray::new(12, 12),
+            ply: 0,
+            winner: None,
+        };
+        let shared = Rc::new(game_state);
         let args = BoardNodeArgs {
             money: 12,
             tech_state: tech_state.clone(),
             config: &config,
             arena: &Bump::new(),
             heuristic: &heuristic,
-            _c: PhantomData,
+            shared: shared.clone(),
         };
         let mut child_gen = BoardChildGen::new(&node_state, &mut rng, args.clone());
 

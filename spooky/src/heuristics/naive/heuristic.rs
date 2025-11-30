@@ -11,7 +11,9 @@ use crate::{
 
 use super::blotto::NaiveBlotto;
 
-pub type CombinedEnc<'a> = GameState<'a>;
+use std::rc::Rc;
+
+pub type CombinedEnc<'a> = Rc<GameState<'a>>;
 
 pub struct NaiveHeuristic<'a> {
     pub config: &'a GameConfig,
@@ -31,10 +33,10 @@ impl<'a> Heuristic<'a> for NaiveHeuristic<'a> {
         _: &<Self as GeneralHeuristic<'a, Self::CombinedEnc>>::GeneralEnc,
         _: &[&<Self as BoardHeuristic<'a, Self::CombinedEnc>>::BoardEnc],
     ) -> <Self as Heuristic<'a>>::CombinedEnc {
-        game_state.clone()
+        Rc::new(game_state.clone())
     }
 
-    fn compute_blottos(&self, combined: &GameState<'a>) -> Self::BlottoGen {
+    fn compute_blottos(&self, combined: &CombinedEnc<'a>) -> Self::BlottoGen {
         NaiveBlotto {
             total_money: combined.money[combined.side_to_move],
             num_boards: combined.boards.len(),

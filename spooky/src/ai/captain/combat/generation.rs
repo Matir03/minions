@@ -15,15 +15,11 @@ use z3::ast::Bool;
 
 /// Combat generation system that orchestrates the new architecture
 #[derive(Debug)]
-pub struct CombatGenerationSystem {
-    pub death_prophet: DeathProphet,
-}
+pub struct CombatGenerationSystem {}
 
 impl CombatGenerationSystem {
     pub fn new() -> Self {
-        Self {
-            death_prophet: DeathProphet::new(make_rng()),
-        }
+        Self {}
     }
 
     /// Generate combat actions using the new architecture
@@ -32,9 +28,9 @@ impl CombatGenerationSystem {
         manager: &mut ConstraintManager<'ctx>,
         board: &Board,
         side: Side,
+        assumptions: &[RemovalAssumption],
     ) -> Result<()> {
         // Get assumptions from the death prophet
-        let assumptions = self.death_prophet.generate_assumptions(board, side);
         let constraints = assumptions
             .iter()
             .map(|assumption| {
@@ -72,14 +68,6 @@ impl CombatGenerationSystem {
                 }
             }
         }
-
-        // Give feedback to death prophet
-        let active_constraints = constraints
-            .iter()
-            .map(|c| constraint_set.contains(c))
-            .collect::<Vec<_>>();
-
-        self.death_prophet.receive_feedback(active_constraints);
 
         for constraint in constraint_set {
             manager.solver.assert(&constraint);
@@ -156,7 +144,7 @@ mod tests {
 
         let mut system = CombatGenerationSystem::new();
 
-        let result = system.generate_combat(&mut solver, &board, Side::Yellow);
+        let result = system.generate_combat(&mut solver, &board, Side::Yellow, &[]);
         assert!(result.is_ok());
     }
 }

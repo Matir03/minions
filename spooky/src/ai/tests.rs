@@ -1,4 +1,5 @@
 use std::marker::PhantomData;
+use std::rc::Rc;
 
 use bumpalo::Bump;
 
@@ -8,10 +9,11 @@ use crate::{
         mcts::ChildGen,
     },
     core::{
-        board::{actions::BoardTurn, Board},
-        game::GameConfig,
+        board::{actions::BoardTurn, definitions::BoardState, Board, Piece},
+        game::{GameConfig, GameState},
+        loc::Loc,
         map::Map,
-        side::Side,
+        side::{Side, SideArray},
         tech::{Tech, TechAssignment, TechState, Techline},
         units::Unit,
     },
@@ -26,28 +28,24 @@ fn test_propose_move_integration() {
     let side = Side::Yellow;
 
     // Add a necromancer to the board so there are spawnable units
-    board.add_piece(crate::core::board::Piece::new(
-        crate::core::units::Unit::BasicNecromancer,
-        side,
-        crate::core::loc::Loc::new(1, 1),
-    ));
+    board.add_piece(Piece::new(Unit::BasicNecromancer, side, Loc::new(1, 1)));
 
     // Add an enemy piece close enough for combat
-    board.add_piece(crate::core::board::Piece::new(
-        crate::core::units::Unit::Zombie,
+    board.add_piece(Piece::new(
+        Unit::Zombie,
         !side,
-        crate::core::loc::Loc::new(1, 2), // Adjacent to necromancer
+        Loc::new(1, 2), // Adjacent to necromancer
     ));
 
     // Set board to Normal state which includes both Attack and Spawn phases
-    board.state = crate::core::board::definitions::BoardState::Normal;
+    board.state = BoardState::Normal;
 
     // Debug: Check board state
     println!("Board phases: {:?}", board.state.phases());
     println!("Board pieces: {:?}", board.pieces);
 
     let config = GameConfig::default();
-    let node_state = BoardNodeState::new(board, side, &NaiveHeuristic::new(&config));
+    let node_state = BoardNodeState::new(board.clone(), side, &NaiveHeuristic::new(&config));
     let mut rng = make_rng();
     let mut tech_state = TechState::new();
     let techline = Techline::default();
@@ -58,13 +56,26 @@ fn test_propose_move_integration() {
         .assign_techs(assignment, side, &techline)
         .unwrap();
 
+    let game_state = GameState {
+        config: &config,
+        game_id: "test".to_string(),
+        tech_state: tech_state.clone(),
+        side_to_move: side,
+        boards: vec![board.clone()],
+        board_points: SideArray::new(0, 0),
+        money: SideArray::new(100, 100),
+        ply: 0,
+        winner: None,
+    };
+    let shared = Rc::new(game_state);
+
     let args = BoardNodeArgs {
         money: 100,
         tech_state,
         config: &config,
         arena: &Bump::new(),
         heuristic: &NaiveHeuristic::new(&config),
-        _c: PhantomData,
+        shared: shared.clone(),
     };
 
     let mut child_gen = BoardChildGen::new(&node_state, &mut rng, args.clone());

@@ -172,7 +172,7 @@ impl<'a, H: Heuristic<'a>> ChildGen<GameNodeState<'a, H>, GameTurn> for GameChil
                 config,
                 arena,
                 heuristic,
-                _c: PhantomData,
+                shared: state.heuristic_state.clone(),
             };
 
             let (_b_is_new, b_child_idx) =
