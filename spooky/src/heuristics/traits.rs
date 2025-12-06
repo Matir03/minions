@@ -9,6 +9,8 @@ use crate::{
     },
 };
 
+pub use crate::ai::captain::board_node::{BoardPreTurn, RemovalAssumption};
+
 pub trait BlottoGen<'a> {
     fn blotto(&self, money_for_spells: i32) -> Blotto;
 }
@@ -67,13 +69,4 @@ pub trait BoardHeuristic<'a, CombinedEnc>: 'a {
         board: &Board<'a>,
         side: Side,
     ) -> BoardPreTurn;
-}
-
-use crate::ai::captain::combat::prophet::RemovalAssumption;
-use crate::ai::captain::positioning::MoveCandidate;
-
-#[derive(Debug)]
-pub struct BoardPreTurn {
-    pub moves: Vec<MoveCandidate>,
-    pub removals: Vec<RemovalAssumption>,
 }

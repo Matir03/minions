@@ -1,15 +1,10 @@
 use std::collections::HashSet;
 
+use crate::ai::captain::board_node::RemovalAssumption;
 use crate::ai::captain::combat::{
-    constraints::ConstraintManager,
-    constraints::SatVariables,
-    graph::CombatGraph,
-    prophet::{DeathProphet, RemovalAssumption},
+    constraints::ConstraintManager, constraints::SatVariables, graph::CombatGraph,
 };
-
-use crate::utils::make_rng;
-
-use crate::core::{board::Board, side::Side};
+use crate::core::{board::Board, loc::Loc, side::Side};
 use anyhow::{Context, Result};
 use z3::ast::Bool;
 

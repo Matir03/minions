@@ -7,10 +7,33 @@ use std::{cell::RefCell, fmt};
 use derive_where::derive_where;
 use rand::prelude::*;
 
+use crate::ai::captain::positioning::MoveCandidate;
 use crate::core::board::actions::BoardActions;
 use crate::core::board::definitions::Phase;
-use crate::core::{ToIndex, Unit};
-use crate::heuristics::{BoardHeuristic, BoardPreTurn};
+use crate::core::{Loc, ToIndex, Unit};
+use crate::heuristics::BoardHeuristic;
+
+#[derive(Debug, Clone)]
+pub enum RemovalAssumption {
+    Kill(Loc),
+    Unsummon(Loc),
+    Keep(Loc),
+}
+
+impl RemovalAssumption {
+    pub fn loc(&self) -> Loc {
+        match self {
+            RemovalAssumption::Kill(loc) => *loc,
+            RemovalAssumption::Unsummon(loc) => *loc,
+            RemovalAssumption::Keep(loc) => *loc,
+        }
+    }
+}
+#[derive(Debug, Clone)]
+pub struct BoardPreTurn {
+    pub moves: Vec<MoveCandidate>,
+    pub removals: Vec<RemovalAssumption>,
+}
 use crate::{
     ai::{
         eval::Eval,
@@ -33,7 +56,6 @@ use super::{
         constraints::{generate_move_from_sat_model, ConstraintManager},
         generation::CombatGenerationSystem,
         graph::CombatGraph,
-        prophet::DeathProphet,
     },
     positioning::SatPositioningSystem,
     spawn::generate_heuristic_spawn_actions,
