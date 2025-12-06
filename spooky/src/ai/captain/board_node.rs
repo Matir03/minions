@@ -29,10 +29,21 @@ impl RemovalAssumption {
         }
     }
 }
+
 #[derive(Debug, Clone)]
-pub struct BoardPreTurn {
+pub struct BoardAttackPhasePreTurn {
     pub moves: Vec<MoveCandidate>,
     pub removals: Vec<RemovalAssumption>,
+}
+
+#[derive(Debug, Clone)]
+pub struct BoardSetupPhasePreTurn {
+    pub action: crate::core::board::actions::SetupAction,
+}
+
+#[derive(Debug, Clone)]
+pub struct BoardSpawnPhasePreTurn {
+    pub actions: Vec<crate::core::board::actions::SpawnAction>,
 }
 use crate::{
     ai::{
@@ -139,13 +150,13 @@ where
 
 #[derive(Debug)]
 pub struct BoardChildGen<'a> {
-    pub setup_action: Option<SetupAction>,
+    pub setup_action: Option<crate::core::board::actions::SetupAction>,
     pub manager: ConstraintManager<'a>,
     pub positioning_system: SatPositioningSystem,
     pub combat_generator: CombatGenerationSystem,
     pub resign_generated: bool,
     pub resign_weight: f64,
-    pub pre_turn: BoardPreTurn,
+    pub attack_phase_pre_turn: BoardAttackPhasePreTurn,
 }
 
 pub fn process_turn_end<'a, C, H: BoardHeuristic<'a, C>>(
@@ -253,7 +264,7 @@ impl<'a, C: Clone, H: 'a + BoardHeuristic<'a, C>> ChildGen<BoardNodeState<'a, C,
             },
         );
 
-        let pre_turn = heuristic.compute_board_pre_turn(
+        let attack_phase_pre_turn = heuristic.compute_board_attack_phase_pre_turn(
             rng,
             &shared,
             &state.heuristic_state,
@@ -268,7 +279,7 @@ impl<'a, C: Clone, H: 'a + BoardHeuristic<'a, C>> ChildGen<BoardNodeState<'a, C,
             combat_generator,
             resign_generated: false,
             resign_weight: 0.0,
-            pre_turn,
+            attack_phase_pre_turn,
         }
     }
 
@@ -294,7 +305,7 @@ impl<'a, C: Clone, H: 'a + BoardHeuristic<'a, C>> ChildGen<BoardNodeState<'a, C,
             ref mut combat_generator,
             resign_generated,
             resign_weight,
-            ref pre_turn,
+            ref attack_phase_pre_turn,
         } = *self;
 
         let mut new_board = state.board.clone();
@@ -326,7 +337,7 @@ impl<'a, C: Clone, H: 'a + BoardHeuristic<'a, C>> ChildGen<BoardNodeState<'a, C,
         }
 
         // --- Generate move candidates ---
-        let move_candidates = pre_turn.moves.clone();
+        let move_candidates = attack_phase_pre_turn.moves.clone();
 
         // try combat generation + attack reconciliation until we succeed
         loop {
@@ -340,7 +351,7 @@ impl<'a, C: Clone, H: 'a + BoardHeuristic<'a, C>> ChildGen<BoardNodeState<'a, C,
                             manager,
                             &new_board,
                             state.side_to_move,
-                            &pre_turn.removals,
+                            &attack_phase_pre_turn.removals,
                         )
                         .unwrap();
                 },

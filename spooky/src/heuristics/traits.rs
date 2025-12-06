@@ -9,7 +9,9 @@ use crate::{
     },
 };
 
-pub use crate::ai::captain::board_node::{BoardPreTurn, RemovalAssumption};
+pub use crate::ai::captain::board_node::{
+    BoardAttackPhasePreTurn, BoardSetupPhasePreTurn, BoardSpawnPhasePreTurn, RemovalAssumption,
+};
 
 pub trait BlottoGen<'a> {
     fn blotto(&self, money_for_spells: i32) -> Blotto;
@@ -54,19 +56,32 @@ pub trait BoardHeuristic<'a, CombinedEnc>: 'a {
     fn compute_enc(&self, state: &Board<'a>) -> Self::BoardEnc;
     fn update_enc(&self, enc: &Self::BoardEnc, turn: &BoardTurn) -> Self::BoardEnc;
 
-    fn compute_board_turn(
-        &self,
-        blotto: i32,
-        shared: &CombinedEnc,
-        enc: &Self::BoardEnc,
-    ) -> BoardTurn;
-
-    fn compute_board_pre_turn(
+    fn compute_board_attack_phase_pre_turn(
         &self,
         rng: &mut impl Rng,
         shared: &CombinedEnc,
         enc: &Self::BoardEnc,
         board: &Board<'a>,
         side: Side,
-    ) -> BoardPreTurn;
+    ) -> BoardAttackPhasePreTurn;
+
+    fn compute_board_setup_phase_pre_turn(
+        &self,
+        rng: &mut impl Rng,
+        shared: &CombinedEnc,
+        enc: &Self::BoardEnc,
+        board: &Board<'a>,
+        side: Side,
+    ) -> BoardSetupPhasePreTurn;
+
+    fn compute_board_spawn_phase_pre_turn(
+        &self,
+        rng: &mut impl Rng,
+        shared: &CombinedEnc,
+        enc: &Self::BoardEnc,
+        board: &Board<'a>,
+        side: Side,
+        money: i32,
+        tech_state: &crate::core::tech::TechState,
+    ) -> BoardSpawnPhasePreTurn;
 }

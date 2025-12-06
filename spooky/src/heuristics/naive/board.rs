@@ -1,15 +1,27 @@
-use crate::ai::captain::board_node::BoardPreTurn;
+use crate::ai::captain::board_node::BoardAttackPhasePreTurn;
 use crate::ai::captain::combat::graph::CombatGraph;
 use crate::ai::captain::positioning::MoveCandidate;
-use crate::core::{board::actions::BoardTurn, Board, GameConfig, Loc, Side, Sigmoid};
-use crate::heuristics::naive::{CombinedEnc, NaiveHeuristic};
-use crate::heuristics::{BoardHeuristic, Heuristic, RemovalAssumption};
-use rand::{Rng, SeedableRng};
+use crate::core::{
+    board::{
+        actions::{BoardTurn, SetupAction, SpawnAction},
+        BitboardOps,
+    },
+    tech::{Tech, TechState},
+    Board, GameConfig, Loc, MapSpec, Side, Sigmoid, ToIndex, Unit,
+};
+use crate::heuristics::{
+    naive::{CombinedEnc, NaiveHeuristic},
+    BoardHeuristic, BoardSetupPhasePreTurn, BoardSpawnPhasePreTurn, Heuristic, RemovalAssumption,
+};
+use rand::{
+    distributions::{Distribution, WeightedIndex},
+    Rng, SeedableRng,
+};
 use std::collections::{HashMap, HashSet};
 
 const DIST_EXP: f64 = 0.8;
 
-fn loc_wt(spec: &crate::core::MapSpec, loc: &Loc) -> f64 {
+fn loc_wt(spec: &MapSpec, loc: &Loc) -> f64 {
     spec.graveyards
         .iter()
         .map(|g| DIST_EXP.powi(g.dist(loc)))
@@ -27,28 +39,55 @@ impl<'a> BoardHeuristic<'a, CombinedEnc<'a>> for NaiveHeuristic<'a> {
         ()
     }
 
-    fn compute_board_turn(
-        &self,
-        blotto: i32,
-        shared: &CombinedEnc<'a>,
-        enc: &Self::BoardEnc,
-    ) -> BoardTurn {
-        BoardTurn::default()
-    }
-
-    fn compute_board_pre_turn(
+    fn compute_board_attack_phase_pre_turn(
         &self,
         rng: &mut impl Rng,
         shared: &CombinedEnc<'a>,
         enc: &Self::BoardEnc,
         board: &Board<'a>,
         side: Side,
-    ) -> BoardPreTurn {
+    ) -> BoardAttackPhasePreTurn {
         let graph = board.combat_graph(side);
         let moves = generate_move_candidates(rng, &graph, board, side);
         let removals = generate_assumptions(board, side);
 
-        BoardPreTurn { moves, removals }
+        BoardAttackPhasePreTurn { moves, removals }
+    }
+
+    fn compute_board_setup_phase_pre_turn(
+        &self,
+        rng: &mut impl Rng,
+        shared: &CombinedEnc<'a>,
+        enc: &Self::BoardEnc,
+        board: &Board<'a>,
+        side: Side,
+    ) -> BoardSetupPhasePreTurn {
+        let saved_unit = board.reinforcements[side]
+            .iter()
+            .max_by_key(|unit| (unit.stats().cost, unit.to_index().unwrap()))
+            .cloned();
+
+        let action = SetupAction {
+            necromancer_choice: Unit::BasicNecromancer,
+            saved_unit,
+        };
+
+        BoardSetupPhasePreTurn { action }
+    }
+
+    fn compute_board_spawn_phase_pre_turn(
+        &self,
+        rng: &mut impl Rng,
+        shared: &CombinedEnc<'a>,
+        enc: &Self::BoardEnc,
+        board: &Board<'a>,
+        side: Side,
+        money: i32,
+        tech_state: &TechState,
+    ) -> BoardSpawnPhasePreTurn {
+        let actions = generate_spawn_actions(board, side, tech_state, money, rng);
+
+        BoardSpawnPhasePreTurn { actions }
     }
 }
 
@@ -252,4 +291,117 @@ pub fn generate_assumptions(board: &Board, side: Side) -> Vec<RemovalAssumption>
         .collect();
 
     assumptions
+}
+
+const WEIGHT_FACTOR: f64 = 1.2;
+
+/// Given the current board state and available money, this function decides which units to
+/// purchase and where to spawn them using a set of heuristics.
+pub fn generate_spawn_actions(
+    board: &Board,
+    side: Side,
+    tech_state: &TechState,
+    mut money: i32,
+    rng: &mut impl Rng,
+) -> Vec<SpawnAction> {
+    let mut actions = Vec::new();
+
+    // Part 1: Decide what to buy and create `Buy` actions
+    let units_to_buy = purchase_heuristic(side, tech_state, money, rng);
+    for &unit in &units_to_buy {
+        money -= unit.stats().cost;
+        actions.push(SpawnAction::Buy { unit });
+    }
+
+    // Part 2: Decide what to spawn from all available reinforcements (original + newly bought)
+    let mut all_units_to_potentially_spawn = board.reinforcements[side].clone();
+    for &unit in &units_to_buy {
+        all_units_to_potentially_spawn.insert(unit);
+    }
+
+    // Greedily spawn the most expensive units.
+    let mut sorted_units = all_units_to_potentially_spawn
+        .iter()
+        .copied()
+        .collect::<Vec<_>>();
+    sorted_units.sort_by_key(|u| -(u.stats().cost as i32));
+
+    // Get spawn locations based on the current board state.
+    let mut all_spawn_locs = board.bitboards.get_spawn_locs(side, true);
+    let mut land_spawn_locs = board.bitboards.get_spawn_locs(side, false);
+
+    for unit in sorted_units {
+        if unit.stats().flying {
+            if let Some(loc) = all_spawn_locs.pop() {
+                actions.push(SpawnAction::Spawn {
+                    spawn_loc: loc,
+                    unit,
+                });
+                land_spawn_locs.set(loc, false);
+            } else {
+                // no more spawn locations
+                break;
+            }
+        } else {
+            // land units
+            if let Some(loc) = land_spawn_locs.pop() {
+                actions.push(SpawnAction::Spawn {
+                    spawn_loc: loc,
+                    unit,
+                });
+                all_spawn_locs.set(loc, false);
+            }
+        }
+    }
+
+    actions
+}
+
+/// Decides which units to buy based on available money and tech
+/// weight units by their tech index, buy later units at a higher rate
+fn purchase_heuristic(
+    side: Side,
+    tech_state: &TechState,
+    mut money: i32,
+    rng: &mut impl Rng,
+) -> Vec<Unit> {
+    let mut available_units: Vec<_> = tech_state.acquired_techs[side]
+        .iter()
+        .filter_map(|tech| {
+            if let Tech::UnitTech(unit) = tech {
+                Some(*unit)
+            } else {
+                None
+            }
+        })
+        .chain(Unit::BASIC_UNITS.into_iter())
+        .collect();
+
+    let mut units_with_weights = available_units
+        .iter()
+        .map(|u| (u, WEIGHT_FACTOR.powi(u.to_index().unwrap() as i32)))
+        .collect::<Vec<_>>();
+
+    let mut units_to_buy = Vec::new();
+
+    loop {
+        units_with_weights = units_with_weights
+            .into_iter()
+            .filter(|(u, _)| money >= u.stats().cost)
+            .collect();
+
+        if units_with_weights.is_empty() {
+            break;
+        }
+
+        let weights: Vec<f64> = units_with_weights.iter().map(|(_, w)| *w).collect();
+        let distr = WeightedIndex::new(&weights).unwrap();
+        let idx = distr.sample(rng);
+        let unit = units_with_weights[idx].0;
+
+        units_to_buy.push(*unit);
+        money -= unit.stats().cost;
+    }
+
+    units_to_buy
 }
