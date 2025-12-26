@@ -1,13 +1,21 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
-use spooky::ai::eval::Eval;
 use spooky::core::{GameConfig, GameState};
+use spooky::heuristics::{naive::NaiveHeuristic, GeneralHeuristic, Heuristic};
 
 fn eval_benchmark(c: &mut Criterion) {
     let config = GameConfig::default();
     let state = GameState::new_default(&config);
 
+    let heuristic = NaiveHeuristic::new(&config);
+    let general_enc = <NaiveHeuristic as GeneralHeuristic<'_, _>>::compute_enc(
+        &heuristic,
+        state.side_to_move,
+        &state.tech_state,
+    );
+    let shared = heuristic.compute_combined(&state, &general_enc, &[]);
+
     c.bench_function("position evaluation", |b| {
-        b.iter(|| Eval::static_eval(&config, black_box(&state)))
+        b.iter(|| heuristic.compute_eval(black_box(&shared)))
     });
 }
 

@@ -69,7 +69,7 @@ impl<'a, H: Heuristic<'a>> SearchTree<'a, H> {
             }
         }
 
-        let leaf_eval = Eval::static_eval(config, &current_mcts_node.borrow().state.game_state);
+        let leaf_eval = heuristic.compute_eval(&current_mcts_node.borrow().state.heuristic_state);
 
         for node_ref in explored_nodes {
             let mut node_borrowed = node_ref.borrow_mut();
