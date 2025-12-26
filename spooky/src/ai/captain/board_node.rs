@@ -36,15 +36,9 @@ pub struct BoardAttackPhasePreTurn {
     pub removals: Vec<RemovalAssumption>,
 }
 
-#[derive(Debug, Clone)]
-pub struct BoardSetupPhasePreTurn {
-    pub action: crate::core::board::actions::SetupAction,
-}
+pub type BoardSetupPhasePreTurn = Option<SetupAction>;
+pub type BoardSpawnPhasePreTurn = Vec<SpawnAction>;
 
-#[derive(Debug, Clone)]
-pub struct BoardSpawnPhasePreTurn {
-    pub actions: Vec<crate::core::board::actions::SpawnAction>,
-}
 use crate::{
     ai::{
         eval::Eval,
@@ -69,7 +63,7 @@ use super::{
         graph::CombatGraph,
     },
     positioning::SatPositioningSystem,
-    spawn::generate_heuristic_spawn_actions,
+    // removing generate_heuristic_spawn_actions
 };
 
 use bumpalo::Bump;
@@ -95,18 +89,6 @@ impl<'a, C, H: BoardHeuristic<'a, C>> BoardNodeState<'a, C, H> {
             delta_money: SideArray::new(0, 0),
             delta_points: SideArray::new(0, 0),
         }
-    }
-}
-
-pub fn setup_phase(side: Side, board: &Board<'_>) -> SetupAction {
-    let saved_unit = board.reinforcements[side]
-        .iter()
-        .max_by_key(|unit| (unit.stats().cost, unit.to_index().unwrap()))
-        .cloned();
-
-    SetupAction {
-        necromancer_choice: Unit::BasicNecromancer,
-        saved_unit,
     }
 }
 
@@ -150,13 +132,11 @@ where
 
 #[derive(Debug)]
 pub struct BoardChildGen<'a> {
-    pub setup_action: Option<crate::core::board::actions::SetupAction>,
     pub manager: ConstraintManager<'a>,
     pub positioning_system: SatPositioningSystem,
     pub combat_generator: CombatGenerationSystem,
     pub resign_generated: bool,
     pub resign_weight: f64,
-    pub attack_phase_pre_turn: BoardAttackPhasePreTurn,
 }
 
 pub fn process_turn_end<'a, C, H: BoardHeuristic<'a, C>>(
@@ -218,29 +198,6 @@ impl<'a, C: Clone, H: 'a + BoardHeuristic<'a, C>> ChildGen<BoardNodeState<'a, C,
         let ctx = arena.alloc(Context::new(&z3_cfg));
         let mut new_board = state.board.clone();
 
-        // --- Setup Phase ---
-        let setup_action = run_timed(
-            "Setup phase",
-            || {
-                if state.board.state.phases().contains(&Phase::Setup) {
-                    let action = setup_phase(state.side_to_move, &new_board);
-                    new_board
-                        .do_setup_action(state.side_to_move, &action)
-                        .unwrap();
-                    Some(action)
-                } else {
-                    None
-                }
-            },
-            |result| {
-                if result.is_some() {
-                    "done".to_string()
-                } else {
-                    "skipped".to_string()
-                }
-            },
-        );
-
         // --- Initialize systems ---
         let (mut manager, positioning_system, mut combat_generator) = run_timed(
             "Initializing attack phase systems",
@@ -264,22 +221,12 @@ impl<'a, C: Clone, H: 'a + BoardHeuristic<'a, C>> ChildGen<BoardNodeState<'a, C,
             },
         );
 
-        let attack_phase_pre_turn = heuristic.compute_board_attack_phase_pre_turn(
-            rng,
-            &shared,
-            &state.heuristic_state,
-            &state.board,
-            state.side_to_move,
-        );
-
         BoardChildGen {
-            setup_action,
             manager,
             positioning_system,
             combat_generator,
             resign_generated: false,
             resign_weight: 0.0,
-            attack_phase_pre_turn,
         }
     }
 
@@ -299,13 +246,11 @@ impl<'a, C: Clone, H: 'a + BoardHeuristic<'a, C>> ChildGen<BoardNodeState<'a, C,
         } = args;
 
         let BoardChildGen {
-            ref setup_action,
             ref mut manager,
             ref mut positioning_system,
             ref mut combat_generator,
             resign_generated,
             resign_weight,
-            ref attack_phase_pre_turn,
         } = *self;
 
         let mut new_board = state.board.clone();
@@ -330,14 +275,33 @@ impl<'a, C: Clone, H: 'a + BoardHeuristic<'a, C>> ChildGen<BoardNodeState<'a, C,
             }
         }
 
-        if let Some(action) = setup_action {
+        let setup_action = heuristic.compute_board_setup_phase_pre_turn(
+            rng,
+            &shared,
+            &state.heuristic_state,
+            &new_board,
+            state.side_to_move,
+        );
+
+        if let Some(ref pre_turn) = setup_action {
             new_board
-                .do_setup_action(state.side_to_move, action)
+                .do_setup_action(state.side_to_move, pre_turn)
                 .unwrap();
         }
 
-        // --- Generate move candidates ---
-        let move_candidates = attack_phase_pre_turn.moves.clone();
+        let BoardAttackPhasePreTurn { moves, removals } = run_timed(
+            "compute attack phase pre turn",
+            || {
+                heuristic.compute_board_attack_phase_pre_turn(
+                    rng,
+                    &shared,
+                    &state.heuristic_state,
+                    &new_board,
+                    state.side_to_move,
+                )
+            },
+            |_| "done".to_string(),
+        );
 
         // try combat generation + attack reconciliation until we succeed
         loop {
@@ -347,12 +311,7 @@ impl<'a, C: Clone, H: 'a + BoardHeuristic<'a, C>> ChildGen<BoardNodeState<'a, C,
                 || {
                     manager.solver.push();
                     combat_generator
-                        .generate_combat(
-                            manager,
-                            &new_board,
-                            state.side_to_move,
-                            &attack_phase_pre_turn.removals,
-                        )
+                        .generate_combat(manager, &new_board, state.side_to_move, &removals)
                         .unwrap();
                 },
                 |_| "done".to_string(),
@@ -363,12 +322,7 @@ impl<'a, C: Clone, H: 'a + BoardHeuristic<'a, C>> ChildGen<BoardNodeState<'a, C,
                 "Combat reconciliation",
                 || {
                     positioning_system
-                        .combat_reconciliation(
-                            manager,
-                            &new_board,
-                            state.side_to_move,
-                            &move_candidates,
-                        )
+                        .combat_reconciliation(manager, &new_board, state.side_to_move, &moves)
                         .expect("Combat reconciliation error")
                 },
                 |res| {
@@ -398,14 +352,14 @@ impl<'a, C: Clone, H: 'a + BoardHeuristic<'a, C>> ChildGen<BoardNodeState<'a, C,
             "Combat positioning",
             || {
                 positioning_system
-                    .combat_positioning(manager, &new_board, state.side_to_move, &move_candidates)
+                    .combat_positioning(manager, &new_board, state.side_to_move, &moves)
                     .expect("Attack positioning error");
             },
             |_| "done".to_string(),
         );
 
         // --- Extract all moves from the combined model ---
-        let (combat_actions, rebate) = run_timed(
+        let (rebate, combat_actions) = run_timed(
             "Extracting and applying combat actions",
             || match manager.solver.check() {
                 z3::SatResult::Sat => {
@@ -421,10 +375,10 @@ impl<'a, C: Clone, H: 'a + BoardHeuristic<'a, C>> ChildGen<BoardNodeState<'a, C,
                     );
 
                     (
-                        combat_actions.clone(),
                         new_board
                             .do_attacks(state.side_to_move, &combat_actions)
                             .unwrap(),
+                        combat_actions,
                     )
                 }
                 _ => panic!("Failed to generate combat actions"),
@@ -436,11 +390,8 @@ impl<'a, C: Clone, H: 'a + BoardHeuristic<'a, C>> ChildGen<BoardNodeState<'a, C,
         let positioning_actions = run_timed(
             "Generating and applying non-combat movements",
             || {
-                let actions = positioning_system.generate_non_attack_movements(
-                    &manager,
-                    &new_board,
-                    move_candidates,
-                );
+                let actions =
+                    positioning_system.generate_non_attack_movements(&manager, &new_board, moves);
                 new_board.do_attacks(state.side_to_move, &actions).unwrap();
                 actions
             },
@@ -452,12 +403,14 @@ impl<'a, C: Clone, H: 'a + BoardHeuristic<'a, C>> ChildGen<BoardNodeState<'a, C,
             "Spawn phase",
             || {
                 if new_board.state.phases().contains(&Phase::Spawn) && new_board.winner.is_none() {
-                    let spawn_actions = generate_heuristic_spawn_actions(
+                    let spawn_actions = heuristic.compute_board_spawn_phase_pre_turn(
+                        rng,
+                        &shared,
+                        &state.heuristic_state,
                         &new_board,
                         state.side_to_move,
-                        &tech_state,
                         money,
-                        rng,
+                        &tech_state,
                     );
                     let money_after_spawn = new_board
                         .do_spawns(state.side_to_move, money, &spawn_actions, &tech_state)
@@ -476,7 +429,7 @@ impl<'a, C: Clone, H: 'a + BoardHeuristic<'a, C>> ChildGen<BoardNodeState<'a, C,
             .collect::<Vec<_>>();
 
         let turn_taken = BoardTurn::Actions(BoardActions {
-            setup_action: setup_action.clone(),
+            setup_action,
             attack_actions,
             spawn_actions,
         });
@@ -492,7 +445,7 @@ impl<'a, C: Clone, H: 'a + BoardHeuristic<'a, C>> ChildGen<BoardNodeState<'a, C,
             &turn_taken,
         );
 
-        return Some((turn_taken, new_node));
+        Some((turn_taken, new_node))
     }
 }
 

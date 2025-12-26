@@ -4,6 +4,7 @@ use crate::ai::captain::positioning::MoveCandidate;
 use crate::core::{
     board::{
         actions::{BoardTurn, SetupAction, SpawnAction},
+        definitions::Phase,
         BitboardOps,
     },
     tech::{Tech, TechState},
@@ -62,17 +63,19 @@ impl<'a> BoardHeuristic<'a, CombinedEnc<'a>> for NaiveHeuristic<'a> {
         board: &Board<'a>,
         side: Side,
     ) -> BoardSetupPhasePreTurn {
+        if !board.state.phases().contains(&Phase::Setup) {
+            return None;
+        }
+
         let saved_unit = board.reinforcements[side]
             .iter()
             .max_by_key(|unit| (unit.stats().cost, unit.to_index().unwrap()))
             .cloned();
 
-        let action = SetupAction {
+        Some(SetupAction {
             necromancer_choice: Unit::BasicNecromancer,
             saved_unit,
-        };
-
-        BoardSetupPhasePreTurn { action }
+        })
     }
 
     fn compute_board_spawn_phase_pre_turn(
@@ -85,9 +88,7 @@ impl<'a> BoardHeuristic<'a, CombinedEnc<'a>> for NaiveHeuristic<'a> {
         money: i32,
         tech_state: &TechState,
     ) -> BoardSpawnPhasePreTurn {
-        let actions = generate_spawn_actions(board, side, tech_state, money, rng);
-
-        BoardSpawnPhasePreTurn { actions }
+        generate_spawn_actions(board, side, tech_state, money, rng)
     }
 }
 
