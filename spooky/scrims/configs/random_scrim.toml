@@ -5,13 +5,12 @@ num_games = 10
 time_control = "nodes 1"
 start_fen = "startpos"
 
-[ai_yellow]
-# The current development build (Naive by default)
+[ai1]
+name = "naive_dev"
 path = "target/release/spooky"
 
-[ai_blue]
-# The current development build, but using random heuristic
+[ai2]
+name = "random_dev"
 path = "target/release/spooky"
-
-[ai_blue.options]
+[ai2.options]
 heuristic = "random"

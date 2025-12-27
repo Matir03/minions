@@ -8,18 +8,16 @@ name = "self_play"
 num_games = 2
 
 # Time control settings for each AI.
-# Format: "wtime <ms> btime <ms> winc <ms> binc <ms>"
 # Or "nodes <number>" or "movetime <ms>"
 time_control = "nodes 1"
 
 # Starting position in FEN format. "startpos" for the default setup.
 start_fen = "startpos"
 
-[ai_yellow]
-# Path to the AI binary for the yellow player.
-# Can be a path to a binary in bin/ or to the current target.
+[ai1]
+name = "spooky_v1"
 path = "target/release/spooky"
 
-[ai_blue]
-# Path to the AI binary for the blue player.
+[ai2]
+name = "spooky_v2"
 path = "target/release/spooky"

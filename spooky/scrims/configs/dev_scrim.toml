@@ -6,10 +6,10 @@ num_games = 4            # Fewer games for a quick test
 time_control = "nodes 1"
 start_fen = "startpos"
 
-[ai_yellow]
-# The current development build
+[ai1]
+name = "current_dev"
 path = "target/release/spooky"
 
-[ai_blue]
-# An example archived build to test against. 
+[ai2]
+name = "heuristics0.0"
 path = "bin/heuristics0.0"

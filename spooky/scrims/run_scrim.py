@@ -79,6 +79,7 @@ class UmiProcess:
         self._send_command("quit")
         self.proc.wait()
 
+
 def run_game(yellow_ai, blue_ai, time_control, start_fen, match_log_path):
     """Run a single game between two AIs."""
     yellow_ai.set_position(start_fen)
@@ -116,9 +117,6 @@ def run_game(yellow_ai, blue_ai, time_control, start_fen, match_log_path):
                 winner = blue_ai.name
             break
 
-        # Send the entire turn block to the other AI
-        # for line in turn_lines:
-        #     other_player._send_command(line)
         fen = current_player.get_fen()
         other_player.set_position(fen)
 
@@ -127,7 +125,7 @@ def run_game(yellow_ai, blue_ai, time_control, start_fen, match_log_path):
         turn_num += 1
 
         # Simple draw condition
-        if turn_num > 200:
+        if turn_num > 400:
             winner = "draw"
             break
 
@@ -144,53 +142,54 @@ def main(config_path):
     os.makedirs(match_dir, exist_ok=True)
 
     # Initialize AIs
-    yellow_path = os.path.join(SPOOKY_DIR, config['ai_yellow']['path'])
-    blue_path = os.path.join(SPOOKY_DIR, config['ai_blue']['path'])
-    yellow_name = os.path.basename(yellow_path) + "_yellow"
-    blue_name = os.path.basename(blue_path) + "_blue"
+    ai1_path = os.path.join(SPOOKY_DIR, config['ai1']['path'])
+    ai2_path = os.path.join(SPOOKY_DIR, config['ai2']['path'])
+    ai1_name = config['ai1']['name']
+    ai2_name = config['ai2']['name']
     
-    yellow_options = config['ai_yellow'].get('options', {})
-    blue_options = config['ai_blue'].get('options', {})
+    ai1_options = config['ai1'].get('options', {})
+    ai2_options = config['ai2'].get('options', {})
     
-    yellow_ai = UmiProcess(yellow_path, yellow_name, yellow_options)
-    blue_ai = UmiProcess(blue_path, blue_name, blue_options)
-    
+    ai1_process = UmiProcess(ai1_path, ai1_name, ai1_options)
+    ai2_process = UmiProcess(ai2_path, ai2_name, ai2_options)
 
-    print(f"Starting scrimmage: {yellow_name} vs {blue_name}")
-    print(f"Yellow ELO: {get_rating(yellow_name, SPOOKY_DIR)}")
-    print(f"Blue ELO: {get_rating(blue_name, SPOOKY_DIR)}")
+    print(f"Starting scrimmage: {ai1_name} vs {ai2_name}")
+    print(f"AI1 ELO: {get_rating(ai1_name, SPOOKY_DIR)}")
+    print(f"AI2 ELO: {get_rating(ai2_name, SPOOKY_DIR)}")
 
-    scores = {yellow_name: 0, blue_name: 0, 'draw': 0}
+    scores = {ai1_name: 0, ai2_name: 0, 'draw': 0}
 
     for i in range(config['match']['num_games']):
         print(f"\n--- Game {i+1} of {config['match']['num_games']} ---")
-        match_log_path = os.path.join(match_dir, f"{yellow_name}-vs-{blue_name}-{i+1}.minions")
+        match_log_path = os.path.join(match_dir, f"{ai1_name}-vs-{ai2_name}-{i+1}.minions")
 
         # Alternate starting player
         if i % 2 == 0:
-            winner = run_game(yellow_ai, blue_ai, config['match']['time_control'], config['match']['start_fen'], match_log_path)
+            # AI1 is yellow, AI2 is blue
+            winner = run_game(ai1_process, ai2_process, config['match']['time_control'], config['match']['start_fen'], match_log_path)
         else:
-            winner = run_game(blue_ai, yellow_ai, config['match']['time_control'], config['match']['start_fen'], match_log_path)
+            # AI2 is yellow, AI1 is blue
+            winner = run_game(ai2_process, ai1_process, config['match']['time_control'], config['match']['start_fen'], match_log_path)
 
         scores[winner] += 1
         print(f"Game {i+1} winner: {winner}")
 
         # Update ratings if not a draw
         if winner != 'draw':
-            loser = blue_name if winner == yellow_name else yellow_name
-            # Don't update ratings for the dev build
-            if 'target' not in yellow_ai.path and 'target' not in blue_ai.path:
+            loser = ai2_name if winner == ai1_name else ai1_name
+            # Don't update ratings if 'target' is in path (dev builds)
+            if 'target' not in ai1_process.path and 'target' not in ai2_process.path:
                  new_winner_rating, new_loser_rating = update_ratings(winner, loser, SPOOKY_DIR)
                  print(f"New ratings: {winner}: {new_winner_rating}, {loser}: {new_loser_rating}")
 
     # Final results
-    summary = f"Final Score:\n{yellow_name}: {scores[yellow_name]}\n{blue_name}: {scores[blue_name]}\nDraws: {scores['draw']}"
+    summary = f"Final Score:\n{ai1_name}: {scores[ai1_name]}\n{ai2_name}: {scores[ai2_name]}\nDraws: {scores['draw']}"
     print("\n" + summary)
     with open(results_file, 'w') as f:
         f.write(summary)
 
-    yellow_ai.quit()
-    blue_ai.quit()
+    ai1_process.quit()
+    ai2_process.quit()
 
 if __name__ == "__main__":
     if len(sys.argv) != 2:
