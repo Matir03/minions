@@ -18,7 +18,7 @@ class EnginePanicError(Exception):
 
 class UmiProcess:
     """A wrapper for a subprocess running a UMI-compatible chess engine."""
-    def __init__(self, path, name):
+    def __init__(self, path, name, options=None):
         self.path = os.path.abspath(path)
         self.name = name
         self.proc = subprocess.Popen(
@@ -31,6 +31,9 @@ class UmiProcess:
             bufsize=1,
         )
         self._send_command("umi")
+        if options:
+            for key, value in options.items():
+                self._send_command(f"setoption name {key} value {value}")
         self._wait_for_response("umiok")
 
     def _send_command(self, command):
@@ -145,8 +148,13 @@ def main(config_path):
     blue_path = os.path.join(SPOOKY_DIR, config['ai_blue']['path'])
     yellow_name = os.path.basename(yellow_path) + "_yellow"
     blue_name = os.path.basename(blue_path) + "_blue"
-    yellow_ai = UmiProcess(yellow_path, yellow_name)
-    blue_ai = UmiProcess(blue_path, blue_name)
+    
+    yellow_options = config['ai_yellow'].get('options', {})
+    blue_options = config['ai_blue'].get('options', {})
+    
+    yellow_ai = UmiProcess(yellow_path, yellow_name, yellow_options)
+    blue_ai = UmiProcess(blue_path, blue_name, blue_options)
+    
 
     print(f"Starting scrimmage: {yellow_name} vs {blue_name}")
     print(f"Yellow ELO: {get_rating(yellow_name, SPOOKY_DIR)}")
