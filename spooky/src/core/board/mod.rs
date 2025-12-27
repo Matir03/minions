@@ -1,21 +1,21 @@
 //! Board representation and rules
 
-pub mod definitions;
-pub mod fen;
 pub mod actions;
 pub mod bitboards;
+pub mod definitions;
+pub mod fen;
 pub use bitboards::{Bitboard, BitboardOps, Bitboards};
 
 pub mod piece;
 
 pub use definitions::{Board, BoardState};
-pub use piece::{Piece, PieceState, Modifiers};
+pub use piece::{Modifiers, Piece, PieceState};
 
-use std::{cell::RefCell, collections::HashMap};
-use anyhow::{anyhow, bail, ensure, Context, Result};
-use self::actions::{SetupAction, AttackAction, SpawnAction};
-use hashbag::HashBag;
+use self::actions::{AttackAction, SetupAction, SpawnAction};
 use crate::core::{loc::GRID_LEN, side};
+use anyhow::{anyhow, bail, ensure, Context, Result};
+use hashbag::HashBag;
+use std::{cell::RefCell, collections::HashMap};
 
 use super::{
     loc::{Loc, PATH_MAPS},
@@ -23,7 +23,7 @@ use super::{
     side::{Side, SideArray},
     spells::Spell,
     tech::TechState,
-    units::{Unit, Attack},
+    units::{Attack, Unit},
 };
 
 mod board;
@@ -33,7 +33,6 @@ mod tests {
     use super::*;
     use crate::core::loc::Loc;
     use crate::core::units::Unit;
-
 
     #[test]
     fn test_board_pieces() {
@@ -91,7 +90,7 @@ mod tests {
         let map = Map::default();
         let board = Board::new(&map);
         let fen = board.to_fen();
-        assert_eq!(fen, "0/0/0/0/0/0/0/0/0/0");
+        assert_eq!(fen, "f|||||0/0/0/0/0/0/0/0/0/0");
     }
 
     #[test]
@@ -117,9 +116,15 @@ mod tests {
         assert_eq!(board.pieces.len(), 14);
 
         assert_eq!(board.reinforcements[Side::Yellow].len(), 1);
-        assert_eq!(board.reinforcements[Side::Yellow].contains(&Unit::Initiate), 1);
+        assert_eq!(
+            board.reinforcements[Side::Yellow].contains(&Unit::Initiate),
+            1
+        );
 
         assert_eq!(board.reinforcements[Side::Blue].len(), 1);
-        assert_eq!(board.reinforcements[Side::Blue].contains(&Unit::Skeleton), 1);
+        assert_eq!(
+            board.reinforcements[Side::Blue].contains(&Unit::Skeleton),
+            1
+        );
     }
 }

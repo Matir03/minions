@@ -256,15 +256,15 @@ mod tests {
     #[test]
     fn test_invalid_fen() {
         let config = GameConfig::default();
-        let valid_board_fen = "0/0/0/0/0/0/0/0/0/0|0/0/0/0/0/0/0/0/0/0";
-        let valid_tech_fen = "LLLLLLLLLLLLLLLLLLLLLLLLLL|LLLLLLLLLLLLLLLLLLLLLLLLLL";
+        let valid_board_fen = "f|||||0/0/0/0/0/0/0/0/0/0|f|||||0/0/0/0/0/0/0/0/0/0";
+        let valid_tech_fen = "LLLLLLLLLLLLLLLLLLLLLLLLL|LLLLLLLLLLLLLLLLLLLLLLLLL";
 
         // Not enough boards
-        let fen1 = format!("0/0/0/0/0/0/0/0/0/0 0 1 _ {} 10|5", valid_tech_fen);
+        let fen1 = format!("10|5 0|0 {} f|||||0/0/0/0/0/0/0/0/0/0 0 1", valid_tech_fen);
         assert!(GameState::from_fen(&fen1, &config).is_err());
 
         // Too many boards
-        let fen2 = format!("0|0|0 0 1 _ {} 10|5", valid_tech_fen);
+        let fen2 = format!("10|5 0|0 {} f|||||0/0/0/0/0/0/0/0/0/0 f|||||0/0/0/0/0/0/0/0/0/0 f|||||0/0/0/0/0/0/0/0/0/0 0 1", valid_tech_fen);
         assert!(GameState::from_fen(&fen2, &config).is_err());
 
         // Invalid side to move

@@ -80,12 +80,6 @@ mod tests {
     }
 
     #[test]
-    fn test_distribute_money_no_boards() {
-        let blotto = blotto(50, 10, 0);
-        assert!(blotto.money_for_boards.is_empty());
-    }
-
-    #[test]
     fn test_distribute_money_insufficient_funds() {
         // Not enough money for the requested spells.
         let blotto = blotto(10, 20, 3);

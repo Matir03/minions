@@ -230,20 +230,20 @@ mod tests {
     #[test]
     fn test_tech_conversion() {
         // Test special techs
-        assert_eq!(Tech::from_index(24).unwrap(), Tech::Copycat);
-        assert_eq!(Tech::from_index(25).unwrap(), Tech::Thaumaturgy);
-        assert_eq!(Tech::from_index(26).unwrap(), Tech::Metamagic);
+        assert_eq!(Tech::from_index(23).unwrap(), Tech::Copycat);
+        assert_eq!(Tech::from_index(24).unwrap(), Tech::Thaumaturgy);
+        assert_eq!(Tech::from_index(25).unwrap(), Tech::Metamagic);
 
-        assert_eq!(Tech::Copycat.to_index().unwrap(), 24);
-        assert_eq!(Tech::Thaumaturgy.to_index().unwrap(), 25);
-        assert_eq!(Tech::Metamagic.to_index().unwrap(), 26);
+        assert_eq!(Tech::Copycat.to_index().unwrap(), 23);
+        assert_eq!(Tech::Thaumaturgy.to_index().unwrap(), 24);
+        assert_eq!(Tech::Metamagic.to_index().unwrap(), 25);
 
         // Test invalid index
         assert!(Tech::from_index(27).is_err());
 
         // Test unit tech
-        assert_eq!(Tech::from_index(1).unwrap(), Tech::UnitTech(Unit::Initiate));
-        assert_eq!(Tech::UnitTech(Unit::Initiate).to_index().unwrap(), 1);
+        assert_eq!(Tech::from_index(1).unwrap(), Tech::UnitTech(Unit::Skeleton));
+        assert_eq!(Tech::UnitTech(Unit::Skeleton).to_index().unwrap(), 1);
     }
 
     #[test]

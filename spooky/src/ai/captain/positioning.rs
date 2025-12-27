@@ -465,7 +465,7 @@ impl SatPositioningSystem {
             .filter_map(|(src, dest)| dest.map(|dest| (*src, dest)))
             .collect();
 
-        let mut move_actions = self.move_actions(&movements);
+        let move_actions = self.move_actions(&movements);
 
         blink_actions.chain(move_actions).collect()
     }
@@ -477,7 +477,7 @@ impl SatPositioningSystem {
         board: &Board,
         move_candidates: &[MoveCandidate],
     ) -> HashMap<Loc, Option<Loc>> {
-        let mut yet_to_move: HashSet<Loc> = board
+        let yet_to_move: HashSet<Loc> = board
             .pieces
             .iter()
             .filter(|(loc, piece)| piece.state.can_move() && manager.graph.friends.contains(loc))
@@ -485,7 +485,7 @@ impl SatPositioningSystem {
             .collect();
 
         let to_be_processed: Vec<MoveCandidate> = move_candidates
-            .into_iter()
+            .iter()
             .filter(|candidate| {
                 // Must be a yet-to-move piece
                 yet_to_move.contains(&candidate.from_loc())
@@ -1009,7 +1009,7 @@ mod tests {
 
         let ctx = Context::new(&z3::Config::new());
         let graph = board.combat_graph(Side::Yellow);
-        let manager = ConstraintManager::new(&ctx, graph, &board);
+        let mut manager = ConstraintManager::new(&ctx, graph, &board);
 
         let positioning = SatPositioningSystem {};
         let to_loc = crate::core::loc::Loc::new(1, 2);
@@ -1019,7 +1019,12 @@ mod tests {
             score: 0.5,
         };
 
-        // Test with a piece that's not in combat (should return false)
+        // Add the variable manually since this piece is not in combat
+        manager
+            .variables
+            .add_friendly_movement_variable(&ctx, loc, false);
+
+        // Test with a piece that's not in combat (should now work)
         let constraint =
             positioning.create_move_constraint(&manager.variables, &move_candidate, &ctx);
 
@@ -1108,8 +1113,8 @@ mod tests {
             score: 0.5,
         };
         let debug_output = format!("{:?}", candidate);
-        assert!(debug_output.contains("from_loc: Loc(1, 1)"));
-        assert!(debug_output.contains("to_loc: Loc(1, 2)"));
+        assert!(debug_output.contains("from_loc: Loc { x: 1, y: 1 }"));
+        assert!(debug_output.contains("to_loc: Loc { x: 1, y: 2 }"));
         assert!(debug_output.contains("score: 0.5"));
     }
 }

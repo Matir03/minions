@@ -454,6 +454,7 @@ pub type BoardNodeRef<'a, C, H> = &'a RefCell<BoardNode<'a, C, H>>;
 
 #[cfg(test)]
 mod tests {
+    use crate::core::board::definitions::BoardState;
     use std::marker::PhantomData;
     use std::rc::Rc;
 
@@ -509,7 +510,8 @@ mod tests {
     #[test]
     fn test_ai_proposes_non_trivial_opening_move() {
         let map = Map::BlackenedShores;
-        let board = Board::from_fen(Board::START_FEN, &map).unwrap();
+        let mut board = Board::from_fen(Board::START_FEN, &map).unwrap();
+        board.state = BoardState::Normal;
         let mut rng = thread_rng();
         let tech_state = new_all_unlocked_tech_state();
         let config = GameConfig::default();
