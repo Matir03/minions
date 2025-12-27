@@ -91,7 +91,12 @@ impl<'a> Engine<'a> {
             todo!("implement spells");
         }
 
-        let (result, time) = search_no_spells(&self.config, &self.state, search_options);
+        let (result, time) = search_no_spells(
+            self.config,
+            &self.state,
+            search_options,
+            self.options.heuristic,
+        );
 
         (result.eval, result.best_turn, result.nodes_explored, time)
     }

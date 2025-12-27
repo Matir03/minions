@@ -10,3 +10,13 @@ fn test_umi_go_simple() {
         .success()
         .stdout(predicate::str::contains("turn").and(predicate::str::contains("endturn")));
 }
+
+#[test]
+fn test_umi_heuristic_option() {
+    let mut cmd = Command::cargo_bin("spooky").unwrap();
+    cmd.arg("umi")
+        .write_stdin("setoption name heuristic value random\nposition startpos\ngo nodes 1\n")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("info eval winprob"));
+}

@@ -19,6 +19,7 @@ pub fn handle_command<'a>(cmd: &str, engine: &mut Engine<'a>) -> Result<Option<G
         "umi" => {
             println!("id name Spooky author Ritam Nag");
             println!("option name spells type bool default false");
+            println!("option name heuristic type combo default naive var naive var random");
             println!("umiok");
             io::stdout().flush().unwrap();
             Ok(None)
@@ -30,7 +31,7 @@ pub fn handle_command<'a>(cmd: &str, engine: &mut Engine<'a>) -> Result<Option<G
         }
         "setoption" => {
             ensure!(
-                parts.len() == 4 && parts[1] == "name" && parts[3] == "value",
+                parts.len() == 5 && parts[1] == "name" && parts[3] == "value",
                 "invalid setoption command"
             );
 

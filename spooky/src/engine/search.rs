@@ -1,7 +1,9 @@
 use crate::ai::graphviz::export_search_tree;
 use crate::ai::{SearchResult, SearchTree};
 use crate::core::{GameConfig, GameState, GameTurn, Spell};
+use crate::engine::options::HeuristicType;
 use crate::heuristics::naive::NaiveHeuristic;
+use crate::heuristics::random::RandomHeuristic;
 use crate::heuristics::Heuristic;
 
 use anyhow::{bail, Context};
@@ -76,15 +78,49 @@ pub fn search_no_spells<'a>(
     config: &GameConfig,
     state: &GameState,
     search_options: &SearchOptions,
+    heuristic_type: HeuristicType,
 ) -> (SearchResult, f64) {
     let start_time = Instant::now();
     let arena = Bump::new();
-    let heuristic = NaiveHeuristic::new(config);
 
-    let mut search_tree = SearchTree::new(config, state.clone(), &arena, &heuristic);
+    match heuristic_type {
+        HeuristicType::Naive => {
+            let heuristic = NaiveHeuristic::new(config);
+            run_search(
+                config,
+                state,
+                search_options,
+                &arena,
+                &heuristic,
+                start_time,
+            )
+        }
+        HeuristicType::Random => {
+            let heuristic = RandomHeuristic::new(config);
+            run_search(
+                config,
+                state,
+                search_options,
+                &arena,
+                &heuristic,
+                start_time,
+            )
+        }
+    }
+}
+
+fn run_search<'a, H: Heuristic<'a>>(
+    config: &'a GameConfig,
+    state: &'a GameState<'a>,
+    search_options: &SearchOptions,
+    arena: &'a Bump,
+    heuristic: &'a H,
+    start_time: Instant,
+) -> (SearchResult, f64) {
+    let mut search_tree = SearchTree::new(config, state.clone(), arena, heuristic);
 
     for i in 0..search_options.nodes {
-        search_tree.explore(&config, &arena, &heuristic);
+        search_tree.explore(config, arena, heuristic);
 
         if start_time.elapsed().as_millis() > search_options.move_time.into() {
             break;
