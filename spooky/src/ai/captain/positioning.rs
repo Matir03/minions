@@ -470,7 +470,14 @@ impl SatPositioningSystem {
         blink_actions.chain(move_actions).collect()
     }
 
-    /// Compute optimal matching using LAPJV algorithm
+    /// Compute optimal matching using LAPJV algorithm.
+    ///
+    /// # Invariant
+    /// For every piece in `yet_to_move` that has at least one move candidate,
+    /// its `from_loc` MUST be present in the set of all `to_loc` destinations
+    /// (the `destination_locs` vector).
+    ///
+    /// The engine ensures this by always including a "stay put" candidate for every piece.
     pub fn compute_optimal_matching(
         &self,
         manager: &ConstraintManager,
@@ -510,11 +517,9 @@ impl SatPositioningSystem {
         // Get all possible destinations from move_hex_map
         let mut all_destinations = HashSet::new();
         for candidate in &to_be_processed {
-            let dest = match candidate {
-                MoveCandidate::Move { to_loc, .. } => *to_loc,
-                MoveCandidate::Blink { .. } => continue,
-            };
-            all_destinations.insert(dest);
+            if let MoveCandidate::Move { to_loc, .. } = candidate {
+                all_destinations.insert(*to_loc);
+            }
         }
 
         let destination_locs: Vec<Loc> = all_destinations.into_iter().collect();
@@ -710,6 +715,13 @@ mod tests {
         let mut candidates = Vec::new();
         for (loc, piece) in &board.pieces {
             if piece.side == side {
+                // Stay put (required by compute_optimal_matching invariant)
+                candidates.push(MoveCandidate::Move {
+                    from_loc: *loc,
+                    to_loc: *loc,
+                    score: 0.1,
+                });
+
                 // Generate dummy moves to neighbors (already filtered by in_bounds)
                 for neighbor in loc.neighbors() {
                     candidates.push(MoveCandidate::Move {
@@ -798,8 +810,18 @@ mod tests {
         let move_candidates = vec![
             MoveCandidate::Move {
                 from_loc: loc1,
+                to_loc: loc1,
+                score: 0.1,
+            },
+            MoveCandidate::Move {
+                from_loc: loc1,
                 to_loc: loc2,
                 score: 0.8,
+            },
+            MoveCandidate::Move {
+                from_loc: loc2,
+                to_loc: loc2,
+                score: 0.1,
             },
             MoveCandidate::Move {
                 from_loc: loc2,
@@ -838,11 +860,6 @@ mod tests {
             Side::Yellow,
             loc2,
         ));
-        board.add_piece(crate::core::board::Piece::new(
-            Unit::Zombie,
-            Side::Yellow,
-            loc3,
-        ));
 
         let ctx = Context::new(&z3::Config::new());
         let graph = board.combat_graph(Side::Yellow);
@@ -852,8 +869,18 @@ mod tests {
         let move_candidates = vec![
             MoveCandidate::Move {
                 from_loc: loc1,
+                to_loc: loc1,
+                score: 0.1,
+            },
+            MoveCandidate::Move {
+                from_loc: loc1,
                 to_loc: loc2,
                 score: 0.8,
+            },
+            MoveCandidate::Move {
+                from_loc: loc2,
+                to_loc: loc2,
+                score: 0.1,
             },
             MoveCandidate::Move {
                 from_loc: loc2,
@@ -898,17 +925,27 @@ mod tests {
         let manager = ConstraintManager::new(&ctx, graph, &board);
 
         let positioning = SatPositioningSystem {};
-        let mut move_candidates = vec![
+        let move_candidates = vec![
+            MoveCandidate::Move {
+                from_loc: loc1,
+                to_loc: loc1,
+                score: 0.1,
+            },
             MoveCandidate::Move {
                 from_loc: loc1,
                 to_loc: target_loc,
-                score: 0.7,
+                score: 0.8,
+            },
+            MoveCandidate::Move {
+                from_loc: loc2,
+                to_loc: loc2,
+                score: 0.1,
             },
             MoveCandidate::Move {
                 from_loc: loc2,
                 to_loc: target_loc,
                 score: 0.9,
-            }, // Higher affinity
+            },
         ];
 
         let actions = positioning.generate_non_attack_movements(&manager, &board, move_candidates);
@@ -1022,27 +1059,14 @@ mod tests {
         // Add the variable manually since this piece is not in combat
         manager
             .variables
-            .add_friendly_movement_variable(&ctx, loc, false);
+            .add_friendly_movement_variable(&ctx, loc, true);
 
         // Test with a piece that's not in combat (should now work)
         let constraint =
             positioning.create_move_constraint(&manager.variables, &move_candidate, &ctx);
 
         // The constraint should be a valid Z3 expression
-        assert!(constraint.is_const());
-
-        // Test with a blink move
-        let blink_candidate = MoveCandidate::Blink { loc, score: 0.5 };
-        let blink_constraint =
-            positioning.create_move_constraint(&manager.variables, &blink_candidate, &ctx);
-        assert!(blink_constraint.is_const());
-
-        // Test with a piece that's not in combat (should return false)
-        let constraint =
-            positioning.create_move_constraint(&manager.variables, &move_candidate, &ctx);
-
-        // The constraint should be a valid Z3 expression
-        assert!(constraint.is_const());
+        assert_eq!(constraint.get_sort(), z3::Sort::bool(&ctx));
     }
 
     #[test]

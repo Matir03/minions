@@ -256,7 +256,7 @@ mod tests {
     #[test]
     fn test_invalid_fen() {
         let config = GameConfig::default();
-        let valid_board_fen = "f|||||0/0/0/0/0/0/0/0/0/0|f|||||0/0/0/0/0/0/0/0/0/0";
+        let valid_board_fen = "f|||||0/0/0/0/0/0/0/0/0/0 f|||||0/0/0/0/0/0/0/0/0/0";
         let valid_tech_fen = "LLLLLLLLLLLLLLLLLLLLLLLLL|LLLLLLLLLLLLLLLLLLLLLLLLL";
 
         // Not enough boards
@@ -268,15 +268,15 @@ mod tests {
         assert!(GameState::from_fen(&fen2, &config).is_err());
 
         // Invalid side to move
-        let fen3 = format!("{} 2 1 _ {} 10|5", valid_board_fen, valid_tech_fen);
+        let fen3 = format!("10|5 0|0 {} {} 10|5 1", valid_tech_fen, valid_board_fen); // 5th part should be board2, but here we have 10|5
         assert!(GameState::from_fen(&fen3, &config).is_err());
 
-        // Invalid winner
-        let fen4 = format!("{} 0 1 X {} 10|5", valid_board_fen, valid_tech_fen);
+        // Invalid winner/side to move (it's called side_to_move now)
+        let fen4 = format!("10|5 0|0 {} {} X 1", valid_tech_fen, valid_board_fen);
         assert!(GameState::from_fen(&fen4, &config).is_err());
 
         // Invalid money
-        let fen5 = format!("{} 0 1 _ {} 10", valid_board_fen, valid_tech_fen);
+        let fen5 = format!("10 0|0 {} {} 0 1", valid_tech_fen, valid_board_fen);
         assert!(GameState::from_fen(&fen5, &config).is_err());
 
         // Invalid tech state
