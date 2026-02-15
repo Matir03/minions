@@ -4,7 +4,7 @@ use crate::core::Side;
 use crate::core::{tech::TechAssignment, tech::TechState, GameConfig, GameState, SideArray};
 use crate::heuristics::naive::{CombinedEnc, NaiveHeuristic};
 use crate::heuristics::{GeneralHeuristic, Heuristic};
-use rand::Rng;
+use rand::prelude::*;
 use std::collections::HashSet;
 
 impl<'a> GeneralHeuristic<'a, CombinedEnc<'a>> for NaiveHeuristic<'a> {
@@ -25,7 +25,7 @@ impl<'a> GeneralHeuristic<'a, CombinedEnc<'a>> for NaiveHeuristic<'a> {
         _enc: &Self::GeneralEnc,
     ) -> GeneralPreTurn {
         let techline = &self.config.techline;
-        let weights = techline.techs.iter().map(|_| rng.gen()).collect();
+        let weights = techline.techs.iter().map(|_| rng.random()).collect();
 
         GeneralPreTurn { weights }
     }

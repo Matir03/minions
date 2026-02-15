@@ -136,8 +136,8 @@ where
 // --------------------------
 
 #[derive(Debug)]
-pub struct BoardChildGen<'a> {
-    pub manager: ConstraintManager<'a>,
+pub struct BoardChildGen {
+    pub manager: ConstraintManager,
     pub positioning_system: SatPositioningSystem,
     pub combat_generator: CombatGenerationSystem,
     pub resign_generated: bool,
@@ -190,7 +190,7 @@ pub struct BoardNodeArgs<'a, C: Clone, H: BoardHeuristic<'a, C>> {
 }
 
 impl<'a, C: Clone, H: 'a + BoardHeuristic<'a, C>> ChildGen<BoardNodeState<'a, C, H>, BoardTurn>
-    for BoardChildGen<'a>
+    for BoardChildGen
 {
     type Args = BoardNodeArgs<'a, C, H>;
 
@@ -200,12 +200,7 @@ impl<'a, C: Clone, H: 'a + BoardHeuristic<'a, C>> ChildGen<BoardNodeState<'a, C,
         let heuristic = args.heuristic;
         let shared = args.shared;
 
-        let z3_cfg = Config::new();
-        let ctx = Box::new(Context::new(&z3_cfg));
-        // Get a stable pointer to the Context inside the Box before pushing it
-        // into the external store. The Box guarantees a stable heap address.
-        // SAFETY: The ctx_store outlives the arena (both live in run_search),
-        // so this reference remains valid for 'a.
+        let ctx = Box::new(Context::thread_local());
         let ctx_ref: &'a Context = unsafe { &*(ctx.as_ref() as *const Context) };
         args.ctx_store.borrow_mut().push(ctx);
 
@@ -270,7 +265,7 @@ impl<'a, C: Clone, H: 'a + BoardHeuristic<'a, C>> ChildGen<BoardNodeState<'a, C,
         let mut new_board = state.board.clone();
 
         if !resign_generated {
-            if rng.gen::<f64>() < resign_weight {
+            if rng.random::<f64>() < resign_weight {
                 self.resign_generated = true;
 
                 new_board.take_turn(state.side_to_move, BoardTurn::Resign, money, &tech_state);
@@ -463,7 +458,7 @@ impl<'a, C: Clone, H: 'a + BoardHeuristic<'a, C>> ChildGen<BoardNodeState<'a, C,
     }
 }
 
-pub type BoardNode<'a, C, H> = MCTSNode<'a, BoardNodeState<'a, C, H>, BoardTurn, BoardChildGen<'a>>;
+pub type BoardNode<'a, C, H> = MCTSNode<'a, BoardNodeState<'a, C, H>, BoardTurn, BoardChildGen>;
 pub type BoardNodeRef<'a, C, H> = &'a RefCell<BoardNode<'a, C, H>>;
 
 #[cfg(test)]
@@ -490,7 +485,7 @@ mod tests {
         heuristics::{naive::NaiveHeuristic, Heuristic},
     };
     use bumpalo::Bump;
-    use rand::thread_rng;
+    use rand::rng;
 
     use super::BoardNodeState;
     use super::Z3ContextStore;
@@ -527,7 +522,7 @@ mod tests {
         let map = Map::BlackenedShores;
         let mut board = Board::from_fen(Board::START_FEN, &map).unwrap();
         board.state = BoardState::Normal;
-        let mut rng = thread_rng();
+        let mut rng = rand::rng();
         let tech_state = new_all_unlocked_tech_state();
         let config = GameConfig::default();
         let heuristic = NaiveHeuristic::new(&config);

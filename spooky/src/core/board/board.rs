@@ -178,7 +178,8 @@ impl<'a> Board<'a> {
         let from = &piece.loc;
         let delta = to - from;
 
-        let paths = PATH_MAPS[speed as usize].get(&delta).context(format!(
+        let paths_opt = PATH_MAPS[speed as usize].get(&delta);
+        let paths = paths_opt.context(format!(
             "location {} too far for piece {} at {}",
             to, piece, from
         ))?;

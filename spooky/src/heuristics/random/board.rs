@@ -13,8 +13,7 @@ use crate::heuristics::{
     random::{CombinedEnc, RandomHeuristic},
     BoardHeuristic, BoardSetupPhasePreTurn, BoardSpawnPhasePreTurn, Heuristic, RemovalAssumption,
 };
-use rand::seq::SliceRandom;
-use rand::Rng;
+use rand::prelude::*;
 
 impl<'a> BoardHeuristic<'a, CombinedEnc<'a>> for RandomHeuristic<'a> {
     type BoardEnc = ();
@@ -44,13 +43,13 @@ impl<'a> BoardHeuristic<'a, CombinedEnc<'a>> for RandomHeuristic<'a> {
                 moves.push(MoveCandidate::Move {
                     from_loc: *from_loc,
                     to_loc: *to_loc,
-                    score: rng.gen(),
+                    score: rng.random(),
                 });
             }
             if unit_stats.blink {
                 moves.push(MoveCandidate::Blink {
                     loc: *from_loc,
-                    score: rng.gen(),
+                    score: rng.random(),
                 });
             }
         }
@@ -82,7 +81,7 @@ impl<'a> BoardHeuristic<'a, CombinedEnc<'a>> for RandomHeuristic<'a> {
         let reinforcements: Vec<_> = board.reinforcements[side].iter().cloned().collect();
         let saved_unit = if reinforcements.is_empty() {
             None
-        } else if rng.gen_bool(0.5) {
+        } else if rng.random_bool(0.5) {
             Some(reinforcements.choose(rng).unwrap().clone())
         } else {
             None
@@ -124,7 +123,7 @@ impl<'a> BoardHeuristic<'a, CombinedEnc<'a>> for RandomHeuristic<'a> {
                 .iter()
                 .filter(|u| u.stats().cost <= money)
                 .collect();
-            if affordable.is_empty() || rng.gen_bool(0.2) {
+            if affordable.is_empty() || rng.random_bool(0.2) {
                 // 20% chance to stop buying
                 break;
             }

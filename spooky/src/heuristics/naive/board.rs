@@ -14,10 +14,8 @@ use crate::heuristics::{
     naive::{CombinedEnc, NaiveHeuristic},
     BoardHeuristic, BoardSetupPhasePreTurn, BoardSpawnPhasePreTurn, Heuristic, RemovalAssumption,
 };
-use rand::{
-    distributions::{Distribution, WeightedIndex},
-    Rng, SeedableRng,
-};
+use rand::distr::{weighted::WeightedIndex, Distribution};
+use rand::prelude::*;
 use std::collections::{HashMap, HashSet};
 
 const DIST_EXP: f64 = 0.8;
@@ -188,7 +186,7 @@ pub fn generate_move_candidates(
     const EPS: f64 = 1e-6;
     const NOISE: f64 = 0.05;
 
-    let unif_distr = rand::distributions::Uniform::new(-NOISE, NOISE);
+    let unif_distr = rand::distr::Uniform::new(-NOISE, NOISE).unwrap();
 
     for (from_loc, to_loc_map) in graph.move_hex_map.iter() {
         let unit_stats = board.get_piece(&from_loc).unwrap().unit.stats();
@@ -227,7 +225,7 @@ pub fn generate_move_candidates(
             let to_wt = loc_wt(board.map.spec(), to_loc);
             const SCORE_SIGMOID_SCALE: f64 = 10.0;
             let score = ((to_wt - cur_wt) * unit_stats.cost as f64 / SCORE_SIGMOID_SCALE).sigmoid()
-                + rng.sample(unif_distr);
+                + unif_distr.sample(rng);
 
             candidates.push(MoveCandidate::Move {
                 from_loc: *from_loc,

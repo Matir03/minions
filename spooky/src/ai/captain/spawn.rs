@@ -9,7 +9,8 @@ use crate::core::{
     units::Unit,
     Tech, ToIndex,
 };
-use rand::{distributions::WeightedIndex, prelude::*};
+use rand::distr::{weighted::WeightedIndex, Distribution};
+use rand::prelude::*;
 
 /// Given the current board state and available money, this function decides which units to
 /// purchase and where to spawn them using a set of heuristics.

@@ -6,7 +6,7 @@ use crate::{
 
 use super::blotto::RandomBlotto;
 
-use rand::Rng;
+use rand::prelude::*;
 use std::rc::Rc;
 
 pub type CombinedEnc<'a> = Rc<GameState<'a>>;
@@ -46,8 +46,8 @@ impl<'a> Heuristic<'a> for RandomHeuristic<'a> {
         }
 
         // Return a random win probability
-        let mut rng = rand::thread_rng();
-        let winprob = rng.gen_range(0.0..1.0);
+        let mut rng = rand::rng();
+        let winprob = rng.random_range(0.0..1.0);
 
         Eval::new(winprob, state.side_to_move)
     }

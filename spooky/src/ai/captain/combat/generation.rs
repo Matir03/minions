@@ -18,9 +18,9 @@ impl CombatGenerationSystem {
     }
 
     /// Generate combat actions using the new architecture
-    pub fn generate_combat<'ctx>(
+    pub fn generate_combat(
         &mut self,
-        manager: &mut ConstraintManager<'ctx>,
+        manager: &mut ConstraintManager,
         board: &Board,
         side: Side,
         assumptions: &[RemovalAssumption],
@@ -28,9 +28,7 @@ impl CombatGenerationSystem {
         // Get assumptions from the death prophet
         let constraints = assumptions
             .iter()
-            .map(|assumption| {
-                self.create_assumption_constraint(&manager.variables, assumption, manager.ctx)
-            })
+            .map(|assumption| self.create_assumption_constraint(&manager.variables, assumption))
             .collect::<Vec<_>>();
 
         let mut constraint_set = constraints.iter().cloned().collect::<HashSet<_>>();
@@ -72,12 +70,11 @@ impl CombatGenerationSystem {
     }
 
     /// Create a Z3 constraint for a removal assumption
-    fn create_assumption_constraint<'ctx>(
+    fn create_assumption_constraint(
         &self,
-        variables: &SatVariables<'ctx>,
+        variables: &SatVariables,
         assumption: &RemovalAssumption,
-        ctx: &'ctx z3::Context,
-    ) -> Bool<'ctx> {
+    ) -> Bool {
         match assumption {
             RemovalAssumption::Kill(loc) => {
                 // Constraint: killed[loc] == true
@@ -97,21 +94,18 @@ impl CombatGenerationSystem {
             }
             RemovalAssumption::Keep(loc) => {
                 // Constraint: killed[loc] == false and unsummoned[loc] == false
-                Bool::and(
-                    ctx,
-                    &[
-                        &variables
-                            .killed
-                            .get(loc)
-                            .expect(&format!("No killed variable for location {}", loc))
-                            .not(),
-                        &variables
-                            .unsummoned
-                            .get(loc)
-                            .expect(&format!("No unsummoned variable for location {}", loc))
-                            .not(),
-                    ],
-                )
+                Bool::and(&[
+                    &variables
+                        .killed
+                        .get(loc)
+                        .expect(&format!("No killed variable for location {}", loc))
+                        .not(),
+                    &variables
+                        .unsummoned
+                        .get(loc)
+                        .expect(&format!("No unsummoned variable for location {}", loc))
+                        .not(),
+                ])
             }
         }
     }
@@ -133,7 +127,7 @@ mod tests {
     fn test_empty_board_generates_no_actions() {
         let map = Map::BlackenedShores;
         let board = Board::new(&map);
-        let ctx = Context::new(&z3::Config::new());
+        let ctx = Context::thread_local();
         let graph = board.combat_graph(Side::Yellow);
         let mut solver = ConstraintManager::new(&ctx, graph, &board);
 

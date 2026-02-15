@@ -64,13 +64,13 @@ impl Loc {
     }
 
     // Convert Loc to Z3 bitvector representation
-    pub fn as_z3<'ctx>(self, ctx: &'ctx z3::Context) -> z3::ast::BV<'ctx> {
+    pub fn as_z3(self) -> z3::ast::BV {
         use z3::ast::BV;
         if self.in_bounds() {
             let val = (self.x as u8) << 4 | (self.y as u8);
-            BV::from_u64(ctx, val as u64, 8)
+            BV::from_u64(val as u64, 8)
         } else {
-            BV::from_u64(ctx, u8::MAX as u64, 8)
+            BV::from_u64(u8::MAX as u64, 8)
         }
     }
 

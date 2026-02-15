@@ -1,6 +1,7 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{criterion_group, criterion_main, Criterion};
 use spooky::core::{GameConfig, GameState};
 use spooky::heuristics::{naive::NaiveHeuristic, GeneralHeuristic, Heuristic};
+use std::hint::black_box;
 
 fn eval_benchmark(c: &mut Criterion) {
     let config = GameConfig::default();

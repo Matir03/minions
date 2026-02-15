@@ -217,7 +217,7 @@ impl<'a> GeneralChildGen<'a> {
                 let tech_idx = num_techs - 1 - depth;
                 let p_select = pre_turn.weights[tech_idx];
 
-                if rng.gen::<f32>() < p_select {
+                if rng.random::<f32>() < p_select {
                     take_idx
                 } else {
                     skip_idx
@@ -308,5 +308,4 @@ impl<'a, C: 'a, H: GeneralHeuristic<'a, C>> ChildGen<GeneralNodeState<'a, C, H>,
 
 pub type GeneralNode<'a, C, H> =
     MCTSNode<'a, GeneralNodeState<'a, C, H>, TechAssignment, GeneralChildGen<'a>>;
-
 pub type GeneralNodeRef<'a, C, H> = &'a RefCell<GeneralNode<'a, C, H>>;

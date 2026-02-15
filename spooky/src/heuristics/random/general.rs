@@ -2,7 +2,7 @@ use crate::ai::general_node::GeneralPreTurn;
 use crate::core::{tech::TechAssignment, tech::TechState, Side};
 use crate::heuristics::random::{CombinedEnc, RandomHeuristic};
 use crate::heuristics::{GeneralHeuristic, Heuristic};
-use rand::Rng;
+use rand::prelude::*;
 
 impl<'a> GeneralHeuristic<'a, CombinedEnc<'a>> for RandomHeuristic<'a> {
     type GeneralEnc = ();
@@ -22,7 +22,7 @@ impl<'a> GeneralHeuristic<'a, CombinedEnc<'a>> for RandomHeuristic<'a> {
         _enc: &Self::GeneralEnc,
     ) -> GeneralPreTurn {
         let techline = &self.config.techline;
-        let weights = techline.techs.iter().map(|_| rng.gen()).collect();
+        let weights = techline.techs.iter().map(|_| rng.random()).collect();
 
         GeneralPreTurn { weights }
     }

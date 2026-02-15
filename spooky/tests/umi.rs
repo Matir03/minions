@@ -1,9 +1,9 @@
-use assert_cmd::Command;
+use assert_cmd::cargo::cargo_bin_cmd;
 use predicates::prelude::*;
 
 #[test]
 fn test_umi_go_simple() {
-    let mut cmd = Command::cargo_bin("spooky").unwrap();
+    let mut cmd = cargo_bin_cmd!("spooky");
     cmd.arg("umi")
         .write_stdin("position fen 12|12 0|0 LLLLLLLLLLLLLLLLLLLLLLLLL|LLLLLLLLLLLLLLLLLLLLLLLLL f|I|i|||0/2ZZ6/1ZNZ6/1ZZ7/0/0/7zz1/6znz1/6zz2/0 f|I|i|||0/2ZZ6/1ZNZ6/1ZZ7/0/0/7zz1/6znz1/6zz2/0 0 1\ngo\n")
         .assert()
@@ -13,7 +13,7 @@ fn test_umi_go_simple() {
 
 #[test]
 fn test_umi_heuristic_option() {
-    let mut cmd = Command::cargo_bin("spooky").unwrap();
+    let mut cmd = cargo_bin_cmd!("spooky");
     cmd.arg("umi")
         .write_stdin("setoption name heuristic value random\nposition startpos\ngo nodes 1\n")
         .assert()
