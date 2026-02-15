@@ -6,7 +6,10 @@ use std::str::FromStr;
 pub enum HeuristicType {
     Naive,
     Random,
+    Smart,
 }
+
+impl HeuristicType {}
 
 impl FromStr for HeuristicType {
     type Err = anyhow::Error;
@@ -15,6 +18,7 @@ impl FromStr for HeuristicType {
         match s {
             "naive" => Ok(HeuristicType::Naive),
             "random" => Ok(HeuristicType::Random),
+            "smart" => Ok(HeuristicType::Smart),
             _ => bail!("Unknown heuristic type: {}", s),
         }
     }

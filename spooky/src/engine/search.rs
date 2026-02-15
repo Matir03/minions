@@ -4,6 +4,7 @@ use crate::core::{GameConfig, GameState, GameTurn, Spell};
 use crate::engine::options::HeuristicType;
 use crate::heuristics::naive::NaiveHeuristic;
 use crate::heuristics::random::RandomHeuristic;
+use crate::heuristics::smart::SmartHeuristic;
 use crate::heuristics::Heuristic;
 
 use anyhow::{bail, Context};
@@ -97,6 +98,17 @@ pub fn search_no_spells<'a>(
         }
         HeuristicType::Random => {
             let heuristic = RandomHeuristic::new(config);
+            run_search(
+                config,
+                state,
+                search_options,
+                &arena,
+                &heuristic,
+                start_time,
+            )
+        }
+        HeuristicType::Smart => {
+            let heuristic = SmartHeuristic::new(config);
             run_search(
                 config,
                 state,
