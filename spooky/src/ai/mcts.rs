@@ -181,7 +181,7 @@ impl<'a, State: Eq, Turn, Gen: ChildGen<State, Turn>> MCTSNode<'a, State, Turn, 
                 }
             })
             .unwrap_or_else(|| {
-                let new_mcts_node = MCTSNode::new(new_node_state, self.side, arena);
+                let new_mcts_node = MCTSNode::new(new_node_state, !self.side, arena);
                 let new_mcts_node_ref = arena.alloc(RefCell::new(new_mcts_node));
                 new_mcts_node_ref
             });

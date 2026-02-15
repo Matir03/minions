@@ -1,7 +1,9 @@
 use std::marker::PhantomData;
 use std::{cell::RefCell, collections::HashMap, ops::AddAssign};
 
-use crate::ai::captain::board_node::{BoardNode, BoardNodeArgs, BoardNodeRef, BoardNodeState};
+use crate::ai::captain::board_node::{
+    BoardNode, BoardNodeArgs, BoardNodeRef, BoardNodeState, Z3ContextStore,
+};
 use crate::ai::eval::Eval;
 use crate::ai::general_node::{GeneralNode, GeneralNodeArgs, GeneralNodeRef, GeneralNodeState};
 use crate::ai::mcts::{ChildGen, MCTSEdge, MCTSNode, NodeStats};
@@ -101,13 +103,18 @@ pub struct GameChildGen<'a, H: Heuristic<'a>> {
 pub struct GameChildGenArgs<'a, H: Heuristic<'a>> {
     pub arena: &'a Bump,
     pub heuristic: &'a H,
+    pub ctx_store: &'a Z3ContextStore,
 }
 
 impl<'a, H: Heuristic<'a>> ChildGen<GameNodeState<'a, H>, GameTurn> for GameChildGen<'a, H> {
     type Args = GameChildGenArgs<'a, H>;
 
     fn new(state: &GameNodeState<'a, H>, _rng: &mut impl Rng, args: Self::Args) -> Self {
-        let GameChildGenArgs { arena, heuristic } = args;
+        let GameChildGenArgs {
+            arena,
+            heuristic,
+            ctx_store: _,
+        } = args;
         GameChildGen {
             blotto_gen: heuristic.compute_blottos(&state.heuristic_state),
         }
@@ -119,7 +126,11 @@ impl<'a, H: Heuristic<'a>> ChildGen<GameNodeState<'a, H>, GameTurn> for GameChil
         rng: &mut impl Rng,
         args: Self::Args,
     ) -> Option<(GameTurn, GameNodeState<'a, H>)> {
-        let GameChildGenArgs { arena, heuristic } = args;
+        let GameChildGenArgs {
+            arena,
+            heuristic,
+            ctx_store,
+        } = args;
         let config = state.game_state.config;
 
         let current_side = state.game_state.side_to_move;
@@ -173,6 +184,7 @@ impl<'a, H: Heuristic<'a>> ChildGen<GameNodeState<'a, H>, GameTurn> for GameChil
                 arena,
                 heuristic,
                 shared: state.heuristic_state.clone(),
+                ctx_store,
             };
 
             let (_b_is_new, b_child_idx) =

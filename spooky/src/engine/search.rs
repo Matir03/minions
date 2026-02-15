@@ -1,3 +1,4 @@
+use crate::ai::captain::board_node::Z3ContextStore;
 use crate::ai::graphviz::export_search_tree;
 use crate::ai::{SearchResult, SearchTree};
 use crate::core::{GameConfig, GameState, GameTurn, Spell};
@@ -83,6 +84,7 @@ pub fn search_no_spells<'a>(
 ) -> (SearchResult, f64) {
     let start_time = Instant::now();
     let arena = Bump::new();
+    let ctx_store = Z3ContextStore::new(Vec::new());
 
     match heuristic_type {
         HeuristicType::Naive => {
@@ -93,6 +95,7 @@ pub fn search_no_spells<'a>(
                 search_options,
                 &arena,
                 &heuristic,
+                &ctx_store,
                 start_time,
             )
         }
@@ -104,6 +107,7 @@ pub fn search_no_spells<'a>(
                 search_options,
                 &arena,
                 &heuristic,
+                &ctx_store,
                 start_time,
             )
         }
@@ -115,6 +119,7 @@ pub fn search_no_spells<'a>(
                 search_options,
                 &arena,
                 &heuristic,
+                &ctx_store,
                 start_time,
             )
         }
@@ -127,12 +132,13 @@ fn run_search<'a, H: Heuristic<'a>>(
     search_options: &SearchOptions,
     arena: &'a Bump,
     heuristic: &'a H,
+    ctx_store: &'a Z3ContextStore,
     start_time: Instant,
 ) -> (SearchResult, f64) {
     let mut search_tree = SearchTree::new(config, state.clone(), arena, heuristic);
 
     for i in 0..search_options.nodes {
-        search_tree.explore(config, arena, heuristic);
+        search_tree.explore(config, arena, heuristic, ctx_store);
 
         if start_time.elapsed().as_millis() > search_options.move_time.into() {
             break;

@@ -1,0 +1,15 @@
+# Development scrimmage configuration: current build vs. an archived build.
+
+[match]
+name = "test_scrim"
+num_games = 4                 # Fewer games for a quick test
+time_control = "movetime 500"
+start_fen = "startpos"
+
+[ai1]
+name = "current"
+path = "target/release/spooky"
+
+[ai2]
+name = "old"
+path = "bin/oldmcts"

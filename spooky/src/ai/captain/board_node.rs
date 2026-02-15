@@ -1,8 +1,9 @@
+use std::cell::RefCell;
+/// MCTS Node representing the state of a single board and its turn processing (attack + spawn).
+use std::fmt;
 use std::io::Write;
 use std::marker::PhantomData;
 use std::ops::AddAssign;
-/// MCTS Node representing the state of a single board and its turn processing (attack + spawn).
-use std::{cell::RefCell, fmt};
 
 use derive_where::derive_where;
 use rand::prelude::*;
@@ -68,6 +69,10 @@ use super::{
 
 use bumpalo::Bump;
 use z3::{Config, Context, SatResult};
+
+/// External store for Z3 Contexts. Contexts are pushed here so they are properly
+/// dropped when the store (which lives outside the bump arena) is dropped.
+pub type Z3ContextStore = RefCell<Vec<Box<Context>>>;
 
 /// Represents the state of a single board and its turn processing (attack + spawn).
 #[derive_where(Clone, PartialEq, Eq)]
@@ -181,6 +186,7 @@ pub struct BoardNodeArgs<'a, C: Clone, H: BoardHeuristic<'a, C>> {
     pub arena: &'a Bump,
     pub heuristic: &'a H,
     pub shared: C,
+    pub ctx_store: &'a Z3ContextStore,
 }
 
 impl<'a, C: Clone, H: 'a + BoardHeuristic<'a, C>> ChildGen<BoardNodeState<'a, C, H>, BoardTurn>
@@ -195,7 +201,14 @@ impl<'a, C: Clone, H: 'a + BoardHeuristic<'a, C>> ChildGen<BoardNodeState<'a, C,
         let shared = args.shared;
 
         let z3_cfg = Config::new();
-        let ctx = arena.alloc(Context::new(&z3_cfg));
+        let ctx = Box::new(Context::new(&z3_cfg));
+        // Get a stable pointer to the Context inside the Box before pushing it
+        // into the external store. The Box guarantees a stable heap address.
+        // SAFETY: The ctx_store outlives the arena (both live in run_search),
+        // so this reference remains valid for 'a.
+        let ctx_ref: &'a Context = unsafe { &*(ctx.as_ref() as *const Context) };
+        args.ctx_store.borrow_mut().push(ctx);
+
         let mut new_board = state.board.clone();
 
         // --- Initialize systems ---
@@ -203,7 +216,7 @@ impl<'a, C: Clone, H: 'a + BoardHeuristic<'a, C>> ChildGen<BoardNodeState<'a, C,
             "Initializing attack phase systems",
             || {
                 let graph = new_board.combat_graph(state.side_to_move);
-                let manager = ConstraintManager::new(ctx, graph, &new_board);
+                let manager = ConstraintManager::new(ctx_ref, graph, &new_board);
                 let positioning_system = SatPositioningSystem {};
                 let combat_generator = CombatGenerationSystem::new();
                 (manager, positioning_system, combat_generator)
@@ -243,6 +256,7 @@ impl<'a, C: Clone, H: 'a + BoardHeuristic<'a, C>> ChildGen<BoardNodeState<'a, C,
             arena,
             heuristic,
             shared,
+            ctx_store: _,
         } = args;
 
         let BoardChildGen {
@@ -479,6 +493,7 @@ mod tests {
     use rand::thread_rng;
 
     use super::BoardNodeState;
+    use super::Z3ContextStore;
 
     fn new_all_unlocked_tech_state() -> TechState {
         let mut tech_state = TechState::new();
@@ -529,6 +544,7 @@ mod tests {
             winner: None,
         };
         let shared = Rc::new(game_state);
+        let ctx_store = Z3ContextStore::new(Vec::new());
         let args = BoardNodeArgs {
             money: 12,
             tech_state: tech_state.clone(),
@@ -536,6 +552,7 @@ mod tests {
             arena: &Bump::new(),
             heuristic: &heuristic,
             shared: shared.clone(),
+            ctx_store: &ctx_store,
         };
         let mut child_gen = BoardChildGen::new(&node_state, &mut rng, args.clone());
 

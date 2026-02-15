@@ -1,1 +1,1 @@
-echo "auto nodes 1" | cargo run --release
+echo "auto movetime 500" | cargo run --release

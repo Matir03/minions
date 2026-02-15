@@ -1,5 +1,6 @@
 //! Search for the best move
 
+use crate::ai::captain::board_node::Z3ContextStore;
 use crate::ai::game_node::GameChildGenArgs;
 use crate::core::{GameConfig, GameState, GameTurn};
 
@@ -44,7 +45,13 @@ impl<'a, H: Heuristic<'a>> SearchTree<'a, H> {
         }
     }
 
-    pub fn explore(&mut self, config: &'a GameConfig, arena: &'a Bump, heuristic: &'a H) {
+    pub fn explore(
+        &mut self,
+        config: &'a GameConfig,
+        arena: &'a Bump,
+        heuristic: &'a H,
+        ctx_store: &'a Z3ContextStore,
+    ) {
         let mut current_mcts_node = self.root;
         let mut explored_nodes = StdVec::<GameNodeRef<'a, H>>::new();
         explored_nodes.push(current_mcts_node);
@@ -58,7 +65,11 @@ impl<'a, H: Heuristic<'a>> SearchTree<'a, H> {
                 arena,
                 heuristic,
                 &mut self.rng,
-                GameChildGenArgs { arena, heuristic },
+                GameChildGenArgs {
+                    arena,
+                    heuristic,
+                    ctx_store,
+                },
             );
 
             current_mcts_node = current_mcts_node.borrow().edges[child_idx].child;

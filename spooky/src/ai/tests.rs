@@ -5,7 +5,7 @@ use bumpalo::Bump;
 
 use crate::{
     ai::{
-        captain::board_node::{BoardChildGen, BoardNodeArgs, BoardNodeState},
+        captain::board_node::{BoardChildGen, BoardNodeArgs, BoardNodeState, Z3ContextStore},
         mcts::ChildGen,
     },
     core::{
@@ -69,6 +69,7 @@ fn test_propose_move_integration() {
     };
     let shared = Rc::new(game_state);
 
+    let ctx_store = Z3ContextStore::new(Vec::new());
     let args = BoardNodeArgs {
         money: 100,
         tech_state,
@@ -76,6 +77,7 @@ fn test_propose_move_integration() {
         arena: &Bump::new(),
         heuristic: &NaiveHeuristic::new(&config),
         shared: shared.clone(),
+        ctx_store: &ctx_store,
     };
 
     let mut child_gen = BoardChildGen::new(&node_state, &mut rng, args.clone());
