@@ -220,7 +220,7 @@ impl<'a> Board<'a> {
             self.add_reinforcement(saved_unit, side);
         }
 
-        self.add_reinforcement(Unit::Initiate, side);
+        self.add_reinforcement(Unit::Zombie, side);
 
         Ok(())
     }
