@@ -6,11 +6,13 @@ time_control = "nodes 1"
 start_fen = "startpos"
 
 [ai1]
-name = "naive_dev"
+name = "naive"
 path = "target/release/spooky"
+[ai1.options]
+heuristic = "naive"
 
 [ai2]
-name = "random_dev"
+name = "smart"
 path = "target/release/spooky"
 [ai2.options]
-heuristic = "random"
+heuristic = "smart"

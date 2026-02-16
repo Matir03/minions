@@ -62,7 +62,7 @@ impl Default for EngineOptions {
         Self {
             spells_enabled: false,
             strict_mode: true,
-            heuristic: HeuristicType::Naive,
+            heuristic: HeuristicType::Smart,
         }
     }
 }
