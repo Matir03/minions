@@ -241,9 +241,11 @@ mod tests {
         // Test invalid index
         assert!(Tech::from_index(27).is_err());
 
-        // Test unit tech
-        assert_eq!(Tech::from_index(1).unwrap(), Tech::UnitTech(Unit::Skeleton));
-        assert_eq!(Tech::UnitTech(Unit::Skeleton).to_index().unwrap(), 1);
+        // Test unit tech - with BASIC_UNITS = [Zombie], first tech is Initiate at index 1
+        assert_eq!(Tech::from_index(1).unwrap(), Tech::UnitTech(Unit::Initiate));
+        assert_eq!(Tech::UnitTech(Unit::Initiate).to_index().unwrap(), 1);
+        assert_eq!(Tech::from_index(2).unwrap(), Tech::UnitTech(Unit::Skeleton));
+        assert_eq!(Tech::UnitTech(Unit::Skeleton).to_index().unwrap(), 2);
     }
 
     #[test]

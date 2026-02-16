@@ -232,7 +232,14 @@ mod tests {
 
         let state_fen = state.to_fen().unwrap();
         let new_state = GameState::from_fen(&state_fen, &config).unwrap();
-        assert_eq!(state, new_state);
+        // Compare all fields except game_id (which is timestamp-based)
+        assert_eq!(state.side_to_move, new_state.side_to_move);
+        assert_eq!(state.ply, new_state.ply);
+        assert_eq!(state.boards, new_state.boards);
+        assert_eq!(state.board_points, new_state.board_points);
+        assert_eq!(state.tech_state, new_state.tech_state);
+        assert_eq!(state.money, new_state.money);
+        assert_eq!(state.winner, new_state.winner);
     }
 
     #[test]
@@ -250,7 +257,14 @@ mod tests {
 
         let state_fen = state.to_fen().unwrap();
         let new_state = GameState::from_fen(&state_fen, &config).unwrap();
-        assert_eq!(state, new_state);
+        // Compare all fields except game_id (which is timestamp-based and differs between calls)
+        assert_eq!(state.side_to_move, new_state.side_to_move);
+        assert_eq!(state.ply, new_state.ply);
+        assert_eq!(state.boards, new_state.boards);
+        assert_eq!(state.board_points, new_state.board_points);
+        assert_eq!(state.tech_state, new_state.tech_state);
+        assert_eq!(state.money, new_state.money);
+        assert_eq!(state.winner, new_state.winner);
     }
 
     #[test]

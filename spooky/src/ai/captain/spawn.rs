@@ -220,9 +220,9 @@ mod tests {
             Loc::new(1, 1),
         ));
 
-        // Block one of the spawn locations
+        // Block one of the spawn locations with a non-spawner unit
         let blocked_loc = Loc::new(1, 0);
-        board.add_piece(Piece::new(Unit::Zombie, Side::Yellow, blocked_loc));
+        board.add_piece(Piece::new(Unit::Skeleton, Side::Yellow, blocked_loc));
 
         let locs = board.get_spawn_locs(Side::Yellow, true);
         assert_eq!(locs.len(), 5);
