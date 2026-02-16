@@ -85,6 +85,10 @@ impl Techline {
         self.techs.len()
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.techs.is_empty()
+    }
+
     pub fn index_of(&self, tech: Tech) -> usize {
         self.techs.iter().position(|&t| t == tech).unwrap()
     }
@@ -144,6 +148,12 @@ pub struct TechState {
     pub unlock_index: SideArray<usize>,
     pub status: SideArray<[TechStatus; NUM_TECHS]>,
     pub acquired_techs: SideArray<HashSet<Tech>>,
+}
+
+impl Default for TechState {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl TechState {

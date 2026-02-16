@@ -19,11 +19,11 @@ impl<'a> BoardHeuristic<'a, CombinedEnc<'a>> for RandomHeuristic<'a> {
     type BoardEnc = ();
 
     fn compute_enc(&self, _board: &Board<'a>) -> Self::BoardEnc {
-        ()
+        
     }
 
     fn update_enc(&self, _enc: &Self::BoardEnc, _turn: &BoardTurn) -> Self::BoardEnc {
-        ()
+        
     }
 
     fn compute_board_attack_phase_pre_turn(
@@ -82,7 +82,7 @@ impl<'a> BoardHeuristic<'a, CombinedEnc<'a>> for RandomHeuristic<'a> {
         let saved_unit = if reinforcements.is_empty() {
             None
         } else if rng.random_bool(0.5) {
-            Some(reinforcements.choose(rng).unwrap().clone())
+            Some(*reinforcements.choose(rng).unwrap())
         } else {
             None
         };
@@ -114,7 +114,7 @@ impl<'a> BoardHeuristic<'a, CombinedEnc<'a>> for RandomHeuristic<'a> {
                     None
                 }
             })
-            .chain(Unit::BASIC_UNITS.into_iter())
+            .chain(Unit::BASIC_UNITS)
             .collect();
 
         // Randomly buy units
@@ -153,14 +153,12 @@ impl<'a> BoardHeuristic<'a, CombinedEnc<'a>> for RandomHeuristic<'a> {
                     });
                     land_spawn_locs.set(loc, false);
                 }
-            } else {
-                if let Some(loc) = land_spawn_locs.pop() {
-                    actions.push(SpawnAction::Spawn {
-                        spawn_loc: loc,
-                        unit,
-                    });
-                    all_spawn_locs.set(loc, false);
-                }
+            } else if let Some(loc) = land_spawn_locs.pop() {
+                actions.push(SpawnAction::Spawn {
+                    spawn_loc: loc,
+                    unit,
+                });
+                all_spawn_locs.set(loc, false);
             }
         }
 

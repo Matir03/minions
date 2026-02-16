@@ -174,7 +174,7 @@ pub fn generate_move_candidates(
             break;
         }
 
-        let best_piece = turns_to_graveyard[&g]
+        let best_piece = turns_to_graveyard[g]
             .iter()
             .find(|(piece_loc, _)| !chosen_pieces.contains_key(piece_loc));
 
@@ -186,7 +186,7 @@ pub fn generate_move_candidates(
     }
 
     for (g, _) in competitiveness_increasing {
-        let best_piece = turns_to_graveyard[&g].iter().find(|(piece_loc, _)| {
+        let best_piece = turns_to_graveyard[g].iter().find(|(piece_loc, _)| {
             board.get_piece(piece_loc).unwrap().unit.stats().spawn
                 && !chosen_pieces.contains_key(piece_loc)
         });
@@ -210,9 +210,9 @@ pub fn generate_move_candidates(
     let friendly_attack = zone_analysis.attack_reach[side as usize];
 
     for (from_loc, to_loc_map) in graph.move_hex_map.iter() {
-        let unit_stats = board.get_piece(&from_loc).unwrap().unit.stats();
-        if chosen_pieces.contains_key(&from_loc) {
-            let g = chosen_pieces[&from_loc];
+        let unit_stats = board.get_piece(from_loc).unwrap().unit.stats();
+        if chosen_pieces.contains_key(from_loc) {
+            let g = chosen_pieces[from_loc];
             let g_dist = g.dist(from_loc);
             for to_loc in to_loc_map.keys() {
                 let delta_dist = (g_dist - to_loc.dist(&g)) as f64;
@@ -249,7 +249,7 @@ pub fn generate_move_candidates(
 
         let cur_wt = loc_wt(board.map.spec(), from_loc);
 
-        for (to_loc, _) in to_loc_map {
+        for to_loc in to_loc_map.keys() {
             let to_wt = loc_wt(board.map.spec(), to_loc);
             const SCORE_SIGMOID_SCALE: f64 = 10.0;
             let mut score = ((to_wt - cur_wt) * unit_stats.cost as f64 / SCORE_SIGMOID_SCALE)
@@ -307,7 +307,7 @@ pub fn generate_attack_strategy(
     // Weighted selection among strategies: 40% kill-by-value, 20% kill-by-type,
     // 15% kill-nothing, 25% kill-random-subset.
     let strategy_weights = [40, 20, 15, 25];
-    let dist = WeightedIndex::new(&strategy_weights).unwrap();
+    let dist = WeightedIndex::new(strategy_weights).unwrap();
     let strategy = dist.sample(rng);
 
     match strategy {
@@ -475,7 +475,7 @@ pub fn generate_spawn_actions(
         .iter()
         .copied()
         .collect::<Vec<_>>();
-    sorted_units.sort_by_key(|u| -(u.stats().cost as i32));
+    sorted_units.sort_by_key(|u| -u.stats().cost);
 
     // Compute zone analysis for strategic spawn location selection.
     let zone_analysis = ZoneAnalysis::compute(board);
@@ -596,7 +596,7 @@ fn purchase_heuristic(
                 None
             }
         })
-        .chain(Unit::BASIC_UNITS.into_iter())
+        .chain(Unit::BASIC_UNITS)
         .collect();
 
     let mut units_with_weights = available_units
@@ -607,10 +607,7 @@ fn purchase_heuristic(
     let mut units_to_buy = Vec::new();
 
     loop {
-        units_with_weights = units_with_weights
-            .into_iter()
-            .filter(|(u, _)| money >= u.stats().cost)
-            .collect();
+        units_with_weights.retain(|(u, _)| money >= u.stats().cost);
 
         if units_with_weights.is_empty() {
             break;

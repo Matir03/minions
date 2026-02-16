@@ -388,7 +388,7 @@ impl<'a> Board<'a> {
         }
 
         let rebate = self.do_attacks(side, &board_actions.attack_actions)?;
-        let money = self.do_spawns(side, money, &board_actions.spawn_actions, &tech_state)?;
+        let money = self.do_spawns(side, money, &board_actions.spawn_actions, tech_state)?;
 
         Ok((money, rebate))
     }

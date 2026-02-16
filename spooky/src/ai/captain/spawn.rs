@@ -41,7 +41,7 @@ pub fn generate_heuristic_spawn_actions(
         .iter()
         .copied()
         .collect::<Vec<_>>();
-    sorted_units.sort_by_key(|u| -(u.stats().cost as i32));
+    sorted_units.sort_by_key(|u| -u.stats().cost);
 
     // Get spawn locations based on the current board state.
     let mut all_spawn_locs = board.bitboards.get_spawn_locs(side, true);
@@ -92,7 +92,7 @@ fn purchase_heuristic(
                 None
             }
         })
-        .chain(Unit::BASIC_UNITS.into_iter())
+        .chain(Unit::BASIC_UNITS)
         .collect();
 
     let mut units_with_weights = available_units
@@ -103,10 +103,7 @@ fn purchase_heuristic(
     let mut units_to_buy = Vec::new();
 
     loop {
-        units_with_weights = units_with_weights
-            .into_iter()
-            .filter(|(u, _)| money >= u.stats().cost)
-            .collect();
+        units_with_weights.retain(|(u, _)| money >= u.stats().cost);
 
         if units_with_weights.is_empty() {
             break;

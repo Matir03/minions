@@ -245,7 +245,7 @@ mod tests {
     #[test]
     fn test_empty_spaces_fen() {
         let config = GameConfig::default();
-        let boards = config.maps.iter().map(|map| Board::new(map)).collect();
+        let boards = config.maps.iter().map(Board::new).collect();
         let state = GameState::new(
             &config,
             Side::Yellow,

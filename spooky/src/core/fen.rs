@@ -29,21 +29,21 @@ impl<'a> GameState<'a> {
 
         // Tech state
         fen.push(' ');
-        fen.push_str(&self.tech_state.to_fen().trim());
+        fen.push_str(self.tech_state.to_fen().trim());
 
         // Board states
         for board in self.boards.iter() {
             fen.push(' ');
-            fen.push_str(&board.to_fen().trim());
+            fen.push_str(board.to_fen().trim());
         }
 
         // Side to move
         fen.push(' ');
-        fen.push_str(&self.side_to_move.to_index()?.to_string().trim());
+        fen.push_str(self.side_to_move.to_index()?.to_string().trim());
 
         // Turn number
         fen.push(' ');
-        fen.push_str(&self.ply.to_string().trim());
+        fen.push_str(self.ply.to_string().trim());
 
         Ok(fen)
     }

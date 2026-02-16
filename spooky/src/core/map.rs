@@ -13,7 +13,9 @@ use num_traits::{FromPrimitive, ToPrimitive};
 
 /// Type of tile in the hex grid
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default)]
 pub enum TileType {
+    #[default]
     Ground,
     Graveyard,
     // Add other tile types
@@ -70,17 +72,18 @@ impl Terrain {
     }
 }
 
-impl Default for TileType {
-    fn default() -> Self {
-        TileType::Ground
-    }
-}
 
 /// Represents a game map with its hex grid
 #[derive(Debug, Clone)]
 pub struct MapSpec {
     pub tiles: HexGrid<TileType>,
     pub graveyards: Vec<Loc>,
+}
+
+impl Default for MapSpec {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl MapSpec {
@@ -188,7 +191,9 @@ impl<T> HexGrid<T> {
 
 /// Different map types available in the game
 #[derive(Debug, Clone, Copy, PartialEq, Eq, FromPrimitive, ToPrimitive)]
+#[derive(Default)]
 pub enum Map {
+    #[default]
     AllLand,
     BlackenedShores,
     MidnightLake,
@@ -221,11 +226,6 @@ impl ToIndex for Map {
     }
 }
 
-impl Default for Map {
-    fn default() -> Self {
-        Map::AllLand
-    }
-}
 
 const MAP_FENS: [&str; NUM_MAPS] = [
     // AllLand

@@ -109,7 +109,7 @@ impl<'a> Board<'a> {
         ensure!(attacker.state.can_attack(), "Piece is exhausted");
 
         let attacker_stats = attacker.unit.stats();
-        let mut attacker_state = attacker.state.clone();
+        let mut attacker_state = attacker.state;
 
         ensure!(
             !attacker_state.moved || !attacker_stats.lumbering,
@@ -162,7 +162,7 @@ impl<'a> Board<'a> {
 
         attacker_state.attacks_used += 1;
 
-        let mut target_state = target.state.clone();
+        let mut target_state = target.state;
         target_state.damage_taken += damage_effect;
 
         let remove = target_state.damage_taken >= target_stats.defense || bounce;
@@ -223,7 +223,7 @@ impl<'a> Board<'a> {
 
     pub fn spawn_piece(&mut self, side: Side, loc: Loc, unit: Unit) -> Result<()> {
         ensure!(
-            self.pieces.get(&loc).is_none(),
+            !self.pieces.contains_key(&loc),
             "spawn_piece called on occupied location"
         );
         let mut piece = Piece::new(unit, side, loc);

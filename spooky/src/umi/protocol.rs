@@ -59,7 +59,7 @@ pub fn handle_command<'a>(cmd: &str, engine: &mut Engine<'a>) -> Result<Option<G
                 }
                 "fen" if parts.len() >= 3 => {
                     let fen = parts[2..].join(" ");
-                    let state = GameState::from_fen(&fen, &engine.config)?;
+                    let state = GameState::from_fen(&fen, engine.config)?;
                     engine.state = state;
                     Ok(None)
                 }

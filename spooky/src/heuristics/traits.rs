@@ -74,6 +74,7 @@ pub trait BoardHeuristic<'a, CombinedEnc>: 'a {
         side: Side,
     ) -> BoardSetupPhasePreTurn;
 
+    #[allow(clippy::too_many_arguments)]
     fn compute_board_spawn_phase_pre_turn(
         &self,
         rng: &mut impl Rng,

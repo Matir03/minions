@@ -16,33 +16,21 @@ impl<'a> Board<'a> {
     /// Convert board state to FEN notation
     pub fn to_fen(&self) -> String {
         // Build the complete FEN string with all components separated by |
-        let mut components = Vec::new();
-
-        // Component 1: Board state
-        components.push(self.state.to_fen());
-
-        // Component 2: Yellow reinforcements
-        components.push(reinforcements_to_fen(
-            &self.reinforcements[Side::Yellow],
-            Side::Yellow,
-        ));
-
-        // Component 3: Blue reinforcements
-        components.push(reinforcements_to_fen(
-            &self.reinforcements[Side::Blue],
-            Side::Blue,
-        ));
-
-        // Component 4: Yellow spells
-        components.push(spells_to_fen(&self.spells[Side::Yellow]));
-
-        // Component 5: Blue spells
-        components.push(spells_to_fen(&self.spells[Side::Blue]));
-
-        // Component 6: Board position
-        components.push(self.position_to_fen());
-
-        components.join("|")
+        [
+            // Component 1: Board state
+            self.state.to_fen(),
+            // Component 2: Yellow reinforcements
+            reinforcements_to_fen(&self.reinforcements[Side::Yellow], Side::Yellow),
+            // Component 3: Blue reinforcements
+            reinforcements_to_fen(&self.reinforcements[Side::Blue], Side::Blue),
+            // Component 4: Yellow spells
+            spells_to_fen(&self.spells[Side::Yellow]),
+            // Component 5: Blue spells
+            spells_to_fen(&self.spells[Side::Blue]),
+            // Component 6: Board position
+            self.position_to_fen(),
+        ]
+        .join("|")
     }
 
     /// Convert just the board position to FEN notation
@@ -177,6 +165,7 @@ impl<'a> Board<'a> {
 }
 
 impl BoardState {
+    #[allow(clippy::wrong_self_convention)]
     fn to_fen(&self) -> String {
         match self {
             Self::FirstTurn => "f".to_string(),

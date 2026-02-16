@@ -76,7 +76,7 @@ impl Default for SearchOptions {
     }
 }
 
-pub fn search_no_spells<'a>(
+pub fn search_no_spells(
     config: &GameConfig,
     state: &GameState,
     search_options: &SearchOptions,

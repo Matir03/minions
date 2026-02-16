@@ -208,8 +208,7 @@ impl ConstraintManager {
             for defender in defenders {
                 let attacked_var = &self.variables.attacked[&(*attacker, *defender)];
                 // passive => !attacked
-                self.solver
-                    .assert(&passive_var.implies(&attacked_var.not()));
+                self.solver.assert(passive_var.implies(attacked_var.not()));
             }
         }
     }
@@ -269,7 +268,7 @@ impl ConstraintManager {
 
             let hex_constraint = loc_var_in_hexes(&self.ctx, attack_hex_var, valid_attack_hexes);
             self.solver
-                .assert(&passive_var.not().implies(&hex_constraint));
+                .assert(passive_var.not().implies(&hex_constraint));
 
             // No two non-passive attackers can conflict on hex
             for other_attacker in &self.graph.attackers {
@@ -281,7 +280,7 @@ impl ConstraintManager {
                     let other_attack_move = self.variables.attack_move(other_attacker);
 
                     let blink_constraint = self.blink_constraint(&attack_move, &other_attack_move);
-                    self.solver.assert(&both_active.implies(&blink_constraint));
+                    self.solver.assert(both_active.implies(&blink_constraint));
                 }
             }
 
@@ -296,7 +295,7 @@ impl ConstraintManager {
                         &attack_hex_var.eq(attack_hex.as_z3()),
                     );
                     self.solver
-                        .assert(&passive_var.not().implies(&path_constraint));
+                        .assert(passive_var.not().implies(&path_constraint));
                 }
             }
 
@@ -309,12 +308,11 @@ impl ConstraintManager {
 
                     // attacked equals num_attacks > 0
                     self.solver.assert(
-                        &attacked_var.eq(num_attacks_var.bvugt(&BV::from_u64(0, BV_HP_SIZE))),
+                        attacked_var.eq(num_attacks_var.bvugt(BV::from_u64(0, BV_HP_SIZE))),
                     );
 
                     // Must be false if passive
-                    self.solver
-                        .assert(&passive_var.implies(&attacked_var.not()));
+                    self.solver.assert(passive_var.implies(attacked_var.not()));
 
                     attacked_var
                 })
@@ -327,14 +325,14 @@ impl ConstraintManager {
                 .map(|defender| {
                     let num_attacks = &self.variables.num_attacks[&(*attacker, *defender)];
                     // assertion here to prevent overflow solutions
-                    self.solver.assert(&num_attacks.bvule(&max_attacks));
+                    self.solver.assert(num_attacks.bvule(&max_attacks));
                     num_attacks
                 })
                 .fold(BV::from_u64(0, BV_HP_SIZE), |acc, attack_count| {
                     acc.bvadd(attack_count)
                 });
 
-            self.solver.assert(&total_attacks.bvule(&max_attacks));
+            self.solver.assert(total_attacks.bvule(&max_attacks));
 
             // Lumbering units cannot move and attack in the same turn
             if attacker_stats.lumbering {
@@ -346,7 +344,7 @@ impl ConstraintManager {
                 } else {
                     Bool::or(&attacks_by_this_attacker)
                 };
-                self.solver.assert(&moved.implies(&is_attacking.not()));
+                self.solver.assert(moved.implies(is_attacking.not()));
             }
         }
     }
@@ -379,7 +377,7 @@ impl ConstraintManager {
                         Attack::Deathtouch if defender_stats.necromancer => {
                             // disallow this attack
                             self.solver
-                                .assert(&self.variables.attacked[&(*attacker, *defender)].not());
+                                .assert(self.variables.attacked[&(*attacker, *defender)].not());
                             return None;
                         }
                         Attack::Unsummon => {
@@ -394,12 +392,12 @@ impl ConstraintManager {
                     // force removal time to be after all attacks (using attack_time, not move_time)
                     let attack_time = &self.variables.attack_time[attacker];
                     self.solver.assert(
-                        &num_attacks
-                            .bvugt(&BV::from_u64(0, BV_HP_SIZE))
-                            .implies(&removal_time.bvuge(attack_time)),
+                        num_attacks
+                            .bvugt(BV::from_u64(0, BV_HP_SIZE))
+                            .implies(removal_time.bvuge(attack_time)),
                     );
 
-                    let damage = num_attacks.bvmul(&BV::from_u64(damage_value as u64, BV_HP_SIZE));
+                    let damage = num_attacks.bvmul(BV::from_u64(damage_value as u64, BV_HP_SIZE));
 
                     Some(damage)
                 })
@@ -407,15 +405,15 @@ impl ConstraintManager {
 
             let total_damage = bvsum(&self.ctx, &damages);
 
-            let killed = total_damage.bvuge(&BV::from_u64(defense as u64, BV_HP_SIZE));
+            let killed = total_damage.bvuge(BV::from_u64(defense as u64, BV_HP_SIZE));
             self.solver
-                .assert(&self.variables.killed[defender].eq(killed.clone()));
+                .assert(self.variables.killed[defender].eq(killed.clone()));
 
             let unsummoned = Bool::or(&unsummons);
             self.solver
-                .assert(&self.variables.unsummoned[defender].eq(unsummoned.clone()));
+                .assert(self.variables.unsummoned[defender].eq(unsummoned.clone()));
 
-            self.solver.assert(&Bool::or(&[
+            self.solver.assert(Bool::or(&[
                 &killed.clone().not(),
                 &unsummoned.clone().not(),
             ]));
@@ -435,7 +433,7 @@ impl ConstraintManager {
 
             let attack_hex_constraint = loc_var_in_hexes(&self.ctx, attack_hex_var, attack_hexes);
             self.solver.assert(
-                &self.variables.attacked[&(*attacker_pos, *defender_pos)]
+                self.variables.attacked[&(*attacker_pos, *defender_pos)]
                     .implies(&attack_hex_constraint),
             );
         }
@@ -451,7 +449,7 @@ impl ConstraintManager {
     /// Helper method to create DNF constraints
     pub fn create_dnf_constraint(
         &self,
-        dnf: &Vec<Vec<Loc>>,
+        dnf: &[Vec<Loc>],
         timing_var: &Z3Time,
         condition: &Bool,
     ) -> Bool {
@@ -708,10 +706,7 @@ pub fn generate_move_from_sat_model(
 }
 
 // TODO: attacks need to be interspersed with moves and blinks
-fn group_move_actions<'ctx>(
-    mover_group: &HashSet<Loc>,
-    moves: &HashMap<Loc, Loc>,
-) -> Vec<AttackAction> {
+fn group_move_actions(mover_group: &HashSet<Loc>, moves: &HashMap<Loc, Loc>) -> Vec<AttackAction> {
     let mut actions = Vec::new();
     let mut visited = HashSet::new();
 

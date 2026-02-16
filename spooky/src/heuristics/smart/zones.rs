@@ -118,8 +118,8 @@ impl ZoneAnalysis {
         let spawners = board.bitboards.spawners[side];
         // Range-1 neighbors of spawners (spawn locations), then one more ring.
         let ring1 = spawners | spawners.neighbors();
-        let ring2 = ring1 | ring1.neighbors();
-        ring2
+
+        ring1 | ring1.neighbors()
     }
 
     /// Compute the set of hexes "covered" by `side`.
@@ -173,9 +173,9 @@ impl ZoneAnalysis {
         // (Conservative: we don't model the side also propagating over time,
         //  but side's attack_reach already accounts for piece movement.)
         let mut uncoverable = Bitboard::new();
-        for k in 1..=MAX_LOOKAHEAD as usize {
+        for reach in &enemy_reach_k[1..=MAX_LOOKAHEAD as usize] {
             // Hexes enemy can newly reach at turn k that we can't defend.
-            uncoverable |= enemy_reach_k[k] & !defense_base;
+            uncoverable |= *reach & !defense_base;
         }
 
         // Covered = all hexes minus the ones we can't cover.

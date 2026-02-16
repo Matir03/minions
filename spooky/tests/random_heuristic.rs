@@ -18,8 +18,8 @@ fn test_random_heuristic_eval() {
     let score1 = eval1.score(Side::Yellow);
     let score2 = eval2.score(Side::Yellow);
 
-    assert!(score1 >= 0.0 && score1 <= 1.0);
-    assert!(score2 >= 0.0 && score2 <= 1.0);
+    assert!((0.0..=1.0).contains(&score1));
+    assert!((0.0..=1.0).contains(&score2));
 }
 
 #[test]

@@ -170,7 +170,7 @@ impl GameAction {
                 Ok(GameAction::BuySpell(spell))
             }
             "tech" => {
-                ensure!(args.len() >= 1, "tech requires at least 1 argument");
+                ensure!(!args.is_empty(), "tech requires at least 1 argument");
                 let advance_by = args[0].parse()?;
                 let acquire = args[1..]
                     .iter()

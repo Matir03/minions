@@ -31,11 +31,11 @@ impl<'a> BoardHeuristic<'a, CombinedEnc<'a>> for NaiveHeuristic<'a> {
     type BoardEnc = ();
 
     fn compute_enc(&self, board: &Board<'a>) -> Self::BoardEnc {
-        ()
+        
     }
 
     fn update_enc(&self, enc: &Self::BoardEnc, turn: &BoardTurn) -> Self::BoardEnc {
-        ()
+        
     }
 
     fn compute_board_attack_phase_pre_turn(
@@ -159,7 +159,7 @@ pub fn generate_move_candidates(
             break;
         }
 
-        let best_piece = turns_to_graveyard[&g]
+        let best_piece = turns_to_graveyard[g]
             .iter()
             .find(|(piece_loc, _)| !chosen_pieces.contains_key(piece_loc));
 
@@ -171,7 +171,7 @@ pub fn generate_move_candidates(
     }
 
     for (g, _) in competitiveness_increasing {
-        let best_piece = turns_to_graveyard[&g].iter().find(|(piece_loc, _)| {
+        let best_piece = turns_to_graveyard[g].iter().find(|(piece_loc, _)| {
             board.get_piece(piece_loc).unwrap().unit.stats().spawn
                 && !chosen_pieces.contains_key(piece_loc)
         });
@@ -189,9 +189,9 @@ pub fn generate_move_candidates(
     let unif_distr = rand::distr::Uniform::new(-NOISE, NOISE).unwrap();
 
     for (from_loc, to_loc_map) in graph.move_hex_map.iter() {
-        let unit_stats = board.get_piece(&from_loc).unwrap().unit.stats();
-        if chosen_pieces.contains_key(&from_loc) {
-            let g = chosen_pieces[&from_loc];
+        let unit_stats = board.get_piece(from_loc).unwrap().unit.stats();
+        if chosen_pieces.contains_key(from_loc) {
+            let g = chosen_pieces[from_loc];
             let g_dist = g.dist(from_loc);
 
             for to_loc in to_loc_map.keys() {
@@ -221,7 +221,7 @@ pub fn generate_move_candidates(
 
         let cur_wt = loc_wt(board.map.spec(), from_loc);
 
-        for (to_loc, _) in to_loc_map {
+        for to_loc in to_loc_map.keys() {
             let to_wt = loc_wt(board.map.spec(), to_loc);
             const SCORE_SIGMOID_SCALE: f64 = 10.0;
             let score = ((to_wt - cur_wt) * unit_stats.cost as f64 / SCORE_SIGMOID_SCALE).sigmoid()
@@ -284,12 +284,12 @@ pub fn generate_assumptions(board: &Board, side: Side) -> Vec<RemovalAssumption>
     scored_assumptions.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
 
     // Extract just the assumptions in priority order
-    let assumptions = scored_assumptions
+    
+
+    scored_assumptions
         .into_iter()
         .map(|(assumption, _)| assumption)
-        .collect();
-
-    assumptions
+        .collect()
 }
 
 const WEIGHT_FACTOR: f64 = 1.2;
@@ -323,7 +323,7 @@ pub fn generate_spawn_actions(
         .iter()
         .copied()
         .collect::<Vec<_>>();
-    sorted_units.sort_by_key(|u| -(u.stats().cost as i32));
+    sorted_units.sort_by_key(|u| -u.stats().cost);
 
     // Get spawn locations based on the current board state.
     let mut all_spawn_locs = board.bitboards.get_spawn_locs(side, true);
@@ -373,7 +373,7 @@ fn purchase_heuristic(
                 None
             }
         })
-        .chain(Unit::BASIC_UNITS.into_iter())
+        .chain(Unit::BASIC_UNITS)
         .collect();
 
     let mut units_with_weights = available_units
@@ -384,10 +384,7 @@ fn purchase_heuristic(
     let mut units_to_buy = Vec::new();
 
     loop {
-        units_with_weights = units_with_weights
-            .into_iter()
-            .filter(|(u, _)| money >= u.stats().cost)
-            .collect();
+        units_with_weights.retain(|(u, _)| money >= u.stats().cost);
 
         if units_with_weights.is_empty() {
             break;

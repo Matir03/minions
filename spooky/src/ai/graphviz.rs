@@ -336,7 +336,7 @@ pub fn export_search_tree<'a, H: Heuristic<'a>>(tree: &SearchTree<'a, H>) -> Str
     for (_ply, nodes) in gv.game_ranks.iter() {
         if let Some(game_rep) = nodes.first() {
             // General root rank representative (depth 0)
-            if let Some(gen0) = gv.general_ranks.get(0) {
+            if let Some(gen0) = gv.general_ranks.first() {
                 if let Some(gen_rep) = gen0.first() {
                     dot.push_str(&format!(
                         "  {} -> {} [style=invis, weight=200, minlen=1];\n",
@@ -346,7 +346,7 @@ pub fn export_search_tree<'a, H: Heuristic<'a>>(tree: &SearchTree<'a, H>) -> Str
             }
             // Each board's root rank representative (depth 0)
             for branks in gv.board_ranks.iter() {
-                if let Some(b0) = branks.get(0) {
+                if let Some(b0) = branks.first() {
                     if let Some(board_rep) = b0.first() {
                         dot.push_str(&format!(
                             "  {} -> {} [style=invis, weight=200, minlen=1];\n",

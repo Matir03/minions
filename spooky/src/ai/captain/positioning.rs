@@ -67,9 +67,9 @@ impl SatPositioningSystem {
         };
 
         if let Some(move_hex_var) = variables.move_hex.get(&from_loc) {
-            return move_hex_var.eq(to_loc.as_z3());
+            move_hex_var.eq(to_loc.as_z3())
         } else if let Some(attack_hex_var) = variables.attack_hex.get(&from_loc) {
-            return attack_hex_var.eq(to_loc.as_z3());
+            attack_hex_var.eq(to_loc.as_z3())
         } else {
             panic!("create_move_constraint called for a piece that is not a friendly unit or an attacker: {:?}", from_loc);
         }
@@ -178,13 +178,12 @@ impl SatPositioningSystem {
 
             let is_overlapping = if manager.graph.attackers.contains(&attack_hex) {
                 let other_attacker_passive_var = &manager.variables.passive[&attack_hex];
-                let other_is_passive = model
+
+                model
                     .eval(other_attacker_passive_var, true)
                     .unwrap()
                     .as_bool()
-                    .unwrap();
-
-                other_is_passive
+                    .unwrap()
             } else {
                 true
             };
@@ -207,7 +206,7 @@ impl SatPositioningSystem {
         let mut assumptions = Vec::new();
 
         for unit_loc in overlapping_units {
-            let move_hex_var = &manager.variables.move_hex[&unit_loc];
+            let move_hex_var = &manager.variables.move_hex[unit_loc];
 
             let move_hexes_occupied = untouched_friendly_units.iter().cloned().collect::<Vec<_>>();
 
@@ -262,7 +261,7 @@ impl SatPositioningSystem {
             let same_hex = move_hex_var.eq(attack_hex_var);
             let same_time =
                 manager.variables.move_time[&friend].eq(&manager.variables.attack_time[&friend]);
-            let constraint = passive_var.implies(&Bool::and(&[&same_hex, &same_time]));
+            let constraint = passive_var.implies(Bool::and(&[&same_hex, &same_time]));
             manager.solver.assert(&constraint);
             constraints.push(constraint);
         }
@@ -312,7 +311,7 @@ impl SatPositioningSystem {
 
             if let Some(dnf) = dnf {
                 let path_constraint = manager.create_dnf_constraint(
-                    &dnf,
+                    dnf,
                     &manager.variables.move_time[&friend],
                     &condition,
                 );
@@ -451,7 +450,7 @@ impl SatPositioningSystem {
         let matching = self.compute_optimal_matching(manager, board, &move_candidates);
         let blink_actions = matching.iter().filter_map(|(src, dest)| {
             dest.is_none()
-                .then(|| AttackAction::Blink { blink_loc: *src })
+                .then_some(AttackAction::Blink { blink_loc: *src })
         });
 
         let movements = matching
@@ -495,12 +494,12 @@ impl SatPositioningSystem {
                             // to a valid destination
                             board
                                 .verify_path(
-                                    &board.get_piece(&candidate.from_loc()).unwrap(),
+                                    board.get_piece(&candidate.from_loc()).unwrap(),
                                     to_loc,
                                 )
                                 .is_ok()
-                                && (yet_to_move.contains(&to_loc)
-                                    || !board.pieces.contains_key(&to_loc))
+                                && (yet_to_move.contains(to_loc)
+                                    || !board.pieces.contains_key(to_loc))
                         }
                         MoveCandidate::Blink { .. } => true,
                     }
@@ -570,8 +569,8 @@ impl SatPositioningSystem {
                 }
             }
 
-            for dest_idx in 0..num_locs {
-                cost_matrix[non_friend_idx][dest_idx] = 0.0;
+            for item in cost_matrix[non_friend_idx].iter_mut().take(num_locs) {
+                *item = 0.0;
             }
         }
 
@@ -662,7 +661,7 @@ fn identify_paths_and_cycles(
         while next != source {
             visited.insert(*next);
             cycle.push(*next);
-            next = movement.get(&next).unwrap();
+            next = movement.get(next).unwrap();
         }
 
         cycles.push(cycle);
@@ -1097,7 +1096,7 @@ mod tests {
 
         let all_actions = sat_actions
             .into_iter()
-            .chain(positioning_actions.into_iter())
+            .chain(positioning_actions)
             .collect::<Vec<_>>();
 
         // Should return some actions (even if just staying in place)

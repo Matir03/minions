@@ -40,7 +40,7 @@ impl NodeStats {
         self.visits += 1;
         match &mut self.eval {
             Some(e) => e.update_weighted(n, eval),
-            None => self.eval = Some(eval.clone()),
+            None => self.eval = Some(*eval),
         }
     }
 }

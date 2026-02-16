@@ -18,18 +18,15 @@ pub enum Phase {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default)]
 pub enum BoardState {
+    #[default]
     FirstTurn,
     Normal,
     Reset1,
     Reset2,
 }
 
-impl Default for BoardState {
-    fn default() -> Self {
-        Self::FirstTurn
-    }
-}
 
 impl BoardState {
     pub fn phases(&self) -> &'static [Phase] {

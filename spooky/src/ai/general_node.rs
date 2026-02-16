@@ -139,8 +139,7 @@ impl<'a> GeneralChildGen<'a> {
 
         while let Some(parent_idx) = self.nodes[idx].parent {
             let left_sat = self.nodes[parent_idx]
-                .take_child
-                .and_then(|i| Some(self.nodes[i].saturated))
+                .take_child.map(|i| self.nodes[i].saturated)
                 .unwrap();
 
             if !left_sat {
@@ -148,8 +147,7 @@ impl<'a> GeneralChildGen<'a> {
             }
 
             let right_sat = self.nodes[parent_idx]
-                .skip_child
-                .and_then(|i| Some(self.nodes[i].saturated))
+                .skip_child.map(|i| self.nodes[i].saturated)
                 .unwrap();
 
             if !right_sat {

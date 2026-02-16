@@ -11,11 +11,11 @@ impl<'a> GeneralHeuristic<'a, CombinedEnc<'a>> for SmartHeuristic<'a> {
     type GeneralEnc = ();
 
     fn compute_enc(&self, _side: Side, _state: &TechState) -> Self::GeneralEnc {
-        ()
+        
     }
 
     fn update_enc(&self, enc: &Self::GeneralEnc, turn: &TechAssignment) -> Self::GeneralEnc {
-        ()
+        
     }
 
     fn compute_general_pre_turn(

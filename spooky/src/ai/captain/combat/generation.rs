@@ -12,6 +12,12 @@ use z3::ast::Bool;
 #[derive(Debug)]
 pub struct CombatGenerationSystem {}
 
+impl Default for CombatGenerationSystem {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl CombatGenerationSystem {
     pub fn new() -> Self {
         Self {}
@@ -81,7 +87,7 @@ impl CombatGenerationSystem {
                 variables
                     .killed
                     .get(loc)
-                    .expect(&format!("No killed variable for location {}", loc))
+                    .unwrap_or_else(|| panic!("No killed variable for location {}", loc))
                     .clone()
             }
             RemovalAssumption::Unsummon(loc) => {
@@ -89,7 +95,7 @@ impl CombatGenerationSystem {
                 variables
                     .unsummoned
                     .get(loc)
-                    .expect(&format!("No unsummoned variable for location {}", loc))
+                    .unwrap_or_else(|| panic!("No unsummoned variable for location {}", loc))
                     .clone()
             }
             RemovalAssumption::Keep(loc) => {
@@ -98,12 +104,12 @@ impl CombatGenerationSystem {
                     &variables
                         .killed
                         .get(loc)
-                        .expect(&format!("No killed variable for location {}", loc))
+                        .unwrap_or_else(|| panic!("No killed variable for location {}", loc))
                         .not(),
                     &variables
                         .unsummoned
                         .get(loc)
-                        .expect(&format!("No unsummoned variable for location {}", loc))
+                        .unwrap_or_else(|| panic!("No unsummoned variable for location {}", loc))
                         .not(),
                 ])
             }

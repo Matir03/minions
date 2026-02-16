@@ -27,7 +27,6 @@ impl<'a> Engine<'a> {
     }
 
     /// Update the current game state
-
     pub fn reset_game(&mut self) {
         self.state = GameState::new_default(self.config);
     }

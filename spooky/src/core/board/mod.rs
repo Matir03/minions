@@ -26,6 +26,7 @@ use super::{
     units::{Attack, Unit},
 };
 
+#[allow(clippy::module_inception)]
 mod board;
 
 #[cfg(test)]

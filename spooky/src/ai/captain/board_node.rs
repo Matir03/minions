@@ -144,6 +144,7 @@ pub struct BoardChildGen {
     pub resign_weight: f64,
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn process_turn_end<'a, C, H: BoardHeuristic<'a, C>>(
     mut board: Board<'a>,
     side_to_move: Side,
@@ -264,24 +265,22 @@ impl<'a, C: Clone, H: 'a + BoardHeuristic<'a, C>> ChildGen<BoardNodeState<'a, C,
 
         let mut new_board = state.board.clone();
 
-        if !resign_generated {
-            if rng.random::<f64>() < resign_weight {
-                self.resign_generated = true;
+        if !resign_generated && rng.random::<f64>() < resign_weight {
+            self.resign_generated = true;
 
-                new_board.take_turn(state.side_to_move, BoardTurn::Resign, money, &tech_state);
-                let new_node = process_turn_end(
-                    new_board,
-                    state.side_to_move,
-                    money,
-                    money,
-                    0,
-                    heuristic,
-                    &state.heuristic_state,
-                    &BoardTurn::Resign,
-                );
+            new_board.take_turn(state.side_to_move, BoardTurn::Resign, money, &tech_state);
+            let new_node = process_turn_end(
+                new_board,
+                state.side_to_move,
+                money,
+                money,
+                0,
+                heuristic,
+                &state.heuristic_state,
+                &BoardTurn::Resign,
+            );
 
-                return Some((BoardTurn::Resign, new_node));
-            }
+            return Some((BoardTurn::Resign, new_node));
         }
 
         let setup_action = heuristic.compute_board_setup_phase_pre_turn(
@@ -400,7 +399,7 @@ impl<'a, C: Clone, H: 'a + BoardHeuristic<'a, C>> ChildGen<BoardNodeState<'a, C,
             "Generating and applying non-combat movements",
             || {
                 let actions =
-                    positioning_system.generate_non_attack_movements(&manager, &new_board, moves);
+                    positioning_system.generate_non_attack_movements(manager, &new_board, moves);
                 new_board.do_attacks(state.side_to_move, &actions).unwrap();
                 actions
             },
@@ -434,7 +433,7 @@ impl<'a, C: Clone, H: 'a + BoardHeuristic<'a, C>> ChildGen<BoardNodeState<'a, C,
 
         let attack_actions = combat_actions
             .into_iter()
-            .chain(positioning_actions.into_iter())
+            .chain(positioning_actions)
             .collect::<Vec<_>>();
 
         let turn_taken = BoardTurn::Actions(BoardActions {

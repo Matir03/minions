@@ -202,11 +202,11 @@ impl<'a, H: Heuristic<'a>> ChildGen<GameNodeState<'a, H>, GameTurn> for GameChil
             next_board_states_for_gamestate.push(next_board_node_state_snapshot.board);
         }
 
-        let mut next_money = state.game_state.money.clone();
+        let mut next_money = state.game_state.money;
         next_money[current_side] += next_general_node_state_snapshot.delta_money[current_side];
         next_money.add_assign(&total_board_delta_money);
 
-        let mut next_board_points = state.game_state.board_points.clone();
+        let mut next_board_points = state.game_state.board_points;
         next_board_points.add_assign(&total_board_delta_points);
 
         let next_winner = [current_side, !current_side]
@@ -240,7 +240,7 @@ impl<'a, H: Heuristic<'a>> ChildGen<GameNodeState<'a, H>, GameTurn> for GameChil
             .collect::<StdVec<_>>();
         let board_encs_ref = board_encs.iter().collect::<StdVec<_>>();
         let heuristic_state =
-            heuristic.compute_combined(&next_game_state, &general_enc, &board_encs_ref);
+            heuristic.compute_combined(&next_game_state, general_enc, &board_encs_ref);
 
         let next_game_node_state = GameNodeState {
             game_state: next_game_state,
