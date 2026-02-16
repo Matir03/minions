@@ -1,13 +1,17 @@
 use crate::{
     ai::Eval,
     core::{
-        board::{actions::BoardTurn, Board},
+        board::{actions::BoardTurn, BitboardOps, Board},
         game::GameConfig,
         tech::{TechAssignment, TechState, SPELL_COST},
         utils::Sigmoid,
-        Blotto, GameState, Side,
+        Blotto, GameState, Loc, Side,
     },
-    heuristics::{traits::BlottoGen, BoardHeuristic, GeneralHeuristic, Heuristic},
+    heuristics::{
+        smart::zones::{HexZone, ZoneAnalysis},
+        traits::BlottoGen,
+        BoardHeuristic, GeneralHeuristic, Heuristic,
+    },
 };
 
 use super::blotto::SmartBlotto;
@@ -52,6 +56,7 @@ impl<'a> Heuristic<'a> for SmartHeuristic<'a> {
 
         const BOARD_POINT_VALUE: i32 = 30;
         const SIGMOID_SCALE: f32 = 0.01;
+        const NECROMANCER_SAFETY_VALUE: f64 = 15.0;
         let have_the_move_bonus = 10 * self.config.num_boards as i32;
 
         let mut dollar_diff = 0;
@@ -79,11 +84,51 @@ impl<'a> Heuristic<'a> for SmartHeuristic<'a> {
         // Add a small bonus for the side to move
         dollar_diff += have_the_move_bonus * state.side_to_move.sign();
 
-        // The dollar_diff is from Yellow's perspective. We need to adjust for side_to_move.
-        let perspective_diff = dollar_diff * state.side_to_move.sign();
+        // --- Zone-based evaluation additions ---
+        let mut zone_value: f64 = 0.0;
+
+        for board in state.boards.iter() {
+            let zone_analysis = ZoneAnalysis::compute(board);
+
+            // Expected discounted graveyard income.
+            let graveyard_locs = board.bitboards.graveyards.to_locs();
+            for g_loc in &graveyard_locs {
+                for side in Side::all() {
+                    let is_occupied = board.bitboards.pieces[side].get(*g_loc);
+                    if is_occupied {
+                        let expected_income =
+                            zone_analysis.expected_graveyard_income(*g_loc, side, 1.0);
+                        zone_value += expected_income * side.sign() as f64;
+                    }
+                }
+            }
+
+            // Necromancer safety.
+            for (loc, piece) in &board.pieces {
+                if !piece.unit.stats().necromancer {
+                    continue;
+                }
+                let zone = zone_analysis.zone_at(*loc);
+                let safety_multiplier = match zone {
+                    HexZone::Protected(s) if s == piece.side => 1.0,
+                    HexZone::Covered(s) if s == piece.side => 0.7,
+                    HexZone::Contested => 0.3,
+                    HexZone::Open => 0.0,
+                    HexZone::Covered(s) if s != piece.side => -0.3,
+                    HexZone::Protected(s) if s != piece.side => -0.6,
+                    _ => 0.0,
+                };
+                zone_value +=
+                    NECROMANCER_SAFETY_VALUE * safety_multiplier * piece.side.sign() as f64;
+            }
+        }
+
+        // Combine: dollar_diff (integer) + zone_value (float)
+        let total_diff = dollar_diff as f64 * state.side_to_move.sign() as f64
+            + zone_value * state.side_to_move.sign() as f64;
 
         // Convert to winprob
-        let winprob = (perspective_diff as f32 * SIGMOID_SCALE).sigmoid();
+        let winprob = (total_diff as f32 * SIGMOID_SCALE).sigmoid();
 
         Eval::new(winprob, state.side_to_move)
     }
