@@ -1,7 +1,7 @@
 use crate::core::convert::{FromIndex, ToIndex};
+use crate::core::game::generate_game_id;
 use crate::core::tech::{Tech, TechState, TechStatus, Techline};
 use crate::core::{Board, GameConfig, GameState, Map, Side, SideArray, Unit};
-use crate::core::game::generate_game_id;
 use anyhow::{anyhow, bail, ensure, Context, Result};
 
 impl<'a> GameState<'a> {

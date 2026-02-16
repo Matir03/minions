@@ -1,15 +1,15 @@
 //! Map and hex grid representations
 
-use anyhow::{anyhow, bail, ensure, Context, Result};
-use indoc::indoc;
-use num_derive::{FromPrimitive, ToPrimitive};
-use num_traits::{FromPrimitive, ToPrimitive};
 use super::{
     convert::{FromIndex, ToIndex},
     loc::{Loc, GRID_LEN, GRID_SIZE},
     units::Unit,
 };
+use anyhow::{anyhow, bail, ensure, Context, Result};
+use indoc::indoc;
 use lazy_static::lazy_static;
+use num_derive::{FromPrimitive, ToPrimitive};
+use num_traits::{FromPrimitive, ToPrimitive};
 
 /// Type of tile in the hex grid
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -91,7 +91,7 @@ impl MapSpec {
         }
     }
 
-    pub fn from_fen (fen: &str) -> Result<Self> {
+    pub fn from_fen(fen: &str) -> Result<Self> {
         let mut x: i32 = 0;
         let mut y: i32 = 0;
         let mut spec = MapSpec::new();
@@ -105,11 +105,18 @@ impl MapSpec {
                     x = 0;
                 }
                 '0'..='9' => {
-                    let empty = if c == '0' { 10 } else { c.to_digit(10).unwrap() as i32 };
+                    let empty = if c == '0' {
+                        10
+                    } else {
+                        c.to_digit(10).unwrap() as i32
+                    };
                     x += empty;
                 }
                 'G' => {
-                    ensure!(x < 10 && y < 10, "Invalid FEN: graveyard position out of bounds");
+                    ensure!(
+                        x < 10 && y < 10,
+                        "Invalid FEN: graveyard position out of bounds"
+                    );
                     let loc = Loc { x, y };
 
                     spec.graveyards.push(loc);
@@ -117,10 +124,13 @@ impl MapSpec {
                     x += 1;
                 }
                 'A'..='Z' => {
-                    ensure!(x < 10 && y < 10, "Invalid FEN: terrain position out of bounds");
+                    ensure!(
+                        x < 10 && y < 10,
+                        "Invalid FEN: terrain position out of bounds"
+                    );
 
-                    let terrain = Terrain::from_fen_char(c)
-                        .context("Invalid FEN: unknown terrain")?;
+                    let terrain =
+                        Terrain::from_fen_char(c).context("Invalid FEN: unknown terrain")?;
 
                     let loc = Loc { x, y };
 
@@ -144,7 +154,7 @@ pub struct HexGrid<T> {
 impl<T> HexGrid<T> {
     /// Create a new hex grid with given dimensions
     pub const fn new(tiles: [T; GRID_SIZE]) -> Self {
-        Self { tiles, }
+        Self { tiles }
     }
 
     /// Get tile at specified location
@@ -168,8 +178,7 @@ impl<T> HexGrid<T> {
     }
 
     fn in_bounds(&self, loc: &Loc) -> bool {
-        loc.y >= 0 && loc.y < GRID_LEN as i32 && 
-        loc.x >= 0 && loc.x < GRID_LEN as i32
+        loc.y >= 0 && loc.y < GRID_LEN as i32 && loc.x >= 0 && loc.x < GRID_LEN as i32
     }
 
     fn index(&self, loc: &Loc) -> usize {
@@ -202,15 +211,13 @@ impl Map {
 
 impl FromIndex for Map {
     fn from_index(idx: usize) -> Result<Self> {
-        FromPrimitive::from_usize(idx)
-            .ok_or_else(|| anyhow!("Invalid map index: {}", idx))
+        FromPrimitive::from_usize(idx).ok_or_else(|| anyhow!("Invalid map index: {}", idx))
     }
 }
 
 impl ToIndex for Map {
     fn to_index(&self) -> Result<usize> {
-        ToPrimitive::to_usize(self)
-            .ok_or_else(|| anyhow!("Invalid map label"))
+        ToPrimitive::to_usize(self).ok_or_else(|| anyhow!("Invalid map label"))
     }
 }
 
@@ -223,13 +230,10 @@ impl Default for Map {
 const MAP_FENS: [&str; NUM_MAPS] = [
     // AllLand
     "0/0/0/0/0/0/0/0/0/0",
-
     // BlackenedShores
-    "2G3G3/W9/W9/W4G3G/GW4G3/W2WW5/WG2W5/W1W6G/3G1W4/2WWWGWWW1", 
-
+    "2G3G3/W9/W9/W4G3G/GW4G3/W2WW5/WG2W5/W1W6G/3G1W4/2WWWGWWW1",
     // MidnightLake
     "1G1WW3G1/9G/0/G2G1WW3/W3WWW3/4WW3W/1G4G2W/0/3G5G/5WG3",
-
 ];
 
 lazy_static! {
@@ -260,14 +264,14 @@ mod tests {
     #[test]
     fn test_hex_array() {
         let mut array = HexGrid::new([TileType::Ground; GRID_SIZE]);
-        
+
         // Test in_bounds
         assert!(array.in_bounds(&Loc { y: 0, x: 0 }));
         assert!(array.in_bounds(&Loc { y: 9, x: 9 }));
         assert!(!array.in_bounds(&Loc { y: 10, x: 0 }));
         assert!(!array.in_bounds(&Loc { y: 0, x: 10 }));
         assert!(!array.in_bounds(&Loc { y: -1, x: 0 }));
-        
+
         // Test get/set
         let loc = Loc { y: 5, x: 5 };
         assert_eq!(array.get(&loc), Some(&TileType::Ground));

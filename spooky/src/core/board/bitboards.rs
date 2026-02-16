@@ -1,6 +1,10 @@
 //! Bitboards
 use crate::core::{
-    board::Piece, loc::Loc, map::{MapSpec, Terrain, TileType}, side::{Side, SideArray}, Board
+    board::Piece,
+    loc::Loc,
+    map::{MapSpec, Terrain, TileType},
+    side::{Side, SideArray},
+    Board,
 };
 
 pub type Bitboard = u128;
@@ -21,8 +25,8 @@ impl Dir {
         let mut idx = 0;
 
         while idx < 100 {
-            let cur_loc = Loc { 
-                y: (idx / 10), 
+            let cur_loc = Loc {
+                y: (idx / 10),
                 x: (idx % 10),
             };
             let new_loc = Loc {
@@ -33,7 +37,7 @@ impl Dir {
             if new_loc.in_bounds() {
                 let shift = self.shift();
                 let new_idx = idx + shift;
-    
+
                 if new_idx >= 0 && new_idx < 100 {
                     mask |= 1 << new_idx;
                 }
@@ -49,9 +53,9 @@ const DIRECTIONS: [Dir; 6] = [
     Dir { dx: -1, dy: 0 }, // WEST
     Dir { dx: -1, dy: 1 }, // NW
     Dir { dx: 0, dy: -1 }, // SW
-    Dir { dx: 0, dy: 1 }, // NE
+    Dir { dx: 0, dy: 1 },  // NE
     Dir { dx: 1, dy: -1 }, // SE
-    Dir { dx: 1, dy: 0 }, // EAST
+    Dir { dx: 1, dy: 0 },  // EAST
 ];
 
 // const SHIFTS: [i32; 6] = [
@@ -86,8 +90,9 @@ pub trait BitboardOps {
 }
 
 impl BitboardOps for Bitboard {
-
-    fn new() -> Self { 0 }
+    fn new() -> Self {
+        0
+    }
 
     fn to_locs(self) -> Vec<Loc> {
         let mut locs = Vec::new();
@@ -101,12 +106,12 @@ impl BitboardOps for Bitboard {
     }
 
     fn neighbors(&self) -> Self {
-        ((self >>  1) & MASKS[0]) |
-        ((self <<  9) & MASKS[1]) |
-        ((self >> 10) & MASKS[2]) |
-        ((self << 10) & MASKS[3]) |
-        ((self >>  9) & MASKS[4]) |
-        ((self <<  1) & MASKS[5])
+        ((self >> 1) & MASKS[0])
+            | ((self << 9) & MASKS[1])
+            | ((self >> 10) & MASKS[2])
+            | ((self << 10) & MASKS[3])
+            | ((self >> 9) & MASKS[4])
+            | ((self << 1) & MASKS[5])
     }
 
     fn propagate_masked(&self, mask: Bitboard) -> Self {
@@ -136,7 +141,9 @@ impl BitboardOps for Bitboard {
     }
 
     fn pop(&mut self) -> Option<Loc> {
-        if *self == 0 { return None; }
+        if *self == 0 {
+            return None;
+        }
         let loc = self.trailing_zeros() as i32;
         *self &= *self - 1; // Clear the lowest set bit
         Some(Loc::from_index(loc))
@@ -180,7 +187,7 @@ impl Bitboards {
                             Terrain::Firestorm => firestorm.set(loc, true),
                         },
                         TileType::Graveyard => graveyards.set(loc, true),
-                        _ => {},
+                        _ => {}
                     }
                 }
             }
@@ -201,7 +208,7 @@ impl Bitboards {
     pub fn add_piece(&mut self, piece: &Piece) {
         let loc = piece.loc;
         let side = piece.side;
-    
+
         self.pieces[side].set(loc, true);
 
         if piece.unit.stats().spawn {
@@ -235,7 +242,13 @@ impl Bitboards {
     }
 
     // moves assuming no enemy unit is removed
-    pub fn get_unobstructed_moves(&self, loc: &Loc, side: Side, speed: i32, is_flying: bool) -> Bitboard {
+    pub fn get_unobstructed_moves(
+        &self,
+        loc: &Loc,
+        side: Side,
+        speed: i32,
+        is_flying: bool,
+    ) -> Bitboard {
         let mut prop_mask = !0;
         if !is_flying {
             prop_mask &= !self.pieces[!side];
@@ -251,7 +264,13 @@ impl Bitboards {
     }
 
     // all moves assuming the board has no other pieces
-    pub fn get_theoretical_moves(&self, loc: &Loc, side: Side, speed: i32, is_flying: bool) -> Bitboard {
+    pub fn get_theoretical_moves(
+        &self,
+        loc: &Loc,
+        side: Side,
+        speed: i32,
+        is_flying: bool,
+    ) -> Bitboard {
         let mut prop_mask = if is_flying { !0 } else { !self.water };
         let dest_mask = !0;
 
@@ -292,21 +311,24 @@ impl<'a> Board<'a> {
         let piece = self.get_piece(&piece_loc).unwrap();
         let speed = piece.unit.stats().speed;
         let is_flying = piece.unit.stats().flying;
-        self.bitboards.get_unobstructed_moves(&piece_loc, piece.side, speed, is_flying)
+        self.bitboards
+            .get_unobstructed_moves(&piece_loc, piece.side, speed, is_flying)
     }
 
     pub fn get_theoretical_moves(&self, piece_loc: Loc) -> Bitboard {
         let piece = self.get_piece(&piece_loc).unwrap();
         let speed = piece.unit.stats().speed;
         let is_flying = piece.unit.stats().flying;
-        self.bitboards.get_theoretical_moves(&piece_loc, piece.side, speed, is_flying)
+        self.bitboards
+            .get_theoretical_moves(&piece_loc, piece.side, speed, is_flying)
     }
 
     pub fn get_valid_moves(&self, piece_loc: Loc) -> Bitboard {
         let piece = self.get_piece(&piece_loc).unwrap();
         let speed = piece.unit.stats().speed;
         let is_flying = piece.unit.stats().flying;
-        self.bitboards.get_valid_moves(&piece_loc, piece.side, speed, is_flying)
+        self.bitboards
+            .get_valid_moves(&piece_loc, piece.side, speed, is_flying)
     }
 
     pub fn get_valid_move_hexes(&self, piece_loc: Loc) -> Vec<Loc> {
@@ -331,4 +353,3 @@ impl<'a> Board<'a> {
         self.units_on_graveyards(side) + 3
     }
 }
-    

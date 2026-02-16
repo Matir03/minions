@@ -1,11 +1,11 @@
 use bumpalo::Bump;
 use criterion::{criterion_group, criterion_main, Criterion};
-use std::hint::black_box;
 use pprof::criterion::{Output, PProfProfiler};
 use spooky::ai::captain::board_node::Z3ContextStore;
 use spooky::ai::explore::SearchTree;
 use spooky::core::{GameConfig, GameState};
 use spooky::heuristics::{naive::NaiveHeuristic, Heuristic};
+use std::hint::black_box;
 
 fn search_position<'a, H: Heuristic<'a>>(
     config: &'a GameConfig,
