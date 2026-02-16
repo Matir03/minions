@@ -1,0 +1,1 @@
+[![CI](https://github.com/Matir03/minions/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Matir03/minions/actions/workflows/ci.yml)
