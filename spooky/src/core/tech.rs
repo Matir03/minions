@@ -45,13 +45,17 @@ impl Tech {
     }
 }
 
+const COPYCAT_IDX: usize = NUM_TECHS - 2;
+const THAUMATURGY_IDX: usize = NUM_TECHS - 1;
+const METAMAGIC_IDX: usize = NUM_TECHS;
+
 impl FromIndex for Tech {
     fn from_index(idx: usize) -> Result<Self> {
         Ok(match idx {
-            1..=22 => Tech::UnitTech(Unit::from_index(idx + Unit::BASIC_UNITS.len() - 1)?),
-            23 => Tech::Copycat,
-            24 => Tech::Thaumaturgy,
-            25 => Tech::Metamagic,
+            1..COPYCAT_IDX => Tech::UnitTech(Unit::from_index(idx + Unit::BASIC_UNITS.len() - 1)?),
+            COPYCAT_IDX => Tech::Copycat,
+            THAUMATURGY_IDX => Tech::Thaumaturgy,
+            METAMAGIC_IDX => Tech::Metamagic,
             _ => bail!("Invalid tech index: {}", idx),
         })
     }
@@ -60,9 +64,9 @@ impl FromIndex for Tech {
 impl ToIndex for Tech {
     fn to_index(&self) -> Result<usize> {
         Ok(match self {
-            Tech::Copycat => 23,
-            Tech::Thaumaturgy => 24,
-            Tech::Metamagic => 25,
+            Tech::Copycat => COPYCAT_IDX,
+            Tech::Thaumaturgy => THAUMATURGY_IDX,
+            Tech::Metamagic => METAMAGIC_IDX,
             Tech::UnitTech(unit) => unit.to_index()? - Unit::BASIC_UNITS.len() + 1,
         })
     }
@@ -251,11 +255,11 @@ mod tests {
         // Test invalid index
         assert!(Tech::from_index(27).is_err());
 
-        // Test unit tech - with BASIC_UNITS = [Zombie], first tech is Initiate at index 1
-        assert_eq!(Tech::from_index(1).unwrap(), Tech::UnitTech(Unit::Initiate));
-        assert_eq!(Tech::UnitTech(Unit::Initiate).to_index().unwrap(), 1);
-        assert_eq!(Tech::from_index(2).unwrap(), Tech::UnitTech(Unit::Skeleton));
-        assert_eq!(Tech::UnitTech(Unit::Skeleton).to_index().unwrap(), 2);
+        // Test unit tech - first tech is Skeleton at index 1
+        assert_eq!(Tech::from_index(1).unwrap(), Tech::UnitTech(Unit::Skeleton));
+        assert_eq!(Tech::UnitTech(Unit::Skeleton).to_index().unwrap(), 1);
+        assert_eq!(Tech::from_index(2).unwrap(), Tech::UnitTech(Unit::Serpent));
+        assert_eq!(Tech::UnitTech(Unit::Serpent).to_index().unwrap(), 2);
     }
 
     #[test]

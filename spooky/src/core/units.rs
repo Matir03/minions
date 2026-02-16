@@ -49,7 +49,6 @@ pub struct UnitStats {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, FromPrimitive, ToPrimitive)]
 pub enum Unit {
     Zombie,
-    Initiate,
     Skeleton,
     Serpent,
     Warg,
@@ -81,6 +80,7 @@ pub enum Unit {
     ZombieNecromancer,
     ManaNecromancer,
     TerrainNecromancer,
+    Initiate,
 }
 
 impl Unit {
@@ -246,22 +246,6 @@ const UNIT_STATS: [UnitStats; Unit::NUM_UNITS] = [
         range: 1,
         cost: 2,
         rebate: 0,
-        necromancer: false,
-        lumbering: true,
-        flying: false,
-        persistent: false,
-        spawn: true,
-        blink: false,
-    },
-    // Initiate
-    UnitStats {
-        attack: Attack::Damage(2),
-        num_attacks: 1,
-        defense: 2,
-        speed: 2,
-        range: 1,
-        cost: 3,
-        rebate: 1,
         necromancer: false,
         lumbering: true,
         flying: false,
@@ -765,6 +749,22 @@ const UNIT_STATS: [UnitStats; Unit::NUM_UNITS] = [
         lumbering: false,
         flying: false,
         persistent: true,
+        spawn: true,
+        blink: false,
+    },
+    // Initiate
+    UnitStats {
+        attack: Attack::Damage(2),
+        num_attacks: 1,
+        defense: 2,
+        speed: 2,
+        range: 1,
+        cost: 3,
+        rebate: 1,
+        necromancer: false,
+        lumbering: true,
+        flying: false,
+        persistent: false,
         spawn: true,
         blink: false,
     },
